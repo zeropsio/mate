@@ -534,6 +534,13 @@ export const RepoListEntry = Schema.Struct({
       Schema.Struct({ allow: Schema.Literal(false), reason: Schema.String }),
     ]),
   ),
+  /** HQ's offer to keep it when deleting the application; absent from a Mate's listing. */
+  canKeep: Schema.optionalKey(
+    Schema.Union([
+      Schema.Struct({ allow: Schema.Literal(true) }),
+      Schema.Struct({ allow: Schema.Literal(false), reason: Schema.String }),
+    ]),
+  ),
   /** An optional suggestion, read from bounded root metadata at this exact main head. */
   releaseVersion: Schema.optionalKey(
     Schema.Struct({

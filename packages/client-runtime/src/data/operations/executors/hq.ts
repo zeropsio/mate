@@ -600,9 +600,15 @@ export function makeHqExecutor(ports: {
                 id: intent.id,
                 stages: intent.stages,
                 ...(intent.mate === undefined ? {} : { mate: intent.mate }),
+                ...(intent.plains === undefined || intent.plains.length === 0
+                  ? {}
+                  : { plains: intent.plains }),
                 ...(intent.productions === undefined || intent.productions.length === 0
                   ? {}
                   : { productions: intent.productions }),
+                ...(intent.keepRepos === undefined || intent.keepRepos.length === 0
+                  ? {}
+                  : { keepRepos: intent.keepRepos }),
                 ...(intent.names === undefined || Object.keys(intent.names).length === 0
                   ? {}
                   : { names: intent.names }),

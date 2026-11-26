@@ -490,6 +490,28 @@ it("SH9: Set up Mate on a held Mate is offered exactly to whom HQ's start admits
   }
 });
 
+// witness: packages/shared/src/zeropsOffers.ts | if (kind === "plain") return { delete_project: deleteProjectPermission(facts, projectId) }; → if (false) return { delete_project: deleteProjectPermission(facts, projectId) };
+it("SH+1: A Zerops project placed without a Mate offers exactly its deletion with its project, to an Admin of that Zerops project; breaks: the deletion page offers its switch to someone HQ then refuses, or withholds it from an Admin.", () => {
+  const table: ReadonlyArray<readonly [string, string, string | undefined, boolean, Decision]> = [
+    ["OWNER", "ACTIVE", undefined, true, { allow: true }],
+    ["ADMIN", "ACTIVE", undefined, true, { allow: true }],
+    ["BASIC_USER", "ACTIVE", "ADMIN", true, { allow: true }],
+    ["BASIC_USER", "ACTIVE", undefined, true, { allow: false, reason: "not_project_admin" }],
+    ["OWNER", "ACTIVE", undefined, false, { allow: false, reason: "project_gone" }],
+    ["OWNER", "INACTIVE", undefined, true, { allow: false, reason: "not_active_member" }],
+  ];
+  for (const [roleCode, status, override, listed, decision] of table) {
+    const facts: PermissionFacts = {
+      member: { roleCode, status },
+      project: (id) =>
+        id === "p" && listed ? (override === undefined ? {} : { override }) : undefined,
+    };
+    expect(
+      placementOffers(facts, { projectId: "p", kind: "plain" }, { projectIds: ["p"] }),
+    ).toEqual({ delete_project: decision });
+  }
+});
+
 // witness: packages/shared/src/openCodeKeyProviders.ts | (provider.driver !== "opencode" || → (true ||
 it("SH11: OpenCode stands in for a person's sign-in only on a model key they set or once they chose it as the Mate's default model, never on its free models alone; breaks: a new Mate starts on a free model before its person signs in", () => {
   const ready = (driver: string, models: ReadonlyArray<string>) => ({

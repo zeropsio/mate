@@ -377,8 +377,8 @@ export const HqOperation = Schema.Struct({
     ),
   ),
   /**
-   * An application's deletion's parts in the order it runs them (`mate`, each `stage`, each
-   * `production`, then `code`), each by its project where it has one, and how it stands:
+   * An application's deletion's parts in the order it runs them, each by its project where it has
+   * one, and how it stands. A code part names any repositories kept:
    * `pending`, `deleting` or `gone`. Read as strings, as `kind` and `phase` are.
    */
   steps: Schema.optionalKey(
@@ -387,6 +387,7 @@ export const HqOperation = Schema.Struct({
         part: Schema.String,
         projectId: Schema.optionalKey(Schema.String),
         name: Schema.optionalKey(Schema.String),
+        keeps: Schema.optionalKey(Schema.Array(Schema.String)),
         state: Schema.String,
       }),
     ),
@@ -794,12 +795,10 @@ export interface HqApi {
     start: { readonly id: string; readonly deleteProject: boolean },
   ) => Promise<void>;
   /**
-   * Starts an application's deletion with its code with the person's access token (`POST
-   * /api/apps/{appId}/deletion`): HQ deletes its last Mate's project first where `mate` names it,
-   * then each of `stages` (the stage projects the person reviewed) and each of `productions` (the
-   * production projects the person confirmed) from Zerops, then the application with its code; it
-   * refuses a list that differs from its own (`held_changed`) and a Mate it holds that `mate` does
-   * not name (`app_has_mate`). `id` as `startMateDeletion`'s.
+   * Starts an application's deletion with the person's access token (`POST
+   * /api/apps/{appId}/deletion`): HQ acts on the named Mate and project parts and leaves the others
+   * standing. It keeps the named repositories when no project part remains. `id` as
+   * `startMateDeletion`'s.
    */
   readonly startAppDeletion: (
     appId: string,
@@ -807,7 +806,9 @@ export interface HqApi {
       readonly id: string;
       readonly stages: ReadonlyArray<string>;
       readonly mate?: string;
+      readonly plains?: ReadonlyArray<string>;
       readonly productions?: ReadonlyArray<string>;
+      readonly keepRepos?: ReadonlyArray<string>;
       readonly names?: Readonly<Record<string, string>>;
     },
   ) => Promise<void>;
@@ -2067,7 +2068,7 @@ export function makeHqApi(input: {
         signIn: "Sign in with your Zerops account to delete this project.",
         inFlight: "This project is already being deleted.",
         heldChanged:
-          "Its Stages changed since you reviewed them. Review what goes now, then press Delete.",
+          "What this project holds changed since you reviewed it. Review what goes and what stays, then press Delete.",
       }),
     startEnvironment: (appId, start) =>
       startOperation(`/api/apps/${encodeURIComponent(appId)}/environments`, start, {

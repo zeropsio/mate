@@ -78,10 +78,8 @@ declare module "../model.ts" {
       readonly deleteProject: boolean;
     };
     /**
-     * An application's deletion with its code, which HQ runs as its operation `id` on the person's
-     * token: its last Mate's project `mate` where it has one, then `stages`, the stage projects
-     * the person reviewed, then `productions`, the production projects the person confirmed, go
-     * from Zerops before its code.
+     * An application's deletion, which HQ runs as its operation `id` on the person's token: the
+     * named Mate and project parts go, and the named repositories stay when no project part remains.
      */
     readonly "start-app-deletion": {
       readonly orgId: string;
@@ -89,7 +87,9 @@ declare module "../model.ts" {
       readonly id: string;
       readonly stages: ReadonlyArray<string>;
       readonly mate?: string;
+      readonly plains?: ReadonlyArray<string>;
       readonly productions?: ReadonlyArray<string>;
+      readonly keepRepos?: ReadonlyArray<string>;
       readonly names?: Readonly<Record<string, string>>;
     };
     /**

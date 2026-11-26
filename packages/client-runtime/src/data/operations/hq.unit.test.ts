@@ -216,7 +216,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/operations/executors/hq.ts | ...(intent.mate === undefined ? {} : { mate: intent.mate }), → ...{},
 it.effect(
-  "OP34: Deleting an application with its code sends HQ one start under one id naming its last Mate, exactly its reviewed stages and its confirmed productions, and the web deletes no Mate, stage or production project itself",
+  "OP34: Deleting an application sends HQ one start under one id naming its last Mate, exactly the stages, Zerops projects and productions set to go and the repositories kept, and the web deletes no Mate, stage or production project itself",
   () =>
     Effect.gen(function* () {
       const sent: unknown[] = [];
@@ -235,8 +235,10 @@ it.effect(
         id: "op-1",
         mate: "p-mate",
         stages: ["p-stage-a", "p-stage-b"],
+        plains: ["p-plain"],
         productions: ["p-prod"],
-        names: { "p-stage-a": "stage", "p-prod": "production" },
+        keepRepos: ["docs"],
+        names: { "p-stage-a": "stage", "p-plain": "plain", "p-prod": "production" },
       });
       expect(sent).toEqual([
         [
@@ -246,12 +248,18 @@ it.effect(
             id: "op-1",
             mate: "p-mate",
             stages: ["p-stage-a", "p-stage-b"],
+            plains: ["p-plain"],
             productions: ["p-prod"],
-            names: { "p-stage-a": "stage", "p-prod": "production" },
+            keepRepos: ["docs"],
+            names: { "p-stage-a": "stage", "p-plain": "plain", "p-prod": "production" },
           },
         ],
       ]);
-      for (const names of [undefined, {}] as const) {
+      for (const optional of [
+        {},
+        { names: {}, plains: [], productions: [], keepRepos: [] },
+        { plains: [], keepRepos: [] },
+      ] as const) {
         const withoutNames: unknown[] = [];
         const next = operationsOf(account(), {
           startAppDeletion: async (...args) => {
@@ -264,7 +272,7 @@ it.effect(
           appId: "app-1",
           id: "op-2",
           stages: [],
-          ...(names === undefined ? {} : { names }),
+          ...optional,
         });
         expect(withoutNames).toEqual([["app-1", { id: "op-2", stages: [] }]]);
       }

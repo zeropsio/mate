@@ -159,7 +159,8 @@ export function gitEnvironmentOffers(facts: PermissionFacts): HqOffers {
 
 /**
  * A placed project's verbs, by its kind there: a Mate's operating, record and detaching; an
- * environment's finishing (`finish`, its attach where it is held). None for any other kind.
+ * environment's finishing (`finish`, its attach where it is held); a plain project's deletion.
+ * None for any other kind.
  */
 export function placementOffers(
   facts: PermissionFacts,
@@ -167,6 +168,7 @@ export function placementOffers(
   app: Pick<ApplicationFacts, "projectIds">,
 ): HqOffers | undefined {
   const { projectId, kind } = placement;
+  if (kind === "plain") return { delete_project: deleteProjectPermission(facts, projectId) };
   const mate: HqOffers = isMateKind(kind)
     ? {
         observe_mate: operateMatePermission(facts, projectId),
