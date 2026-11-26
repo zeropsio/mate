@@ -172,7 +172,10 @@ export interface LinkSocket {
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
 }
 
-export type ConnectLinkSocket = (url: string) => LinkSocket;
+export type ConnectLinkSocket = (
+  url: string,
+  headers: Readonly<Record<string, string>>,
+) => LinkSocket;
 
 /** How a link closed: HQ's code and reason, or none where the socket failed without one. */
 export interface LinkClose {
@@ -287,6 +290,8 @@ interface ZeropsHqLinkOptions {
   readonly hqOrigin: string;
   /** The label HQ shows the link by: this container's service. */
   readonly serviceId: string;
+  /** The version the dial names; none: no version header. */
+  readonly serverVersion?: string;
   /** This container's public origin, told to HQ in the hello; none: the Mate does not link. */
   readonly publicOrigin: string | undefined;
   /** The project's key as it stands now, read afresh for every dial; none while there is none. */
@@ -397,8 +402,25 @@ export const lookupIpv6 =
       return callback(null, usable, 6);
     });
 
+export const dialHeadersOf = (
+  version: string | undefined,
+  service: string,
+): Readonly<Record<string, string>> => {
+  const headers: Record<string, string> = {};
+  for (const [name, value] of [
+    ["X-Mate-Version", version],
+    ["X-Mate-Service", service],
+  ] as const) {
+    const trimmed = value?.trim();
+    if (trimmed !== undefined && /^[A-Za-z0-9._+-]{1,64}$/u.test(trimmed)) {
+      headers[name] = trimmed;
+    }
+  }
+  return headers;
+};
+
 /** The link's socket (`ws`) uses only IPv6, including for an address supplied directly. */
-const connectLinkSocket: ConnectLinkSocket = (url) => {
+const connectLinkSocket: ConnectLinkSocket = (url, headers) => {
   const host = new URL(url).hostname;
   const address = host.startsWith("[") ? host.slice(1, -1) : host;
   if (NodeNet.isIP(address) !== 0 && !nativeIpv6(address)) {
@@ -408,6 +430,7 @@ const connectLinkSocket: ConnectLinkSocket = (url) => {
   const socketOptions = {
     lookup: lookupIpv6(NodeDns.lookup),
     autoSelectFamily: false,
+    headers,
   };
   return new NodeWS.WebSocket(url, socketOptions) as unknown as LinkSocket;
 };
@@ -575,7 +598,9 @@ export const makeZeropsHqLink = (
       const pingInterval = yield* Deferred.make<number>();
       let lastInboundAt = clock.monotonicTimeNanosUnsafe();
       const socket = yield* Effect.acquireRelease(
-        Effect.sync(() => options.connect(url)),
+        Effect.sync(() =>
+          options.connect(url, dialHeadersOf(options.serverVersion, options.serviceId)),
+        ),
         (socket) =>
           Effect.flatMap(options.toldToStop ?? Effect.succeed(false), (toldToStop) =>
             Effect.sync(() => {
@@ -1302,6 +1327,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       return yield* makeZeropsHqLink({
         hqOrigin: zerops.hqOrigin,
         serviceId: zerops.serviceId ?? zerops.hostname ?? "",
+        serverVersion: descriptor.serverVersion,
         publicOrigin: zerops.publicOrigin,
         // Read past the cache on every dial: a key zcp rewrote is the one the next link presents.
         readKey: Effect.andThen(key.invalidate, key.read),

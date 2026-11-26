@@ -150,6 +150,8 @@ const rig = (
     readonly keyless?: boolean;
     readonly everyMs?: number;
     readonly reconnectDelaysMs?: ReadonlyArray<number>;
+    readonly serverVersion?: string | undefined;
+    readonly serviceId?: string;
     /** The Mate's public origin; its container's own unless a test takes it away. */
     readonly publicOrigin?: string | undefined;
     readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
@@ -164,15 +166,18 @@ const rig = (
     const reads = { count: 0 };
     const changes = yield* PubSub.unbounded<void>();
     const sockets: Array<FakeSocket> = [];
+    const dials: Array<Readonly<Record<string, string>>> = [];
     /** The Git credentials HQ sent, as the link handed them on. */
     const credentials: Array<string | null> = [];
     const link = yield* makeZeropsHqLink({
       hqOrigin: "https://hq.test/",
-      serviceId: "svc-mate",
+      serviceId: options.serviceId ?? "svc-mate",
+      ...(options.serverVersion === undefined ? {} : { serverVersion: options.serverVersion }),
       publicOrigin:
         "publicOrigin" in options ? options.publicOrigin : "https://mate-1234.prg1.zerops.app",
       readKey: Ref.get(key),
-      connect: (url) => {
+      connect: (url, headers) => {
+        dials.push(headers);
         const socket = new FakeSocket(url);
         sockets.push(socket);
         return socket;
@@ -192,7 +197,7 @@ const rig = (
       reconnectDelaysMs: options.reconnectDelaysMs ?? [20],
       ...(options.everyMs === undefined ? {} : { overviewEveryMs: options.everyMs }),
     });
-    return { link, key, fingerprint, changes, sockets, reads, credentials };
+    return { link, key, fingerprint, changes, sockets, dials, reads, credentials };
   });
 
 /** Opens the newest socket the link made, on the test's clock. */
@@ -346,6 +351,49 @@ const atRevision = (changes: Stream.Stream<MateAttention>, revision: number) =>
     Stream.runHead,
     Effect.map(Option.getOrThrow),
   );
+
+// witness: apps/server/src/zerops/ZeropsHqLink.ts | if (trimmed !== undefined && /^[A-Za-z0-9._+-]{1,64}$/u.test(trimmed)) { → if (trimmed !== undefined) {
+it.effect(
+  "HL18: The dial names the Mate's version and service to HQ in its upgrade headers, and leaves out one that is empty or holds a character outside a plain version's; breaks: HQ cannot tell which build a refused Mate runs, or a stray character in a version fails every dial and the Mate never links",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const examples = [
+          {
+            serverVersion: "1.2.3-dev.abc",
+            serviceId: "svc_1",
+            expected: { "X-Mate-Version": "1.2.3-dev.abc", "X-Mate-Service": "svc_1" },
+          },
+          { serverVersion: "1.2 3\n", serviceId: "", expected: {} },
+          {
+            serverVersion: "v".repeat(65),
+            serviceId: "svc_1",
+            expected: { "X-Mate-Service": "svc_1" },
+          },
+          {
+            serverVersion: "  1.2.3-dev_1+abc  ",
+            serviceId: "\tsvc_1 ",
+            expected: { "X-Mate-Version": "1.2.3-dev_1+abc", "X-Mate-Service": "svc_1" },
+          },
+          {
+            serverVersion: undefined,
+            serviceId: "svc_1",
+            expected: { "X-Mate-Service": "svc_1" },
+          },
+          {
+            serverVersion: "v".repeat(64),
+            serviceId: "svc/1",
+            expected: { "X-Mate-Version": "v".repeat(64) },
+          },
+        ];
+        for (const { serverVersion, serviceId, expected } of examples) {
+          const { dials } = yield* rig({ serverVersion, serviceId });
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(dials[0], expected);
+        }
+      }),
+    ),
+);
 
 // witness: apps/server/src/zerops/ZeropsHqLink.ts | const url = `${options.hqOrigin.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link`; → const url = `${options.hqOrigin.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link/${options.serviceId}`;
 it.effect(
