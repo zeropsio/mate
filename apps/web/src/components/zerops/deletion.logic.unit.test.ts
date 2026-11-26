@@ -277,14 +277,6 @@ it("MN83: A Mate's or a project's Delete offers exactly what the person may dele
     project: bakery({ deleteApp: false, placements: [...bakery().placements, plain] }),
   });
   expect(restricted.kind === "last-mate-only" && restricted.stays).toContain("Zerops project");
-  const branch = deletionOffer({
-    mate: MATE,
-    project: bakery({
-      deleteApp: false,
-      environments: [{ tier: "production", kind: "git", branch: "release" }],
-    }),
-  });
-  expect(branch.kind === "last-mate-only" && branch.stays).toContain("its code and Production");
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | failedDeletion: offer.deletion, → failedDeletion: undefined,
@@ -881,6 +873,53 @@ it("MN87: What HQ's structure says of a project becomes the deletion's facts one
   ).toBe(false);
 });
 
+// witness: apps/web/src/components/zerops/deletion.logic.ts | (kind === "stage" || kind === "production") && → kind === "production" &&
+it("MN+1: an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.", () => {
+  for (const tier of ["stage", "production"] as const) {
+    const structure = {
+      can: { delete_app: { allow: true } },
+      apps: [
+        {
+          id: "app",
+          name: "bakery",
+          projects: [
+            { ...MATE, kind: "mate" },
+            { projectId: "unread", kind: tier, name: "unread" },
+          ],
+          environments: [],
+        },
+      ],
+    } as unknown as Pick<HqStructure, "can" | "apps">;
+    const project = deletionProjectOf(structure, "app", { kind: "none" })!;
+    const result = review(project, MATE);
+    expect(result.rows.find((row) => row.id === "unread")).toMatchObject({
+      kind: tier,
+      fate: "stays",
+      switchable: false,
+    });
+    expect(result.becomes.place).toBe("menu");
+    expect(result.rows.find((row) => row.id === "docs")?.fate).toBe("stays");
+    expect(result.start).toEqual({
+      kind: "start-mate-deletion",
+      projectId: MATE.projectId,
+      keptGit: "keep",
+    });
+  }
+
+  const readable = {
+    apps: [
+      {
+        id: "app",
+        name: "bakery",
+        projects: [{ projectId: "stage", kind: "stage", name: "stage" }],
+        environments: [{ tier: "stage", target: { kind: "zerops", projectId: "stage" } }],
+      },
+    ],
+  } as unknown as Pick<HqStructure, "can" | "apps">;
+  const project = deletionProjectOf(readable, "app", { kind: "none" })!;
+  expect(review(project, undefined).rows.filter((row) => row.kind === "stage")).toHaveLength(1);
+});
+
 // witness: apps/web/src/components/zerops/deletion.logic.ts | if (offer.kind === "project" && !input.project.deleteApp) → if (offer.kind === "project" && false)
 it("MN91: A project's deletion page shows what the person may do there: its form to an Owner or an Admin, with the project's last Mate when it is given one; why not to anyone else or for a Mate that is not its last; HQ's run, wait or stop to every reader; and that the project is gone once HQ holds it no more; breaks: a Member's address opens a form HQ then refuses, or a stopped deletion is hidden from a colleague.", () => {
   const empty = bakery({ placements: [], environments: [] });
@@ -1247,19 +1286,6 @@ it("MN100: A project's deletion page lists every part it holds, going or staying
     const part = result.rows.find((part) => part.id === row.id);
     expect([part?.fate, part?.switchable], row.label).toEqual([row.fate, row.switchable]);
   }
-  const git = bakery({
-    placements: [],
-    environments: [
-      { tier: "stage", kind: "git", branch: "stage" },
-      { tier: "production", kind: "git", branch: "release" },
-    ],
-  });
-  expect(
-    review(git, undefined).rows.some((row) => row.kind === "stage" || row.kind === "production"),
-  ).toBe(false);
-  expect(review(git, undefined).stays).toContain(
-    "Production on Git branch release. Nothing to delete in Zerops.",
-  );
   const blocked = review(
     bakery({
       placements: [{ ...plain, deletable: false }],

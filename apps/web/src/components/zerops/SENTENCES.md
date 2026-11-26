@@ -1,6 +1,7 @@
 next: MN112
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
+- MN+1 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
 - MN104 — a project group offers New Mate and Automated Mates according to its Add door and whether HQ makes automated Mates; breaks: a project offers automation this HQ cannot make or hides an action the viewer may use
 - MN91 — A project's deletion page shows what the person may do there: its form to an Owner or an Admin, with the project's last Mate when it is given one; why not to anyone else or for a Mate that is not its last; HQ's run, wait or stop to every reader; and that the project is gone once HQ holds it no more; breaks: a Member's address opens a form HQ then refuses, or a stopped deletion is hidden from a colleague.
 - MN98 — Delete again over a project's deletion that ended failed makes its form with the Mate that deletion's start named, whatever the page's address names, and every other page takes its Mate from the address alone; breaks: an Owner finishing a deletion Zerops refused an Admin reads that a Mate still works on the project and cannot delete it, or a project's own Delete takes a Mate nobody chose.

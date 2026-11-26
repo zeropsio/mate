@@ -24,7 +24,12 @@ export type DeletionEnvironment =
       /** HQ proves Mate made it (`deleteProjectOnRemoval`): only such a Production may go. */
       readonly madeByMate: boolean;
     }
-  | { readonly tier: "stage" | "production"; readonly kind: "git"; readonly branch: string };
+  | {
+      readonly tier: "stage" | "production";
+      readonly kind: "unavailable";
+      readonly projectId: string;
+      readonly name: string | undefined;
+    };
 
 /** The project a Delete is about, as HQ's structure holds it for the person. */
 export interface DeletionProject {
@@ -224,6 +229,19 @@ export function deletionProjectOf(
   const app = structure?.apps.find(({ id }) => id === appId);
   if (app === undefined) return undefined;
   const named = new Map(app.projects.map((project) => [project.projectId, project.name]));
+  const represented = new Set<string>(
+    (app.environments ?? []).flatMap(({ target }) =>
+      target.kind === "zerops" ? [target.projectId] : [],
+    ),
+  );
+  const hidden = new Set((app.hiddenEnvironments ?? []).map(({ id }) => id));
+  const unavailable = app.projects.flatMap(({ kind, projectId, name }): DeletionEnvironment[] =>
+    (kind === "stage" || kind === "production") &&
+    !represented.has(projectId) &&
+    !hidden.has(projectId)
+      ? [{ tier: kind, kind: "unavailable" as const, projectId, name }]
+      : [],
+  );
   return {
     appId: app.id,
     name: app.name,
@@ -235,19 +253,24 @@ export function deletionProjectOf(
     })),
     births: (app.births ?? []).map((birth) => birth.projectId ?? null),
     deleteApp: hqOffer(structure?.can, "delete_app").kind === "allowed",
-    environments: (app.environments ?? []).map((environment): DeletionEnvironment => {
-      const target = environment.target;
-      return target.kind === "git"
-        ? { tier: environment.tier, kind: "git", branch: target.branch }
-        : {
-            tier: environment.tier,
-            kind: "zerops",
-            projectId: target.projectId,
-            name: named.get(target.projectId),
-            deletable: hqOffer(environment.can, "delete_project").kind === "allowed",
-            madeByMate: environment.deleteProjectOnRemoval === true,
-          };
-    }),
+    environments: [
+      ...(app.environments ?? []).flatMap((environment): DeletionEnvironment[] => {
+        const target = environment.target;
+        return target.kind === "git"
+          ? []
+          : [
+              {
+                tier: environment.tier,
+                kind: "zerops",
+                projectId: target.projectId,
+                name: named.get(target.projectId),
+                deletable: hqOffer(environment.can, "delete_project").kind === "allowed",
+                madeByMate: environment.deleteProjectOnRemoval === true,
+              },
+            ];
+      }),
+      ...unavailable,
+    ],
     hidden: (app.hiddenEnvironments ?? []).map((hidden) => hidden.tier),
     deletion,
     ...(app.operation?.steps === undefined ? {} : { steps: app.operation.steps }),
@@ -401,6 +424,7 @@ export function deletionReview(input: {
     name: string | undefined;
     deletable: boolean;
     madeByMate: boolean;
+    unavailable?: boolean;
   }) => {
     const { kind, id, deletable, madeByMate } = part;
     const name = part.name?.trim() ? part.name : undefined;
@@ -413,7 +437,8 @@ export function deletionReview(input: {
             : "A Production"
         : `${kind === "plain" ? "Zerops project" : kind === "stage" ? "Stage" : "Production"} ${name}`;
     const switchable =
-      kind === "production" && !madeByMate ? true : deletable && name !== undefined;
+      !part.unavailable &&
+      (kind === "production" && !madeByMate ? true : deletable && name !== undefined);
     const defaultFate = kind === "stage" && switchable ? "goes" : "stays";
     const fate = switchable ? (choice.fates[id] ?? defaultFate) : "stays";
     const needsSlide =
@@ -421,19 +446,21 @@ export function deletionReview(input: {
       name !== undefined &&
       (kind === "plain" || (kind === "production" && madeByMate));
     const letsGo = kind === "production" && !madeByMate && fate === "goes";
-    const line = !switchable
-      ? name === undefined
-        ? "You have no access to it."
-        : "You are not an Admin of it."
-      : letsGo
-        ? "Leaves this project. It keeps running in Zerops: Mate did not make it."
-        : fate === "stays"
-          ? kind === "stage"
-            ? "Stays in this project"
-            : "Stays in this project and keeps running"
-          : kind === "production"
-            ? "Goes from Zerops, with its services and data"
-            : "Goes from Zerops, with everything in it";
+    const line = part.unavailable
+      ? "Details unavailable; it stays in this project."
+      : !switchable
+        ? name === undefined
+          ? "You have no access to it."
+          : "You are not an Admin of it."
+        : letsGo
+          ? "Leaves this project. It keeps running in Zerops: Mate did not make it."
+          : fate === "stays"
+            ? kind === "stage"
+              ? "Stays in this project"
+              : "Stays in this project and keeps running"
+            : kind === "production"
+              ? "Goes from Zerops, with its services and data"
+              : "Goes from Zerops, with everything in it";
     const summary =
       fate === "stays"
         ? title
@@ -474,13 +501,14 @@ export function deletionReview(input: {
     });
   for (const tier of ["stage", "production"] as const) {
     for (const env of project.environments)
-      if (env.kind === "zerops" && env.tier === tier)
+      if (env.tier === tier)
         addPart({
           kind: tier,
           id: env.projectId,
           name: env.name,
-          deletable: env.deletable,
-          madeByMate: env.madeByMate,
+          deletable: env.kind === "zerops" && env.deletable,
+          madeByMate: env.kind === "unavailable" || env.madeByMate,
+          unavailable: env.kind === "unavailable",
         });
     const hiddenParts: DeletionProject["hidden"] = project.hidden;
     hiddenParts.forEach((hidden, index) => {
@@ -559,17 +587,6 @@ export function deletionReview(input: {
     ...(stayedParts.some((row) => row.kind === "stage") ? ["Stage"] : []),
     ...(stayedParts.some((row) => row.kind === "production") ? ["Production"] : []),
   ];
-  const mateStaysParts = [
-    ...(keptKinds.includes("Zerops project") ? ["Zerops project"] : []),
-    ...(keptKinds.includes("Stage") ||
-    project.environments.some((env) => env.kind === "git" && env.tier === "stage")
-      ? ["Stage"]
-      : []),
-    ...(keptKinds.includes("Production") ||
-    project.environments.some((env) => env.kind === "git" && env.tier === "production")
-      ? ["Production"]
-      : []),
-  ];
   const codeStays = rows.some(
     (row) => (row.kind === "code" || row.kind === "setup") && row.fate === "stays",
   );
@@ -591,14 +608,7 @@ export function deletionReview(input: {
   const gone = rows.filter((row) => row.fate === "goes");
   const goneRepos = gone.filter((row) => row.kind === "code" || row.kind === "setup");
   const stays = rows.filter((row) => row.fate === "stays").map((row) => row.summary);
-  stays.push(
-    ...project.environments.flatMap((env) =>
-      env.kind === "git" && env.tier === "production"
-        ? [`Production on Git branch ${env.branch}. Nothing to delete in Zerops.`]
-        : [],
-    ),
-    "Anything on GitHub",
-  );
+  stays.push("Anything on GitHub");
   const goes = holdings === undefined ? undefined : gone.map((row) => row.summary);
   if (
     goes !== undefined &&
@@ -665,7 +675,7 @@ export function deletionReview(input: {
   return {
     rows,
     becomes,
-    mateStaysParts,
+    mateStaysParts: keptKinds,
     goes,
     stays,
     missing,
