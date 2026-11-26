@@ -133,9 +133,9 @@ const RING = {
 /**
  * The face as its page's hero, with its colours and shapes as a ring around it (the owner,
  * 2026-11-23): shut, the face alone, large; open, the face a touch smaller and the options
- * coming out from its middle to their places, one after another, the colours down the left and
- * the shapes down the right; shutting, they go back into the middle and fade, and the face grows
- * back. Shut, the options are inert. Reduced motion keeps the fades.
+ * coming out from behind it to their places, one after another, the colours down the left and
+ * the shapes down the right; shutting, they go back in behind the face and fade, and the face
+ * grows back. Shut, the options are inert. Reduced motion keeps the fades.
  */
 export function MateFaceRing({
   face,
@@ -159,14 +159,6 @@ export function MateFaceRing({
       className={cn("group/ring relative grid place-items-center", ring.stage, className)}
       data-open={open ? "" : undefined}
     >
-      <span
-        className={cn(
-          "grid place-items-center transition-[scale] duration-260 ease-out-strong motion-reduce:transition-none",
-          ring.face,
-        )}
-      >
-        <MateFacePreview className={ring.hero} face={face} tracks />
-      </span>
       <div className="absolute inset-0" inert={!open}>
         <PickerRow
           className="contents"
@@ -199,6 +191,15 @@ export function MateFaceRing({
           {shapeMark}
         </PickerRow>
       </div>
+      {/* Over the options: shutting, they go back in behind the face. */}
+      <span
+        className={cn(
+          "relative grid place-items-center transition-[scale] duration-260 ease-out-strong motion-reduce:transition-none",
+          ring.face,
+        )}
+      >
+        <MateFacePreview className={ring.hero} face={face} tracks />
+      </span>
     </div>
   );
 }

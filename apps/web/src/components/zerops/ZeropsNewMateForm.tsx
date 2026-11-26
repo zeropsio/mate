@@ -23,7 +23,7 @@ import type { MatePersona } from "@t3tools/contracts";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { CheckIcon, ChevronDownIcon, PencilIcon, ShuffleIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, PencilIcon, DicesIcon } from "lucide-react";
 import {
   useEffect,
   useEffectEvent,
@@ -335,7 +335,7 @@ export function ZeropsNewMateForm({
                   type="button"
                   variant="secondary"
                 >
-                  <ShuffleIcon aria-hidden />
+                  <DicesIcon aria-hidden />
                   Shuffle style
                 </Button>
                 <Button

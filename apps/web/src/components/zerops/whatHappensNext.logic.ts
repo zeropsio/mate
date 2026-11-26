@@ -1,80 +1,8 @@
 /**
- * What happens after the press, as the New Mate dialog and an account's first run end (board D1, the
- * owner, 2026-09-30): the steps in order, the person's own among them, each with an honest time
- * where one is worth saying, and one quiet line that they can leave: HQ runs the birth from the
- * press on (`TAB_MAY_CLOSE_LINE`). In the person's words: never the machinery's — no container, no zcp, no recipe deployed.
- *
- * The times:
- * - a Mate is up in about 2–4 minutes, ready to be signed in (measured +160 s 2026-09-22, +202 s
- *   2026-10-15);
- * - a Mate added to a project with code then sets up development, deploying that code, by itself:
- *   6–10 minutes for a small app, about 12 for a storefront with four runtimes (SPN's Bruno,
- *   2026-10-02: 16 with one failed deploy its agent fixed), so it says up to 15.
- *
- * Pure: the words; `WhatHappensNext.tsx` draws them.
- */
-
-import {
-  signInPhrase,
-  signInPhraseWords,
-  type SignInPhrasePart,
-} from "@t3tools/client-runtime/zerops/agentSignIn";
-import { TAB_MAY_CLOSE_LINE } from "~/zerops/mateArrival";
-
-/** One step after the press. */
-export interface NextStep {
-  readonly words: string;
-  /** The words with the brands in them marked, where they name any (`signInPhrase`). */
-  readonly phrase?: ReadonlyArray<SignInPhrasePart>;
-  /** How long it takes, where that is worth saying. */
-  readonly time: string | undefined;
-}
-
-/** What happens after the press: its steps, and when the person can leave. */
-export interface WhatHappensNext {
-  readonly steps: ReadonlyArray<NextStep>;
-  readonly note: string;
-}
-
-const MATE_UP = "about 2–4 min";
-
-/** The Mate as the steps name it: its name as it will be called, or the Mate until it has one. */
-function named(botName: string): { readonly subject: string; readonly object: string } {
-  const name = botName.replace(/\s+/g, " ").trim();
-  return name.length === 0
-    ? { subject: "The Mate", object: "the Mate" }
-    : { subject: name, object: name };
-}
-
-/** The person's own step: what they sign the Mate in with. */
-function signInStep(object: string): NextStep {
-  const phrase = signInPhrase(object);
-  return { words: signInPhraseWords(phrase), phrase, time: undefined };
-}
-
-/** Once a project is created: the project and its first Mate, then its person signs it in, then tells it what to build. */
-export function newProjectNext(input: {
-  readonly projectName: string;
-  readonly botName: string;
-}): WhatHappensNext {
-  const { object } = named(input.botName);
-  const project = input.projectName.replace(/\s+/g, " ").trim();
-  const subject = project.length > 0 ? project : "The project";
-  return {
-    steps: [
-      { words: `${subject} and ${object} come up`, time: MATE_UP },
-      signInStep(object),
-      { words: `You tell ${object} what to build`, time: undefined },
-    ],
-    note: TAB_MAY_CLOSE_LINE,
-  };
-}
-
-/**
  * What a new Mate costs, as far as anything here knows it: no read the client makes prices a
  * Mate's computer (the platform's only price read is a project's IPv4 addon), so the line says
  * what is true — it runs on its own computer, billed by Zerops by use — and links Zerops's prices
- * rather than inventing a number.
+ * rather than inventing a number. Pure: the words.
  */
 export const ZEROPS_PRICING_URL = "https://zerops.io/pricing";
 

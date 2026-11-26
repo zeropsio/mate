@@ -1,47 +1,45 @@
 /**
  * An account's first run is a screen of its own (`useClaimWholeWindow`): the account holds nothing
- * the menu could list yet, so no menu stands around it — Mate's mark in one corner, the account in
- * the other, and the one job between them.
+ * the menu could list yet, so no menu stands around it — Zerops' logo in one corner, the account
+ * in the other, and the one job between them.
  *
- * One who may start a project meets its first Mate by name: its face, large, its eyes on the
- * pointer, the heading naming it as its name is typed, one sentence on what a Mate is. The New
- * project form is the page itself (`useNewProjectAnswer`, `useNewProjectForm`): the project's name,
- * then the Mate's name and look, whose colour and shape the face above turns into as they are
- * picked. Under the words, what happens after Create (`newProjectNext`) — under the form where the window is narrow, so the form comes first. Create carries the face onto the first Mate's own page (`mate-birth`), and
+ * One who may start a project meets its first Mate by name, centred (the owner's design,
+ * 2026-11-26): its face, large, its eyes on the pointer, with its colours and shapes opening as a
+ * ring around it (*Change style*); the heading naming it, its name editable where it stands;
+ * *Shuffle*; then the project's name and the press that starts the project with it, its access
+ * and region folded under it. The New project form is the page itself (`useNewProjectAnswer`,
+ * `useNewProjectForm`). Create carries the face onto the first Mate's own page (`mate-birth`), and
  * the menu comes with that page.
  *
  * One who may not start a project is told why the page is empty, under a face that waits.
  */
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import { Building2Icon } from "lucide-react";
-import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
-import { cn } from "~/lib/utils";
+import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
 
-import { MateMark } from "../../MateMark";
+import { ZeropsMark } from "../../ZeropsMark";
 import { sidebarAccountDestinationIcon } from "../../sidebar/SidebarChrome";
 import { useClaimWholeWindow } from "../../wholeWindow";
-import { MateFacePreview } from "../MateFacePicker";
+import { MateFacePreview, MateFaceRing } from "../MateFacePicker";
 import { SidebarZeropsAccountRow } from "../SidebarZeropsAccount";
-import { SignInPhrase } from "../ZeropsArrivalSteps";
 import { useNewProjectAnswer } from "../ZeropsNewProjectHost";
 import {
   CreateProjectButton,
-  FirstMateField,
-  NewProjectFields,
+  NewMateHeading,
+  NewMateTools,
   NewProjectFormFrame,
   NewProjectLine,
-  NewProjectLocation,
-  ProjectNameField,
+  NewProjectNameInput,
+  NewProjectSetup,
+  useNewMateShuffle,
   useNewProjectForm,
   type NewProjectForm,
   type NewProjectFormInput,
 } from "../ZeropsNewProjectForm";
-import { newProjectNext } from "../whatHappensNext.logic";
 import { firstRunWords } from "./firstRun.logic";
-import { Text } from "~/components/ui/text";
-import { Card } from "~/components/ui/card";
-import { StepNumber } from "~/components/ui/step-number";
 
 /** Who waits with a person who may not start a project: nobody yet, in the slate face. */
 const NOBODY: ZeropsMateFace = { tint: "slate", shape: "squircle" };
@@ -134,187 +132,101 @@ export function FirstRunView({
   readonly account: ReactNode;
   readonly reachesEveryProject: boolean;
 }) {
-  const words = firstRunWords({
-    create: form !== undefined,
-    reachesEveryProject,
-    mateName: form?.calledName ?? "",
-  });
-  const face = form?.face ?? NOBODY;
-  const waits = form === undefined;
+  const words = firstRunWords({ create: form !== undefined, reachesEveryProject });
   return (
     <section
       className="@container/first-run relative isolate flex min-h-0 min-w-0 flex-auto flex-col overflow-y-auto bg-background"
-      data-first-run={waits ? "wait" : "start"}
+      data-first-run={words.kind}
       data-zerops-surface="first-run"
-      style={
-        {
-          "--first-run-tint": `var(--zerops-mate-tint-${face.tint})`,
-          "--step-tint": "var(--first-run-tint)",
-        } as CSSProperties
-      }
     >
-      {/* The faint dotted ground, fading out from behind the words. */}
-      {waits ? null : (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-1 bg-radial from-foreground/15 from-6% to-transparent to-8% [background-size:22px_22px] [mask-image:radial-gradient(ellipse_46%_58%_at_34%_46%,var(--foreground)_0%,transparent_76%)]"
-        />
-      )}
-      {/* Along the top: Mate's mark and the account. */}
+      {/* Along the top: Zerops' logo and the account. */}
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 ps-6 pe-3">
-        <MateMark awake playful className="h-6 w-auto" />
+        <ZeropsMark className="h-6.5 w-auto text-foreground" named variant="company" />
         <div className="w-68 min-w-0">{account}</div>
       </header>
-      {/* The words, the card and the steps after Create: one column, two where it is wide — the
-          words and the steps on the left, the card beside both, a little above the window's
-          middle (the room under them), where the eye takes its centre to be. */}
-      <div className={waits ? WAIT_STAGE_CLASS : START_STAGE_CLASS}>
-        <div
-          className={cn(
-            "flex min-w-0 flex-col @min-[960px]/first-run:self-end",
-            waits
-              ? "items-center"
-              : "items-start @min-[960px]/first-run:col-start-1 @min-[960px]/first-run:row-start-1",
-          )}
+      {words.kind === "start" && form !== undefined && nameField !== undefined ? (
+        <FirstRunStage form={form} nameField={nameField} note={words.note} />
+      ) : words.kind === "wait" ? (
+        <EmptyState
+          mark={<MateFacePreview className="size-16" face={NOBODY} />}
+          size="page"
+          title={words.heading}
         >
-          {/* The first Mate, large, in a glow of its own colour, on a soft shadow; beside the card
-              it steps a touch into the margin so its outline, not its box, lines up with the
-              words. */}
-          <div
-            className={cn(
-              "relative grid size-28 place-items-center",
-              !waits &&
-                "@min-[960px]/first-run:-ms-2 after:absolute after:bottom-0.5 after:left-1/2 after:h-2.5 after:w-18 after:-translate-x-1/2 after:rounded-full after:bg-radial after:from-(--zerops-scrim) after:to-transparent after:to-70%",
-            )}
-          >
-            {waits ? null : (
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -inset-8 rounded-full bg-radial from-(--first-run-tint)/56 via-(--first-run-tint)/18 via-40% to-transparent to-64%"
-              />
-            )}
-            <MateFacePreview
-              className={waits ? "size-16" : "size-24"}
-              face={face}
-              tracks={!waits}
-            />
-          </div>
-          {words.welcome === undefined ? null : (
-            <p className="mt-5 text-body leading-4.5 font-medium text-muted-foreground">
-              {words.welcome}
-            </p>
-          )}
-          <h1
-            className={cn(
-              "font-medium tracking-tight text-balance text-foreground",
-              waits ? "mt-4 text-title" : "mt-1.5 text-display",
-            )}
-          >
-            {words.heading}
-          </h1>
-          <p className="mt-2.5 max-w-lg text-emphasis leading-5.75 text-pretty text-muted-foreground">
-            {words.body}
-          </p>
-          {!waits || words.note === undefined ? null : <FirstRunNote note={words.note} />}
-        </div>
-        {form === undefined || nameField === undefined ? null : (
-          <>
-            <FirstRunForm form={form} nameField={nameField} />
-            <div className="max-w-lg min-w-0 @min-[960px]/first-run:col-start-1 @min-[960px]/first-run:row-start-2 @min-[960px]/first-run:self-start">
-              <FirstRunNext form={form} />
-              {words.note === undefined ? null : <FirstRunNote note={words.note} />}
-            </div>
-          </>
-        )}
-      </div>
-      {/* Wide, the room under the stage, which sets it a little above the window's middle. */}
-      <div
-        aria-hidden
-        className="hidden h-[calc(80px+8vh)] shrink-0 @min-[960px]/first-run:block"
-      />
+          {words.body}
+        </EmptyState>
+      ) : null}
     </section>
   );
 }
 
-const START_STAGE_CLASS =
-  "m-auto grid w-full max-w-270 grid-cols-[minmax(0,1fr)] gap-10 px-6 pt-4 pb-12 @min-[960px]/first-run:grid-cols-[minmax(0,1fr)_minmax(0,480px)] @min-[960px]/first-run:gap-x-20 @min-[960px]/first-run:gap-y-8 @min-[960px]/first-run:pb-0";
-const WAIT_STAGE_CLASS =
-  "m-auto grid w-full max-w-140 grid-cols-[minmax(0,1fr)] gap-10 px-6 pt-4 pb-12 text-center @min-[960px]/first-run:gap-x-20 @min-[960px]/first-run:gap-y-8 @min-[960px]/first-run:pb-0";
-
-function FirstRunNote({ note }: { readonly note: ReactNode }) {
-  return (
-    <p className="mt-5 max-w-lg text-caption leading-4.25 text-pretty text-muted-foreground">
-      {note}
-    </p>
-  );
-}
-
-/** The New project form, as the page's card: the project, its first Mate, who opens it, Create. */
-function FirstRunForm({
+/**
+ * The first Mate and the project, one centred column, to the design's measures: the face's ring
+ * 16 px in from above and below, 10 px over the heading; *Shuffle* and *Change style* 16 px under
+ * it and 64 px over the project's name; the form 480 px wide, its name and press 48 px each, 16 px apart,
+ * the setup 20 px under the press.
+ */
+function FirstRunStage({
   form,
   nameField,
+  note,
 }: {
   readonly form: NewProjectForm;
   readonly nameField: RefObject<HTMLInputElement | null>;
+  readonly note: string | undefined;
 }) {
-  const { access, forecast } = form.input;
+  const [styling, setStyling] = useState(false);
+  const shuffle = useNewMateShuffle(form);
+  const { closed, forecast } = form.input;
+  // By the name as it is typed; with none yet, the Mate it will be.
+  const called = form.botName.replace(/\s+/g, " ").trim();
   return (
-    // The New project form as the page's card: the kit's sheet, a surface of its own.
-    <Card
-      className="min-w-0 @min-[960px]/first-run:col-start-2 @min-[960px]/first-run:row-span-2 @min-[960px]/first-run:row-start-1 @min-[960px]/first-run:self-center"
-      variant="sheet"
+    <NewProjectFormFrame
+      className="m-auto flex w-full max-w-176 flex-col items-center px-6 pt-4 pb-16"
+      form={form}
     >
-      <NewProjectFormFrame className="flex min-w-0 flex-col gap-6 px-7 pt-7 pb-3" form={form}>
-        {form.input.closed === undefined ? (
+      <MateFaceRing
+        className="mt-4 mb-6.5"
+        face={form.face}
+        onPickShape={form.pickShape}
+        onPickTint={form.pickTint}
+        open={styling}
+        size="page"
+      />
+      <NewMateHeading after=", your first Mate" before="Meet " form={form} />
+      <NewMateTools
+        className="mt-4"
+        form={form}
+        onStyling={setStyling}
+        shuffle={shuffle}
+        styling={styling}
+      />
+      <div className="flex w-full max-w-120 flex-col gap-4 px-2 pt-16 pb-10">
+        {closed === undefined ? (
           <>
-            <NewProjectFields className="flex flex-col gap-5" form={form}>
-              <ProjectNameField form={form} inputRef={nameField} size="xl" />
-              <FirstMateField form={form} label="Your first Mate" size="xl" />
-              {access === undefined ? null : access(form.setUserRoles)}
-              <NewProjectLocation form={form} />
-            </NewProjectFields>
-            <div className="grid gap-2">
-              <CreateProjectButton form={form} size="lg" />
-              <NewProjectLine className="min-h-5" form={form} />
-              {forecast}
-            </div>
+            <NewProjectNameInput form={form} inputRef={nameField} />
+            <CreateProjectButton
+              className="w-full"
+              form={form}
+              label={called === "" ? "Start a project" : `Start a project with ${called}`}
+              rolling={shuffle.rolling}
+              size="lg"
+            />
+            {/* What is wrong or what it waits on; saying nothing, it gives the gap back. */}
+            <NewProjectLine className="text-center empty:-mt-4" form={form} />
+            {forecast}
+            <NewProjectSetup className="pt-1" form={form} />
+            {note === undefined ? null : (
+              <p className="mt-2 text-center text-caption leading-4.25 text-pretty text-muted-foreground">
+                {note}
+              </p>
+            )}
           </>
         ) : (
-          <Text render={<p />} variant="description">
-            {form.input.closed}
+          <Text className="m-0 text-center" render={<p />} variant="description">
+            {closed}
           </Text>
         )}
-      </NewProjectFormFrame>
-    </Card>
-  );
-}
-
-/** What happens after Create, as a line of steps. */
-function FirstRunNext({ form }: { readonly form: NewProjectForm }) {
-  const next = newProjectNext({ projectName: form.name, botName: form.botName });
-  return (
-    <section aria-label="What happens next">
-      {/* The steps down a thin line, each number in the Mate's colour. */}
-      <ol className="flex flex-col gap-3.5">
-        {next.steps.map((step, index) => (
-          <li
-            className="relative grid grid-cols-[24px_minmax(0,1fr)] items-start gap-3 not-last:before:absolute not-last:before:top-7 not-last:before:-bottom-2.5 not-last:before:left-[11.5px] not-last:before:w-px not-last:before:bg-border"
-            key={step.words}
-          >
-            <StepNumber n={index + 1} tone="tint" />
-            <span className="pt-px text-prose leading-5 text-pretty text-foreground">
-              {step.phrase === undefined ? step.words : <SignInPhrase parts={step.phrase} />}
-              {step.time === undefined ? null : (
-                <span className="ms-2 text-body whitespace-nowrap text-muted-foreground tabular-nums">
-                  {step.time}
-                </span>
-              )}
-            </span>
-          </li>
-        ))}
-      </ol>
-      {/* A last caption under the steps, on the steps' words' edge. */}
-      <p className="mt-3.5 ps-9 text-caption leading-4.25 text-muted-foreground">{next.note}</p>
-    </section>
+      </div>
+    </NewProjectFormFrame>
   );
 }

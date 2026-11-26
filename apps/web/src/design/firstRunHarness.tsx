@@ -1,6 +1,6 @@
 /**
- * An account's first run, walked through: the whole window with no menu — Mate's mark, the account
- * in the corner — meeting its first Mate (`FirstRunView`), the New project form as the page's card,
+ * An account's first run, walked through: the whole window with no menu — Zerops' logo, the account
+ * in the corner — meeting its first Mate (`FirstRunView`), the New project form under it,
  * and Create landing on the first Mate's page as `mate-birth` does, the face going from the
  * screen's hero to the page's seat, the steps a fake press moves advancing under it
  * (`pressPage.tsx`). In the app the menu arrives with that page.

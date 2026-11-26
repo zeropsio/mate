@@ -1,7 +1,6 @@
 /**
  * What the New project page says — decided without React. The rest it shares with New Mate:
- * the Mate's name and face (`newMateSubmit`, `newMateFace`) and what happens next
- * (`newProjectNext`).
+ * the Mate's name and face (`newMateSubmit`, `newMateFace`).
  */
 
 /** A name as it will be called: its spaces collapsed, its ends trimmed. */
