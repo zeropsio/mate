@@ -46,6 +46,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
 import { SidebarAccountMenuProvider } from "./zerops/SidebarZeropsAccount";
 import { useWholeWindowClaimed } from "./wholeWindow";
+import { OpenInMatePanelProvider } from "../zerops/openInMatePanel";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
 
@@ -300,56 +301,60 @@ export function AppSidebarLayout({
   }, [navigate, pathname]);
 
   return (
-    <SidebarProvider
-      // The screen under the status bar `#root` pads for: a whole screen's height below that
-      // padding ran past the bottom by the status bar's height, cutting off the composer's edge
-      // where a phone gives the status bar room (an installed app).
-      className="h-[calc(100dvh_-_env(safe-area-inset-top))]! min-h-0!"
-      data-sidebar-rail={rail && !whole ? "" : undefined}
-      defaultOpen={!rail || leftOpen}
-      style={sidebarProviderStyle}
-    >
-      <ProjectProjectionRetention />
-      <SidebarAccountMenuProvider>
-        {whole ? null : (
-          <Sidebar
-            side="left"
-            collapsible={rail ? "icon" : "offcanvas"}
-            layered={rail}
-            data-app-sidebar=""
-            role="navigation"
-            aria-label={isOnSettings ? "Settings" : "Mates"}
-            resizable={{
-              maxWidth: sidebarMaximumWidth,
-              minWidth: THREAD_SIDEBAR_MIN_WIDTH,
-              shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-                nextWidth <= currentWidth ||
-                wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-              storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-              onResize: setSidebarWidth,
-            }}
-          >
-            {isOnSettings ? (
-              <>
-                <SidebarChromeHeader isElectron={isElectron} />
-                <SettingsSidebarNav pathname={pathname} />
-              </>
-            ) : (
-              <ThreadSidebar />
-            )}
-            <SidebarRail onDoubleClick={resetSidebarWidth} />
-          </Sidebar>
-        )}
-      </SidebarAccountMenuProvider>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="relative flex min-h-0 flex-1">{children}</div>
-        {status}
-      </div>
-      {whole ? null : <SidebarControl rail={rail} />}
-      {/* A reveal asked from outside the menu — the jump box's — brings it out. */}
-      <SidebarRevealBridge showable={!isOnSettings && !whole} />
-      <NavigationHistoryShortcuts />
-      <MainAppLocationTracker />
-    </SidebarProvider>
+    // A Mate's address picked in a list outside its conversation (a project's Sites) opens in its
+    // side panel.
+    <OpenInMatePanelProvider>
+      <SidebarProvider
+        // The screen under the status bar `#root` pads for: a whole screen's height below that
+        // padding ran past the bottom by the status bar's height, cutting off the composer's edge
+        // where a phone gives the status bar room (an installed app).
+        className="h-[calc(100dvh_-_env(safe-area-inset-top))]! min-h-0!"
+        data-sidebar-rail={rail && !whole ? "" : undefined}
+        defaultOpen={!rail || leftOpen}
+        style={sidebarProviderStyle}
+      >
+        <ProjectProjectionRetention />
+        <SidebarAccountMenuProvider>
+          {whole ? null : (
+            <Sidebar
+              side="left"
+              collapsible={rail ? "icon" : "offcanvas"}
+              layered={rail}
+              data-app-sidebar=""
+              role="navigation"
+              aria-label={isOnSettings ? "Settings" : "Mates"}
+              resizable={{
+                maxWidth: sidebarMaximumWidth,
+                minWidth: THREAD_SIDEBAR_MIN_WIDTH,
+                shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+                  nextWidth <= currentWidth ||
+                  wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+                storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+                onResize: setSidebarWidth,
+              }}
+            >
+              {isOnSettings ? (
+                <>
+                  <SidebarChromeHeader isElectron={isElectron} />
+                  <SettingsSidebarNav pathname={pathname} />
+                </>
+              ) : (
+                <ThreadSidebar />
+              )}
+              <SidebarRail onDoubleClick={resetSidebarWidth} />
+            </Sidebar>
+          )}
+        </SidebarAccountMenuProvider>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1">{children}</div>
+          {status}
+        </div>
+        {whole ? null : <SidebarControl rail={rail} />}
+        {/* A reveal asked from outside the menu — the jump box's — brings it out. */}
+        <SidebarRevealBridge showable={!isOnSettings && !whole} />
+        <NavigationHistoryShortcuts />
+        <MainAppLocationTracker />
+      </SidebarProvider>
+    </OpenInMatePanelProvider>
   );
 }

@@ -31,6 +31,7 @@ import {
   type SitesMate,
 } from "~/components/zerops/SidebarProjectSites";
 import { MateFace } from "~/components/zerops/primitives";
+import { OpenInMatePanelContext, type OpenInMatePanel } from "~/zerops/openInMatePanel";
 import "../index.css";
 
 const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
@@ -425,32 +426,37 @@ function Row({ fixture, face }: { readonly fixture: Fixture; readonly face: Reac
   );
 }
 
+/** A Mate's rows draw as they open its side panel; there is no panel here to open. */
+const openNowhere: OpenInMatePanel = () => {};
+
 function Harness() {
   return (
-    <RunningNowFixture.Provider value={runningIn}>
-      <div className="flex min-h-screen bg-background text-foreground">
-        <div
-          className="flex shrink-0 flex-col gap-0.5 border-e border-border bg-sidebar p-2.5 text-sidebar-foreground"
-          data-sites-harness="menu"
-          style={{ width: 435 }}
-        >
-          {FIXTURES.map((fixture) => (
-            <Row
-              face={
-                <MateFace
-                  shape={fixture.input.mates[0]?.shape}
-                  size={24}
-                  state="idle"
-                  tint={fixture.input.mates[0]?.tint ?? "slate"}
-                />
-              }
-              fixture={fixture}
-              key={fixture.input.groupId}
-            />
-          ))}
+    <OpenInMatePanelContext value={openNowhere}>
+      <RunningNowFixture.Provider value={runningIn}>
+        <div className="flex min-h-screen bg-background text-foreground">
+          <div
+            className="flex shrink-0 flex-col gap-0.5 border-e border-border bg-sidebar p-2.5 text-sidebar-foreground"
+            data-sites-harness="menu"
+            style={{ width: 435 }}
+          >
+            {FIXTURES.map((fixture) => (
+              <Row
+                face={
+                  <MateFace
+                    shape={fixture.input.mates[0]?.shape}
+                    size={24}
+                    state="idle"
+                    tint={fixture.input.mates[0]?.tint ?? "slate"}
+                  />
+                }
+                fixture={fixture}
+                key={fixture.input.groupId}
+              />
+            ))}
+          </div>
         </div>
-      </div>
-    </RunningNowFixture.Provider>
+      </RunningNowFixture.Provider>
+    </OpenInMatePanelContext>
   );
 }
 
