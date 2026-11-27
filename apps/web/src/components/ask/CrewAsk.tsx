@@ -4,7 +4,9 @@
  * model it runs on among this Mate's sign-ins. An agent the Mate isn't signed in to is a warning on
  * its row, a line saying what its crewmates start on instead and a press to sign in, after which
  * the rows follow. The main press opens the Crew tab's setup filled in with the crew, to change
- * and start there. Once the Mate's crew stands, it says so and opens the crew instead.
+ * and start there. Once a crew stands it opens the crew instead, and says it is set up only when
+ * the crew came from this card's press (`crewAskState`). Its height is settled from its first
+ * frame: until the Mate's own crew reads, HQ's last word on it decides.
  */
 import {
   CREW_SETUP_WORDS,
@@ -12,7 +14,6 @@ import {
   crewRoleTag,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type {
-  CrewStatus,
   ProviderDriverKind,
   ScopedThreadRef,
   ServerProvider,
@@ -24,8 +25,9 @@ import { type CrewAskSeat, crewFromAsk } from "@t3tools/shared/crewTemplates";
 import { createContext, type ReactNode, use, useMemo } from "react";
 
 import { useServerConfigs } from "~/state/entities";
+import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { openCrewTab, openCrewView } from "~/zerops/crew/crewTab";
-import { useCrew } from "~/zerops/crew/useCrew";
+import { useCrew, useMateCrew } from "~/zerops/crew/useCrew";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { PROVIDER_ICON_BY_PROVIDER } from "../chat/providerIconUtils";
@@ -37,17 +39,19 @@ import { Row } from "../ui/row";
 import { Text } from "../ui/text";
 import { MateFace } from "../zerops/primitives";
 import { AskCard, AskFooter } from "./AskCard";
-import type { AskState } from "./ask.logic";
 import {
   type CrewAsk,
   type CrewAskAvailability,
   type CrewAskRunsOn,
+  type CrewAskStanding,
   crewAskGoalLead,
   crewAskMissing,
   crewAskMissingWords,
   crewAskRunsOn,
   crewAskRunsOnWords,
   crewAskSeats,
+  crewAskStanding,
+  crewAskState,
   parseCrewAsk,
 } from "./crewAsk.logic";
 
@@ -103,7 +107,15 @@ function CrewAskCard({
       }),
     [agentAuth, providers],
   );
-  const status = useCrew(environmentId).status;
+  const crew = useCrew(environmentId);
+  // Until the Mate's own crew reads, the crew HQ holds of it, at rest.
+  const projectId = useMateOfEnvironment(environmentId)?.projectId ?? null;
+  const held = useMateCrew(crew.status === null ? projectId : null).status;
+  const standing = crewAskStanding(
+    { status: crew.status, ask: crew.snapshot?.crew?.ask },
+    held,
+    ask.key,
+  );
   const signIn = use(CrewAskSignInContext);
   return (
     <CrewAskCardView
@@ -119,21 +131,21 @@ function CrewAskCard({
         })
       }
       providers={providers}
-      status={status}
+      standing={standing}
     />
   );
 }
 
 /**
- * The card as it reads the Mate, its sign-ins and its crew's status (`null` while unread): the
- * crew to set up while none stands, else that one does.
+ * The card as it reads the Mate, its sign-ins and its crew (`CrewAskStanding`): the crew to set up
+ * while none stands, else that one does.
  */
 export function CrewAskCardView({
   ask,
   mate,
   providers,
   availability,
-  status,
+  standing,
   onSetUp,
   onOpenCrew,
   onSignIn,
@@ -143,7 +155,7 @@ export function CrewAskCardView({
   readonly providers: ReadonlyArray<ServerProvider>;
   /** Which of them may run, by their sign-in; `undefined` where nothing gates them. */
   readonly availability: CrewAskAvailability;
-  readonly status: CrewStatus | null;
+  readonly standing: CrewAskStanding;
   /** Opens the setup filled in with the crew, each crewmate on what it runs on here. */
   readonly onSetUp: (seats: ReadonlyArray<CrewAskSeat>) => void;
   readonly onOpenCrew: () => void;
@@ -180,12 +192,7 @@ export function CrewAskCardView({
           agent.agentId === undefined ? [] : [{ agentId: agent.agentId, name: agent.name }],
         );
 
-  const state: AskState =
-    status === "applied"
-      ? { kind: "done", words: `${mate?.name ?? "This Mate"}'s crew is set up`, told: null }
-      : status === "off"
-        ? { kind: "failed", words: `Crews are turned off for ${name}.` }
-        : { kind: "waiting" };
+  const state = crewAskState(standing, mate?.name);
   const live = state.kind === "waiting";
 
   return (
@@ -195,7 +202,7 @@ export function CrewAskCardView({
       footer={
         <AskFooter
           action={
-            status === "applied" ? (
+            standing?.status === "applied" ? (
               <Button onClick={onOpenCrew} size="md" variant="secondary">
                 Open crew
               </Button>
@@ -220,7 +227,8 @@ export function CrewAskCardView({
             live
               ? {
                   label: "Set up crew…",
-                  disabled: status === null,
+                  // The setup opens on the Mate's own crew, never on HQ's word for it.
+                  disabled: standing?.from !== "mate",
                   onPress: () => onSetUp(crewAskSeats(ask, providers, availability)),
                 }
               : null

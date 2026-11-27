@@ -121,6 +121,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       login RPCs. Absent on older servers, so a client offers *Add another
       login* only where it would work. */
   mateLogins: Schema.optionalKey(Schema.Boolean),
+  /** Server reads crew.yaml's `ask`: the crew card a crew was set up from. Absent on older
+      servers, which refuse the field: a setup filled in from a card writes it only where this
+      is true, and the card then says only that the Mate has a crew. */
+  crewCardAsk: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

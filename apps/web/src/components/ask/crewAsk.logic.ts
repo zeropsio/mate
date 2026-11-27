@@ -12,6 +12,7 @@ import {
   agentIdForDriverKind,
   isZeropsAgentId,
   type CrewMemberKind,
+  type CrewStatus,
   type ProviderInstanceId,
   type ServerProvider,
   type ZeropsAgentId,
@@ -23,7 +24,7 @@ import {
   crewLoginOptions,
   crewModelOptions,
 } from "../zerops/crew/CrewEditors.logic";
-import { askKeyOf, namesWords } from "./ask.logic";
+import { type AskState, askKeyOf, namesWords } from "./ask.logic";
 
 /** The roles a fence names, as the crew's kinds: a builder changes files, a reviewer reads. */
 const ROLES: Readonly<Record<string, CrewMemberKind>> = {
@@ -288,4 +289,40 @@ export function crewAskMissingWords(
   return missing.agent.agentId === undefined
     ? `${mate} has no ${missing.agent.name}, so ${who} ${start} on ${missing.instead}.`
     : `Sign in to ${missing.agent.name} first, or ${who} ${start} on ${missing.instead}.`;
+}
+
+/**
+ * What the card knows of its Mate's crew: its status, whose word that is — the Mate's own crew, or
+ * HQ's last view of the Mate while that is read — and whether the standing crew names this card
+ * (`CrewSummary.ask`); `null` while neither has said.
+ */
+export type CrewAskStanding = {
+  readonly status: CrewStatus;
+  readonly from: "mate" | "hq";
+  readonly ours: boolean;
+} | null;
+
+/** The Mate's own crew, else HQ's word on it: the card takes its settled height from either. */
+export function crewAskStanding(
+  mate: { readonly status: CrewStatus | null; readonly ask: string | undefined },
+  held: CrewStatus | null,
+  key: string,
+): CrewAskStanding {
+  if (mate.status !== null) return { status: mate.status, from: "mate", ours: mate.ask === key };
+  return held === null ? null : { status: held, from: "hq", ours: false };
+}
+
+/**
+ * The card's state: its own crew set up only when the Mate's crew came from its press; any other
+ * crew, or one HQ alone names, says the Mate has a crew. While nothing is read it waits as it
+ * would with none.
+ */
+export function crewAskState(standing: CrewAskStanding, mate: string | undefined): AskState {
+  if (standing === null || standing.status === "none") return { kind: "waiting" };
+  if (standing.status === "off") {
+    return { kind: "failed", words: `Crews are turned off for ${mate ?? "this Mate"}.` };
+  }
+  return standing.from === "mate" && standing.ours
+    ? { kind: "done", words: `${mate ?? "This Mate"}'s crew is set up`, told: null }
+    : { kind: "replaced", words: `${mate ?? "This Mate"} has a crew` };
 }

@@ -134,15 +134,17 @@ export interface CrewAskSeat {
 
 export interface CrewFromAskInput extends Omit<CrewFromProposalInput, "proposal"> {
   readonly seats: ReadonlyArray<CrewAskSeat>;
+  /** The crew card whose press set it up (`CrewDefinition.ask`); absent for a proposal. */
+  readonly ask?: string | undefined;
 }
 
 /**
  * The crew a Mate set up, as a crew home: each crewmate named as set up, its handle from its name
  * (once each), its job opening with its part — the line its row says — and going on as the
  * starting crew's lead or builder, or as a reviewer, on the login, model and effort it was set up
- * on.
+ * on. A card's crew names the card, so the card knows the crew is its own.
  */
-export const crewFromAsk = (input: CrewFromAskInput): CrewDefinition => {
+export const crewFromAsk = ({ ask, ...input }: CrewFromAskInput): CrewDefinition => {
   const taken = new Set<string>();
   const unique = (name: string): string => {
     const base = handleOf(name);
@@ -156,7 +158,7 @@ export const crewFromAsk = (input: CrewFromAskInput): CrewDefinition => {
   };
   const jobOf = (kind: CrewMemberKind): string =>
     kind === "lead" ? LEAD_JOB : kind === "reader" ? REVIEWER_JOB : BUILDER_JOB;
-  return crewOf(
+  const crew = crewOf(
     input.seats.map((seat): Seat => ({
       handle: unique(seat.name),
       displayName: seat.name,
@@ -168,6 +170,7 @@ export const crewFromAsk = (input: CrewFromAskInput): CrewDefinition => {
     })),
     input,
   );
+  return ask === undefined ? crew : { ...crew, ask };
 };
 
 /** The crew the Mate proposed from the goal: its lead, then its builders. */

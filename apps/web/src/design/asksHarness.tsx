@@ -14,7 +14,6 @@
 import { deriveZeropsThreadModel, operationLineWords } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
-  type CrewStatus,
   type OrchestrationThreadActivity,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -42,7 +41,11 @@ import {
 } from "~/components/ask/AskCard";
 import { AskRevealed } from "~/components/ask/AskSecret";
 import { CrewAskCardView } from "~/components/ask/CrewAsk";
-import { type CrewAskAvailability, parseCrewAsk } from "~/components/ask/crewAsk.logic";
+import {
+  type CrewAskAvailability,
+  type CrewAskStanding,
+  parseCrewAsk,
+} from "~/components/ask/crewAsk.logic";
 import { ScheduleAskCardView, type SchedulePress } from "~/components/ask/ScheduleAsk";
 import { parseScheduleAsk, scheduleAskRequest } from "~/components/ask/scheduleAsk.logic";
 import { SourceDialog } from "~/components/zerops/projectAutomation/ProjectAutomation";
@@ -1228,19 +1231,32 @@ const CREW_ASK = parseCrewAsk(
   }),
 )!;
 
-type CrewAskState = "ready" | "signIn" | "applied" | "off";
+type CrewAskState = "ready" | "signIn" | "applied" | "other" | "held" | "unread" | "off";
 const CREW_ASK_STATES: ReadonlyArray<readonly [CrewAskState, string]> = [
   ["ready", "Waiting"],
   ["signIn", "Not signed in to Codex"],
   ["applied", "Crew set up"],
+  ["other", "Another crew"],
+  ["held", "HQ's word only"],
+  ["unread", "Crew unread"],
   ["off", "Crews off"],
 ];
+
+/** Each state's crew as the card reads it: the Mate's own, HQ's last word, or nobody's yet. */
+const CREW_ASK_STANDING: Readonly<Record<CrewAskState, CrewAskStanding>> = {
+  ready: { status: "none", from: "mate", ours: false },
+  signIn: { status: "none", from: "mate", ours: false },
+  applied: { status: "applied", from: "mate", ours: true },
+  other: { status: "applied", from: "mate", ours: false },
+  held: { status: "applied", from: "hq", ours: false },
+  unread: null,
+  off: { status: "off", from: "mate", ours: false },
+};
 
 /** The crew card: drawn in the conversation only, so one density. */
 function CrewSetUp({ density }: { readonly density: AskDensity }) {
   const [state, setState] = useState<CrewAskState>("ready");
   if (density === "compact") return null;
-  const status: CrewStatus = state === "applied" ? "applied" : state === "off" ? "off" : "none";
   return (
     <Specimen
       chips={<States label="Crew ask" onChange={setState} states={CREW_ASK_STATES} value={state} />}
@@ -1255,7 +1271,7 @@ function CrewSetUp({ density }: { readonly density: AskDensity }) {
         onSignIn={() => undefined}
         availability={state === "signIn" ? CODEX_SIGNED_OUT : undefined}
         providers={[CLAUDE_LOGIN, CODEX_LOGIN]}
-        status={status}
+        standing={CREW_ASK_STANDING[state]}
       />
     </Specimen>
   );

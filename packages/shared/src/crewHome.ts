@@ -25,6 +25,7 @@
  * ```yaml
  * name: Game team                   # the crew's display name
  * briefTitle: Space shooter MVP     # the brief's title (brief.md holds only its body)
+ * ask: 1x9k2b                       # the crew card it was set up from (`askKeyOf`); unset otherwise
  * members:
  *   - handle: backend               # required; CREW_HANDLE_PATTERN; unique; fixed after Apply
  *     displayName: Backend          # required; free to rename
@@ -129,6 +130,8 @@ export interface CrewMemberSpec {
 export interface CrewDefinition {
   readonly crew: string;
   readonly name: string;
+  /** The crew card (a `crew-ask` fence's key) whose press set this crew up; absent otherwise. */
+  readonly ask?: string;
   readonly brief: CrewBrief;
   readonly members: ReadonlyArray<CrewMemberSpec>;
 }
@@ -189,7 +192,7 @@ const MEMBER_FIELDS = new Set([
   "context",
   "rotateAfter",
 ]);
-const CREW_FIELDS = new Set(["name", "briefTitle", "members"]);
+const CREW_FIELDS = new Set(["name", "briefTitle", "ask", "members"]);
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
 type Issues = Array<CrewDefinitionIssue>;
@@ -509,6 +512,7 @@ export const renderCrewHome = (definition: CrewDefinition): ReadonlyArray<CrewHo
       content: stringifyYaml({
         name: definition.name,
         briefTitle: definition.brief.title,
+        ...(definition.ask === undefined ? {} : { ask: definition.ask }),
         members,
       }),
     },
@@ -699,6 +703,7 @@ export const parseCrewHome = (crew: string, files: ReadonlyArray<CrewHomeFile>):
     issues.push({ code: "field-missing", path: CREW_HOME_FILE, message: "crew.yaml has no name." });
   }
   const briefTitle = readString(doc, "briefTitle", CREW_HOME_FILE, issues);
+  const ask = readString(doc, "ask", CREW_HOME_FILE, issues)?.trim();
   if (briefTitle === undefined || briefTitle.trim() === "") {
     issues.push({
       code: "field-missing",
@@ -755,6 +760,7 @@ export const parseCrewHome = (crew: string, files: ReadonlyArray<CrewHomeFile>):
     definition: {
       crew,
       name: name ?? "",
+      ...(ask === undefined || ask === "" ? {} : { ask }),
       brief: parseBrief(briefTitle ?? "", briefText),
       members,
     },

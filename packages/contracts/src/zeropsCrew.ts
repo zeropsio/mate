@@ -491,6 +491,8 @@ export const CrewSummary = Schema.Struct({
   briefVersion: PositiveInt,
   /** The brief's first two lines. */
   briefExcerpt: Schema.String,
+  /** The crew card whose press set the crew up (`crew.yaml`'s `ask`); absent for any other crew. */
+  ask: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type CrewSummary = typeof CrewSummary.Type;
 

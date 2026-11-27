@@ -492,6 +492,7 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
       briefTitle: applied.definition.brief.title,
       briefVersion: applied.briefVersion,
       briefExcerpt: firstLines(applied.definition.brief.text, 2),
+      ...(applied.definition.ask === undefined ? {} : { ask: applied.definition.ask }),
     },
     crewmates: membersInOrder(state).map((member) => toCrewmate(state, member, all, view)),
     hosts: Object.entries(state.hosts)

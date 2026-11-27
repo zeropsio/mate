@@ -21,6 +21,7 @@
  * saying why.
  */
 import { Text } from "~/components/ui/text";
+import { useServerConfigs } from "~/state/entities";
 import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_COPY_READYING,
@@ -193,20 +194,30 @@ export function CrewSetup(props: CrewSetupProps) {
   };
 
   // A crew the Mate set up in its conversation fills the setup in once it is read, as its proposal
-  // does: the goal and the rows, over a draft here — its card's press asked for it. It fills in at
+  // does: the goal and the rows, over a draft here — its card's press asked for it, and the crew
+  // names the card, so the card says it is set up once it starts (`crewAskState`) — on a Mate
+  // whose server reads that name (`crewCardAsk`); an older one refuses it, so it goes unnamed
+  // there and the card says only that the Mate has a crew. It fills in at
   // once, on the dev services as the crew last read them; opening the tab reads them again only
   // after, so a builder may have nowhere for its copy yet: it keeps its row, and Start places it.
   const filledIn = useRef<string | null>(null);
   const { proposed } = props;
+  const capabilities = useServerConfigs().get(props.environmentId)?.environment.capabilities;
   useEffect(() => {
     if (proposed === undefined || filledIn.current === proposed.key) return;
-    if (props.applied || members === null || busy) return;
+    if (props.applied || members === null || busy || capabilities === undefined) return;
     filledIn.current = proposed.key;
     proposal.cancel();
     setStartFailure(null);
     draft.setGoal(proposed.goal);
     const next = withGoal(
-      crewFromAsk({ seats: proposed.seats, crew: "crew", ...hostsOf, ...mateTint }),
+      crewFromAsk({
+        seats: proposed.seats,
+        ask: capabilities.crewCardAsk === true ? proposed.key : undefined,
+        crew: "crew",
+        ...hostsOf,
+        ...mateTint,
+      }),
       proposed.goal,
     );
     void saveAll(next).then((saved) => setAsked(saved));
