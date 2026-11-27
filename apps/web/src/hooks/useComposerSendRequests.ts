@@ -29,9 +29,8 @@
  * composer declines leaves its words there and says why, in the decline's own
  * words; one that breaks says it broke, never like a decline; one it was not
  * yet ready for is filed again and taken once that
- * conversation's readiness changes, never retried in a loop. A queued one is
- * told when it leaves the queue (`tellSendOutcome`). Filing a request writes
- * its words into the composer, so the person may send or change them by hand
+ * conversation's readiness changes, never retried in a loop. Filing a request
+ * writes its words into the composer, so the person may send or change them by hand
  * first: then the request is dropped, never sent a second time. A request no
  * conversation takes within `REQUESTED_SEND_WAIT_MS` is withdrawn, its words
  * left waiting in the composer, and its asker told so.
@@ -80,14 +79,8 @@ export type ComposerSendOutcome =
   | { readonly kind: "waits"; readonly why: string }
   | { readonly kind: "taken-over" };
 
-/**
- * What the composer's send made of a request: its outcome; queued behind the running turn, told
- * when it leaves the queue; or not ready for it yet.
- */
-export type ComposerSendResult =
-  | ComposerSendOutcome
-  | { readonly kind: "queued" }
-  | { readonly kind: "not-ready" };
+/** What the composer's send made of a request: its outcome, or not ready for it yet. */
+export type ComposerSendResult = ComposerSendOutcome | { readonly kind: "not-ready" };
 
 /** How long a request may wait for its conversation to take it before its asker hears it waits. */
 export const REQUESTED_SEND_WAIT_MS = 60_000;
@@ -207,7 +200,6 @@ export function useComposerSendRequests(input: {
       if (shownKey.current !== targetKey) return fileAgain();
       send(request.ids).then(
         (result) => {
-          if (result.kind === "queued") return;
           if (result.kind !== "not-ready") return tellOutcome(request.ids, result);
           unready.current = takenIn;
           fileAgain();

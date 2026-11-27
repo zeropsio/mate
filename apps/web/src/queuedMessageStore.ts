@@ -1,9 +1,4 @@
-import type {
-  MessageAbout,
-  ModelSelection,
-  ProviderInteractionMode,
-  RuntimeMode,
-} from "@t3tools/contracts";
+import type { MessageAbout } from "@t3tools/contracts";
 import { create } from "zustand";
 import type { VaultChange } from "@t3tools/client-runtime/data";
 
@@ -18,21 +13,8 @@ import type { SessionPhase } from "./types";
 import { onAccountLifetimeClose } from "./zerops/accountLifetime";
 
 /**
- * The composer's agent, model and modes when the message was queued. A message that leaves
- * while its conversation is not on screen goes with these, not with whatever composer is open.
- */
-export interface QueuedMessageSendSettings {
-  readonly modelSelection: ModelSelection;
-  readonly runtimeMode: RuntimeMode;
-  readonly interactionMode: ProviderInteractionMode;
-  /** The effort written into the text, for the agents that read it there; null where none is. */
-  readonly promptEffort: string | null;
-}
-
-/**
- * A thread's queued message under way, whichever sender took it — the open conversation or the
- * root sender: preparing (uploads, the thread's settings) until its turn start goes out, then
- * the thread as it was at that moment. The next message waits until the server has moved past
+ * A thread's queued message under way: preparing (uploads, the thread's settings) until its turn
+ * start goes out, then the thread as it was at that moment. The next message waits until the server has moved past
  * it, so two messages never leave on one boundary.
  */
 export type QueuedSendInFlight =
@@ -56,11 +38,6 @@ export interface QueuedComposerMessage {
   agentNotes?: ReadonlyArray<string>;
   vaultChanges?: ReadonlyArray<VaultChange>;
   submissionIntent: ComposerSubmissionIntent;
-  /**
-   * What it goes with when it leaves while its conversation is not on screen. Absent on the
-   * overflow a restore queues: that one waits for its conversation's Send now.
-   */
-  sendSettings?: QueuedMessageSendSettings;
   /**
    * The newest completed tool activity at queue time. A different id later
    * means a tool call finished after the user queued, which is the boundary
@@ -103,15 +80,8 @@ interface QueuedMessageStoreState {
    * conversation never holds another's send.
    */
   drainGenerationByThreadKey: Record<string, number>;
-  /**
-   * How many views of each conversation are on screen. An open conversation sends its own
-   * queue; the root sender sends the others'.
-   */
-  openThreadKeys: Record<string, number>;
   /** Each thread's queued send in flight, while it prepares and until the server picks it up. */
   queuedSendByThreadKey: Record<string, QueuedSendInFlight>;
-  /** Marks a conversation on screen until the returned release runs. */
-  holdOpen: (threadKey: string) => () => void;
   /** Records a thread's queued send in flight, or forgets it (null). */
   setQueuedSend: (threadKey: string, send: QueuedSendInFlight | null) => void;
   enqueue: (threadKey: string, message: Omit<QueuedComposerMessage, "id">) => QueuedComposerMessage;
@@ -163,25 +133,7 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
   return {
     queuesByThreadKey: {},
     drainGenerationByThreadKey: {},
-    openThreadKeys: {},
     queuedSendByThreadKey: {},
-    holdOpen: (threadKey) => {
-      const step = (by: 1 | -1) =>
-        set((state) => {
-          const count = (state.openThreadKeys[threadKey] ?? 0) + by;
-          const openThreadKeys = { ...state.openThreadKeys };
-          if (count > 0) openThreadKeys[threadKey] = count;
-          else delete openThreadKeys[threadKey];
-          return { openThreadKeys };
-        });
-      step(1);
-      let released = false;
-      return () => {
-        if (released) return;
-        released = true;
-        step(-1);
-      };
-    },
     setQueuedSend: (threadKey, send) => {
       set((state) => {
         const queuedSendByThreadKey = { ...state.queuedSendByThreadKey };
@@ -421,8 +373,7 @@ export function drainGenerationOf(threadKey: string): number {
 }
 
 /**
- * Takes a thread's queued message to send it — either sender, the open conversation or the
- * root one — and marks the thread's send in flight. Null when another caller took it first.
+ * Takes a thread's queued message to send it and marks the thread's send in flight. Null when another caller took it first.
  */
 export function beginQueuedSend(
   threadKey: string,

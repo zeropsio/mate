@@ -334,7 +334,7 @@ it.effect("ST64: A plan sent while the run works goes as the next run, in plan m
 
 // witness: packages/client-runtime/src/data/engineCommands.ts | input.interactionMode !== "plan" && input.queued !== true → input.interactionMode !== "plan"
 it.effect(
-  "ST+1: A message the person queued while the run works goes to the Mate at once as the conversation's next run, never steered into the working run; breaks: the queued message lives only in the tab that queued it and is lost when that tab reloads or closes",
+  "ST84: A message the person queued while the run works goes to the Mate at once as the conversation's next run, never steered into the working run; breaks: the queued message lives only in the tab that queued it and is lost when that tab reloads or closes",
   () =>
     Effect.gen(function* () {
       for (const state of ["running", "waiting"] as const) {

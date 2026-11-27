@@ -241,7 +241,6 @@ import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewChatEntries } from "./zerops/crew/crewChatSeams";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
-import { queuedSendAwaitsServer, turnSendAsk } from "./chat/queuedMessageSender.logic";
 import {
   crewMessagePlaceholder,
   crewRunsOnWord,
@@ -503,8 +502,10 @@ import {
   composerOpenFocus,
   conversationContentPending,
   localThreadErrorStanding,
+  queuedSendAwaitsServer,
   queuedSendOutcome,
   sendStepAfterUploads,
+  turnSendAsk,
   type QueuedSendFailure,
   newestPersonTurn,
   threadErrorEntryUnchanged,
@@ -584,7 +585,7 @@ const STOPPED_NOTICE = { words: STOPPED_WORDS, calm: true, stop: true } as const
  * What the composer's send made of a message: a turn went, it waits in the queue behind the
  * running one, or it was declined here — with the words that say why, for whoever asked for it.
  */
-type ComposerSendEnd = "sent" | "queued" | { readonly declined: string };
+type ComposerSendEnd = "sent" | { readonly declined: string };
 const declined = (why: string): ComposerSendEnd => ({ declined: why });
 /** A slash command the composer runs itself (`/usage`, `/mcp`, a mode switch): it reaches no agent. */
 const LOCAL_COMMAND = "The composer ran it as its own command.";
@@ -5819,8 +5820,7 @@ function ConversationView(props: ChatViewProps) {
         }),
       );
     }
-    // The menu's row says what went until the conversation does (`sentAsk.ts`); a queued message
-    // records the same operation here as when the root sender sends it.
+    // The menu's row says what went until the conversation does (`sentAsk.ts`).
     const sentAsk = turnSendAsk({
       trimmedPrompt: trimmed,
       messageId: messageIdForSend,
@@ -6169,13 +6169,7 @@ function ConversationView(props: ChatViewProps) {
   // user resolves them.
   const queueBlockedByPendingRequest =
     activePendingApproval !== null || pendingUserInputs.length > 0;
-  // The open conversation sends its own queue; the root sender sends the others'
-  // (`QueuedMessageSender`). A send in flight from either is waited for here.
-  useEffect(
-    () =>
-      activeThreadKey ? useQueuedMessageStore.getState().holdOpen(activeThreadKey) : undefined,
-    [activeThreadKey],
-  );
+  // A queued send in flight is waited for here: the next one never leaves on its boundary.
   const queuedSendInFlight = useQueuedMessageStore((state) =>
     activeThreadKey ? state.queuedSendByThreadKey[activeThreadKey] : undefined,
   );
