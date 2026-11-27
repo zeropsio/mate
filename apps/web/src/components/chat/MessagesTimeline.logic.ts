@@ -16,6 +16,7 @@ import {
   type LiveBatch,
 } from "@t3tools/shared/liveBatch";
 import type { ChangeLandedEvent, ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
+import { newestPages } from "@t3tools/client-runtime/zerops/publishedPage";
 import {
   humanizeToolName,
   sentToName,
@@ -1366,7 +1367,7 @@ function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work
 }
 
 /**
- * The pages a turn's calls published, each once, in the order they were published: a call's
+ * The pages a turn's calls published, each the newest under its title (`newestPages`): a call's
  * record carries its page by reference (`zerops_publish_page`), on the engine only.
  */
 function turnPages(turn: ConversationTurn): Array<Extract<MessagesTimelineRow, { kind: "page" }>> {
@@ -1375,8 +1376,7 @@ function turnPages(turn: ConversationTurn): Array<Extract<MessagesTimelineRow, {
     for (const candidate of stretch.entries) {
       if (candidate.kind !== "generic-call" && candidate.kind !== "work") continue;
       const page = candidate.entry.publishedPage;
-      if (page === undefined || pages.some((shown) => shown.page.asset.id === page.asset.id))
-        continue;
+      if (page === undefined) continue;
       pages.push({
         kind: "page",
         id: `page:${candidate.entry.toolCallId ?? candidate.id}`,
@@ -1385,7 +1385,7 @@ function turnPages(turn: ConversationTurn): Array<Extract<MessagesTimelineRow, {
         itemId: candidate.entry.toolCallId ?? null,
       });
     }
-  return pages;
+  return newestPages(pages, (row) => row.page.title);
 }
 
 /**

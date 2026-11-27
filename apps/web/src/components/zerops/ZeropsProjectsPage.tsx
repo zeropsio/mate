@@ -52,6 +52,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { menuTreeAtom } from "~/zerops/menuRows";
 import { useOfferedReleases, useViewerWaits } from "~/components/zerops/useSidebarWaiting";
+import { waitingProjectId } from "~/zerops/waiting.logic";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
@@ -1809,8 +1810,13 @@ export function ZeropsProjectsContent({
     );
     const waits = new Set(
       waiting.items.flatMap((item) => {
+        const projectId = waitingProjectId(item);
         const groupId =
-          item.kind === "release" ? item.release.groupId : groupOf.get(item.mate.projectId);
+          item.kind === "release"
+            ? item.release.groupId
+            : projectId === undefined
+              ? undefined
+              : groupOf.get(projectId);
         return groupId === undefined ? [] : [groupId];
       }),
     );
@@ -1862,10 +1868,19 @@ export function ZeropsProjectsContent({
     const asks = new Set<string>();
     const reviews = new Set<string>();
     for (const item of waiting.items) {
+      const projectId = waitingProjectId(item);
       const groupId =
-        item.kind === "release" ? item.release.groupId : groupOf.get(item.mate.projectId);
+        item.kind === "release"
+          ? item.release.groupId
+          : projectId === undefined
+            ? undefined
+            : groupOf.get(projectId);
       if (groupId === undefined) continue;
-      (item.kind === "release" || item.kind === "change" ? reviews : asks).add(groupId);
+      const review =
+        item.kind === "release" ||
+        item.kind === "change" ||
+        (item.kind === "crew" && item.crew.need.kind === "ready");
+      (review ? reviews : asks).add(groupId);
     }
     return { asks, reviews };
   }, [candidates, waiting.items]);

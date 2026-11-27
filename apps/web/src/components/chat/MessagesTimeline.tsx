@@ -66,6 +66,7 @@ import {
 } from "./MessagesTimeline.logic";
 import type { ThreadEndNotice } from "./threadErrorNotice.logic";
 import { TooltipScrollDismissArea } from "../ui/tooltip";
+import { BareChangeNumbersProvider } from "../zerops/BareChangeNumber";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
@@ -1148,7 +1149,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     </TimelineRowCtx>
   );
   return (
-    <>
+    <BareChangeNumbersProvider threadRef={threadRef}>
       <ConversationOpeningWaits
         as="div"
         whole
@@ -1173,7 +1174,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           timestampFormat={timestampFormat}
         />
       )}
-    </>
+    </BareChangeNumbersProvider>
   );
 });
 

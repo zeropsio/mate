@@ -27,7 +27,7 @@ import { CHIEF_SETUP_IDLE, chiefSetupAfter, type ChiefSetup } from "~/zerops/chi
 import type { ChiefPageView } from "~/components/zerops/chief/chiefTop.logic";
 import { ChiefSetupRowLine, SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
 import { MateFaceAsMark } from "~/components/zerops/primitives";
-import { waitingItemsOf, type WaitingItem } from "~/zerops/waiting.logic";
+import type { WaitingItem } from "~/zerops/waiting.logic";
 import {
   SidebarChromeHeader,
   SidebarCreateButton,
@@ -53,9 +53,11 @@ function setupOf(name: string): ChiefSetup {
   return CHIEF_SETUP_IDLE;
 }
 
-const ITEMS: ReadonlyArray<WaitingItem> = waitingItemsOf({
-  mates: [
-    {
+const ITEMS: ReadonlyArray<WaitingItem> = [
+  {
+    kind: "question",
+    key: "m:rhea",
+    mate: {
       projectId: "rhea",
       name: "Rhea",
       tint: "violet",
@@ -66,9 +68,9 @@ const ITEMS: ReadonlyArray<WaitingItem> = waitingItemsOf({
       threadId: "thread",
       text: "Stripe or Adyen?",
     },
-  ],
-  releases: [{ groupId: "tea", name: "Tea Shop", ahead: 3 }],
-});
+  },
+  { kind: "release", key: "r:tea", release: { groupId: "tea", name: "Tea Shop", ahead: 3 } },
+];
 
 const line = (words: ReactNode, ink: "muted" | "ink") => (
   <span
@@ -111,7 +113,8 @@ function pageViewOf(setup: ChiefSetup): Exclude<ChiefPageView, { kind: "reading"
   };
 }
 
-const VERBS = { onOpenMate: () => {}, onAskToFix: () => {} };
+const VERBS = { onOpenMate: () => {}, onOpenCrew: () => {}, onAskToFix: () => {} };
+const COUNTS = { running: 2, doneToday: 5 };
 
 function Harness() {
   const [setup, setSetup] = useState<ChiefSetup>(() => setupOf(PAGE));
@@ -139,7 +142,9 @@ function Harness() {
           brand={
             <>
               <SidebarOverviewLink current={false} />
-              {WAITING ? <SidebarWaitingCount items={ITEMS} seat="head" verbs={VERBS} /> : null}
+              {WAITING ? (
+                <SidebarWaitingCount counts={COUNTS} items={ITEMS} seat="head" verbs={VERBS} />
+              ) : null}
             </>
           }
           actions={

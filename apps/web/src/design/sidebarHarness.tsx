@@ -89,7 +89,13 @@ import { SidebarChiefRow, SidebarChiefTile } from "~/components/zerops/chief/Sid
 import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 import { SidebarWaitingCount } from "~/components/zerops/SidebarWaiting";
 import { SidebarRail, useRailTiles } from "~/components/zerops/SidebarRail";
-import { waitingItemsOf, type WaitingItem } from "~/zerops/waiting.logic";
+import type {
+  WaitingCrew,
+  WaitingItem,
+  WaitingMate,
+  WaitingRelease,
+  WaitingTask,
+} from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { ZeropsProjectLink } from "~/components/zerops/ZeropsProjectLink";
@@ -1378,7 +1384,7 @@ function SidebarFrame({
     activityOf: activityOfCandidate,
     releases: HARNESS_RELEASES,
   });
-  useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
+  useWaitingNext({ items: waiting.items, activeProjectId: open, enabled: true });
   return (
     <aside
       className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
@@ -1399,10 +1405,15 @@ function SidebarFrame({
             {(WAIT_ALL ?? waiting.items).length === 0 ? null : (
               <SidebarWaitingCount
                 seat="head"
+                counts={WAIT_ALL === null ? waiting.counts : WAIT_ALL_COUNTS}
                 items={WAIT_ALL ?? waiting.items}
                 verbs={{
                   onOpenMate: (projectId: string) => {
                     menuActions.push(`open ${projectId}`);
+                    setOpen(projectId);
+                  },
+                  onOpenCrew: (projectId: string) => {
+                    menuActions.push(`crew ${projectId}`);
                     setOpen(projectId);
                   },
                   onAskToFix: (projectId: string, problem: { readonly what: string }) => {
@@ -1525,14 +1536,46 @@ const HARNESS_HEADLINE = "Todo needs attention";
 /** Links' stage is ahead of its production: its release waits on the viewer. */
 const HARNESS_RELEASES = [{ groupId: "links", name: "Links", ahead: 3 }];
 
+/** The harness's waits, each Mate's as the one decision lists it, then the releases. */
+function harnessWaits(input: {
+  readonly mates: ReadonlyArray<WaitingMate>;
+  readonly crews?: ReadonlyArray<WaitingCrew>;
+  readonly tasks?: ReadonlyArray<WaitingTask>;
+  readonly releases: ReadonlyArray<WaitingRelease>;
+}): ReadonlyArray<WaitingItem> {
+  return [
+    ...input.mates.map((mate): WaitingItem => ({
+      kind: mate.kind,
+      key: `m:${mate.projectId}`,
+      mate,
+    })),
+    ...(input.crews ?? []).map((crew): WaitingItem => ({
+      kind: "crew",
+      key: `c:${crew.projectId}:${crew.crewmate.handle}:${crew.need.kind}`,
+      crew,
+    })),
+    ...(input.tasks ?? []).map((task): WaitingItem => ({
+      kind: "task",
+      key: `t:${task.projectId}:${task.taskId}`,
+      task,
+    })),
+    ...input.releases.map((release): WaitingItem => ({
+      kind: "release",
+      key: `r:${release.groupId}`,
+      release,
+    })),
+  ];
+}
+
 /**
  * `?wait=all`: one of each thing that waits on the viewer, as the board drew them — a Mate of
- * theirs stopped on an error, a plan, a question, a change, a release. None has a conversation
+ * theirs stopped on an error, a plan, a question, a change, a crewmate's finished work and its
+ * question, an automated Mate's task, a release. None has a conversation
  * here, so a question offers its conversation and a plan waits for its read.
  */
 const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
   new URLSearchParams(location.search).get("wait") === "all"
-    ? waitingItemsOf({
+    ? harnessWaits({
         mates: [
           {
             projectId: "fen",
@@ -1542,6 +1585,8 @@ const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
             face: "idle",
             kind: "failed",
             text: "The stage build failed: EXPO_TOKEN is missing.",
+            environmentId: "env-fen",
+            threadId: "t-fen",
           },
           {
             projectId: "wren",
@@ -1577,9 +1622,51 @@ const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
             },
           },
         ],
+        crews: [
+          {
+            projectId: "fen",
+            mateName: "Fen",
+            environmentId: "env-fen",
+            crewmate: {
+              handle: "sol",
+              name: "Sol",
+              tint: "sky",
+              shape: "squircle",
+              threadId: null,
+            },
+            need: { kind: "ready", taskId: "t-upload" },
+          },
+          {
+            projectId: "fen",
+            mateName: "Fen",
+            environmentId: "env-fen",
+            crewmate: {
+              handle: "fable",
+              name: "Fable",
+              tint: "violet",
+              shape: "seal",
+              threadId: null,
+            },
+            need: { kind: "row", rowId: "a-bucket", row: "question" },
+          },
+        ],
+        tasks: [
+          {
+            projectId: "noibit",
+            name: "Noibit",
+            tint: "olive",
+            shape: "hexagon",
+            taskId: "k-12",
+            title: "Fix the invoice total on refunds",
+            url: null,
+          },
+        ],
         releases: [{ groupId: "tea", name: "Tea Shop", ahead: 3 }],
       })
     : null;
+
+/** `?wait=all`'s quiet line: what runs for the viewer, and what they got today. */
+const WAIT_ALL_COUNTS = { running: 4, doneToday: 11 };
 
 const JUMP_KEY = isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K";
 
@@ -1760,7 +1847,7 @@ function RailFrame({
     activityOf: activityOfCandidate,
     releases: HARNESS_RELEASES,
   });
-  useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
+  useWaitingNext({ items: waiting.items, activeProjectId: open, enabled: true });
   const items = WAIT_ALL ?? waiting.items;
   const projectName = useCallback(
     (groupId: string) => {
@@ -1783,6 +1870,9 @@ function RailFrame({
   });
   const verbs = {
     onOpenMate: (projectId: string) => {
+      setOpen(projectId);
+    },
+    onOpenCrew: (projectId: string) => {
       setOpen(projectId);
     },
     onAskToFix: (projectId: string) => {
@@ -1839,6 +1929,7 @@ function RailFrame({
       tiles={rail.tiles}
       verbs={verbs}
       waiting={items}
+      waitingCounts={WAIT_ALL === null ? waiting.counts : WAIT_ALL_COUNTS}
     />
   );
 }

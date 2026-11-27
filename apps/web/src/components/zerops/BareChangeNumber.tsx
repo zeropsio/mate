@@ -1,101 +1,129 @@
-/**
- * "change #17" in a Mate's words, drawn as that change's chip. Agents name changes by number
- * (zcp's answers carry no address), and numbers grow per repository: the words become a chip only
- * where the conversation's application says which repository the number is in — the one
- * repository whose changes carry it, else the application's only repository. Anything else stays
- * the words as written.
- */
-import type { ScopedThreadRef } from "@t3tools/contracts";
+/** Links to changes the conversation's application already holds in the client data layer. */
+import { useAtomValue } from "@effect/atom-react";
+import { shownHqAppChangesAtom } from "@t3tools/client-runtime/data";
+import type { ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
 import { changeUrl } from "@t3tools/shared/hqChanges";
-import { Children, cloneElement, isValidElement, type ReactNode } from "react";
+import {
+  Children,
+  cloneElement,
+  createContext,
+  Fragment,
+  isValidElement,
+  type ReactNode,
+  use,
+  useMemo,
+} from "react";
 
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useHqAddress } from "~/zerops/projectFlows";
-import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
-import { useHqAppDetail } from "~/zerops/useHqAppDetail";
+import { useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useKnownMate } from "~/zerops/useZeropsMates";
-import { ZeropsChangeLinkChip } from "./ZeropsChangeLinkChip";
+import { ServiceBrowserLink } from "../ServiceBrowserLink";
+import { renderSkillInlineMarkdownChildren } from "../chat/SkillInlineText";
+import { useApplicationOfProject } from "./useGitEnvironmentFormInputs";
+import {
+  indexChangeNumbers,
+  resolveChangeNumbers,
+  type NumberedChange,
+} from "./BareChangeNumber.logic";
 
-const BARE_CHANGE = /\b[Cc]hange #([1-9][0-9]{0,5})\b/gu;
-
-/** The repository `number` names a change in: the only one whose changes carry it, else the only one. */
-function repositoryOfChangeNumber(
-  number: number,
-  repos: ReadonlyArray<string>,
-  changes: ReadonlyArray<{ readonly repo: string; readonly number: number }>,
-): string | null {
-  const carrying = new Set(
-    changes.filter((change) => change.number === number).map((change) => change.repo),
-  );
-  if (carrying.size === 1) return [...carrying][0] ?? null;
-  if (carrying.size === 0 && repos.length === 1) return repos[0] ?? null;
-  return null;
+interface ConversationChanges {
+  readonly appId: string;
+  readonly hqAddress: string;
+  readonly byNumber: ReadonlyMap<string, NumberedChange | null>;
 }
 
-function BareChangeNumber({
-  number,
+const ConversationChangesContext = createContext<ConversationChanges | null>(null);
+
+/** One read per conversation; it does not hold or fetch application detail. */
+function ConversationChangesProvider({
   threadRef,
   children,
 }: {
-  readonly number: number;
   readonly threadRef: ScopedThreadRef;
-  readonly children: string;
+  readonly children: ReactNode;
 }) {
   const mate = useKnownMate(threadRef.environmentId);
   const location = useMateOfEnvironment(threadRef.environmentId);
-  const application = useApplicationOfProject(location?.projectId ?? mate?.projectId);
-  const detail = useHqAppDetail(application?.id ?? null);
+  const appId = useApplicationOfProject(location?.projectId ?? mate?.projectId)?.id;
+  const appIds = useMemo(() => (appId === undefined ? [] : [appId]), [appId]);
+  const open = useAtomValue(shownHqAppChangesAtom);
+  const details = useHqAppDetails(appIds);
   const hqAddress = useHqAddress();
-  const repo =
-    detail.repos === undefined
-      ? null
-      : repositoryOfChangeNumber(
-          number,
-          detail.repos.map((entry) => entry.name),
-          detail.changes ?? [],
-        );
-  if (application === undefined || hqAddress === undefined || repo === null) return children;
-  return (
-    <ZeropsChangeLinkChip href={changeUrl(hqAddress, application.id, repo, number)} inferred>
-      {children}
-    </ZeropsChangeLinkChip>
+  const listed = appId === undefined ? undefined : open[appId];
+  const recent = appId === undefined ? undefined : details[appId]?.changes;
+  const byNumber = useMemo(() => indexChangeNumbers(listed, recent), [listed, recent]);
+  const value = useMemo(
+    () => (appId === undefined ? null : { appId, hqAddress, byNumber }),
+    [appId, hqAddress, byNumber],
+  );
+  return <ConversationChangesContext value={value}>{children}</ConversationChangesContext>;
+}
+
+export function BareChangeNumbersProvider({
+  threadRef,
+  children,
+}: {
+  readonly threadRef: ScopedThreadRef | null;
+  readonly children: ReactNode;
+}) {
+  return threadRef === null ? (
+    children
+  ) : (
+    <ConversationChangesProvider threadRef={threadRef}>{children}</ConversationChangesProvider>
   );
 }
 
-function bareChangeText(text: string, threadRef: ScopedThreadRef): ReactNode {
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  for (const match of text.matchAll(BARE_CHANGE)) {
-    const start = match.index;
-    if (start > cursor) nodes.push(text.slice(cursor, start));
-    nodes.push(
-      <BareChangeNumber
-        key={`${start}:${match[1]}`}
-        number={Number(match[1])}
-        threadRef={threadRef}
-      >
-        {match[0]}
-      </BareChangeNumber>,
+function BareChangeText({
+  text,
+  skills,
+}: {
+  readonly text: string;
+  readonly skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+}) {
+  const context = use(ConversationChangesContext);
+  if (context === null) return renderSkillInlineMarkdownChildren(text, skills);
+  let offset = 0;
+  return resolveChangeNumbers(text, context.byNumber).map((part) => {
+    const start = offset;
+    offset += part.text.length;
+    return (
+      <Fragment key={start}>
+        {part.change === undefined ? (
+          renderSkillInlineMarkdownChildren(part.text, skills)
+        ) : (
+          <ServiceBrowserLink
+            href={changeUrl(context.hqAddress, context.appId, part.change.repo, part.change.number)}
+            rel="noopener noreferrer"
+            showIndicator={false}
+            target="_blank"
+          >
+            {part.text}
+          </ServiceBrowserLink>
+        )}
+      </Fragment>
     );
-    cursor = start + match[0].length;
-  }
-  if (cursor === 0) return text;
-  if (cursor < text.length) nodes.push(text.slice(cursor));
-  return nodes;
+  });
 }
 
-/** Markdown children with each bare "change #N" outside code and links resolved to its chip. */
+/** Markdown children with known bare change numbers linked outside code and existing links. */
 export function renderBareChangeNumbers(
   children: ReactNode,
-  threadRef: ScopedThreadRef | undefined,
+  enabled: boolean,
+  skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [],
 ): ReactNode {
-  if (threadRef === undefined) return children;
+  if (!enabled) return children;
   return Children.map(children, (child) => {
-    if (typeof child === "string") return bareChangeText(child, threadRef);
+    if (typeof child === "string")
+      return child.includes("#") ? <BareChangeText text={child} skills={skills} /> : child;
     if (!isValidElement<{ children?: ReactNode; node?: { tagName?: string } }>(child)) return child;
-    // Custom react-markdown components replace the intrinsic type; the hast node names the tag.
+    // Custom markdown components replace the intrinsic type; the hast node names the tag.
     const tag = typeof child.type === "string" ? child.type : child.props.node?.tagName;
     if (tag === "code" || tag === "a" || !("children" in child.props)) return child;
-    return cloneElement(child, undefined, renderBareChangeNumbers(child.props.children, threadRef));
+    return cloneElement(
+      child,
+      undefined,
+      renderBareChangeNumbers(child.props.children, true, skills),
+    );
   });
 }

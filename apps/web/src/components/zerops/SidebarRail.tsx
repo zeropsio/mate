@@ -72,7 +72,12 @@ import {
   type RailTileMate,
 } from "./SidebarRail.logic";
 import { SidebarWaitingCount, type WaitingVerbs } from "./SidebarWaiting";
-import type { WaitingItem } from "~/zerops/waiting.logic";
+import {
+  isMateWait,
+  type NeedsYouCounts,
+  type WaitingItem,
+  type WaitingMateItem,
+} from "~/zerops/waiting.logic";
 import { Button } from "../ui/button";
 import { Text } from "~/components/ui/text";
 
@@ -143,9 +148,10 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
   const waitsOnViewer = useWaitsOnViewer();
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const mates = useMemo(() => {
-    const waits = new Map(
-      waiting.flatMap((item) => (item.kind === "release" ? [] : [[item.mate.projectId, item]])),
-    );
+    // Each Mate's own wait, the first the list says of it: what its conversation waits for.
+    const waits = new Map<string, WaitingMateItem>();
+    for (const item of waiting)
+      if (isMateWait(item) && !waits.has(item.mate.projectId)) waits.set(item.mate.projectId, item);
     return selectMateEnvironments(candidates).flatMap((candidate): ReadonlyArray<RailMate> => {
       if (!shown(candidate)) return [];
       const id = candidate.project.id;
@@ -638,6 +644,7 @@ export function SidebarRail({
   overviewCurrent,
   headline,
   waiting,
+  waitingCounts,
   verbs,
   account,
   showMark,
@@ -660,6 +667,8 @@ export function SidebarRail({
   readonly overviewCurrent: boolean;
   readonly headline: string;
   readonly waiting: ReadonlyArray<WaitingItem>;
+  /** What runs for the viewer and what they got today, under the list (`needsYou`). */
+  readonly waitingCounts: NeedsYouCounts;
   readonly verbs: WaitingVerbs;
   /** The viewer's photo, opening the account menu (`SidebarZeropsAccountRow`, collapsed). */
   readonly account: ReactNode;
@@ -697,7 +706,7 @@ export function SidebarRail({
           </TooltipPopup>
         </Tooltip>
         {waiting.length === 0 ? null : (
-          <SidebarWaitingCount seat="rail" items={waiting} verbs={verbs} />
+          <SidebarWaitingCount counts={waitingCounts} seat="rail" items={waiting} verbs={verbs} />
         )}
       </div>
       {create}

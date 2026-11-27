@@ -478,7 +478,8 @@ const EVERY_CHOICES = [
   ["week", "Every week"],
 ] as const;
 
-const browserTimeZone = () => {
+/** The zone of the person at this browser, as a schedule takes it; UTC where it cannot tell. */
+export const browserTimeZone = (): string => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch {
@@ -498,9 +499,12 @@ const moment = (iso: string) =>
 export function AppSchedulesView({
   controls,
   name,
+  initial,
 }: {
   readonly controls: Controls<"hqAppSchedules">;
   readonly name: string;
+  /** A schedule to start the form from: one a Mate proposed in its conversation. */
+  readonly initial?: HqScheduleRequest | undefined;
 }) {
   const { read, write, again } = controls;
   const setting = read.setting;
@@ -519,7 +523,7 @@ export function AppSchedulesView({
         />
       ) : (
         <>
-          <ScheduleForm action={read.action} name={name} onMake={make} />
+          <ScheduleForm action={read.action} initial={initial} name={name} onMake={make} />
           {setting.held.length === 0 ? null : (
             <ul className="grid gap-1.5" data-zerops-surface="settings-schedules-list">
               {setting.held.map((schedule) => (
@@ -541,22 +545,27 @@ export function AppSchedulesView({
   );
 }
 
-/** A new schedule's form: its name, how often and when, in which time zone, and its brief. */
+/**
+ * A new schedule's form: its name, how often and when, in which time zone, and its brief; filled
+ * in from `initial` where there is one.
+ */
 function ScheduleForm({
   name,
   action,
   onMake,
+  initial,
 }: {
   readonly name: string;
   readonly action: TaskSourceSettingValue<"hqAppSchedules">["action"];
   readonly onMake: (request: HqScheduleRequest) => void;
+  readonly initial?: HqScheduleRequest | undefined;
 }) {
-  const [title, setTitle] = useState("");
-  const [brief, setBrief] = useState("");
-  const [every, setEvery] = useState<HqScheduleRule["every"]>("week");
-  const [day, setDay] = useState(1);
-  const [at, setAt] = useState("09:00");
-  const [timeZone, setTimeZone] = useState(browserTimeZone);
+  const [title, setTitle] = useState(initial?.name ?? "");
+  const [brief, setBrief] = useState(initial?.brief ?? "");
+  const [every, setEvery] = useState<HqScheduleRule["every"]>(initial?.rule.every ?? "week");
+  const [day, setDay] = useState(initial?.rule.day ?? 1);
+  const [at, setAt] = useState(initial?.rule.at ?? "09:00");
+  const [timeZone, setTimeZone] = useState(() => initial?.rule.timeZone ?? browserTimeZone());
   const briefId = useId();
   const busy = working(action);
   const ready =

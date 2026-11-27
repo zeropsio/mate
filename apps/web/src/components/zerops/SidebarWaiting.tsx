@@ -1,16 +1,31 @@
 /**
- * Waiting on you: the list the Overview row's amber count opens beside the menu while something
- * waits (`SidebarOverviewRow`), the list's title on the row's title line. Each thing in the list has the
- * buttons that act on it: a plan is approved or changed, a question answered, a Mate of yours that
- * stopped asked to fix it, a change or a release reviewed. A thing whose action went through
- * leaves the list, its height closing in 200 ms. ⌥↓ steps through them in the menu.
+ * Needs you: the list the menu's red count opens beside the menu while anything needs the person
+ * — every conversation of their Mates, their crews and their automated Mates' tasks, as one
+ * decision lists them (`needsYou`). Each thing is a row with its one action, done in place where
+ * it can be: a plan approved, a question or a crewmate answered, a crew's press taken, reviewed
+ * crew work added to the Mate's code, a Mate that stopped asked to fix it; a change, a release or
+ * crew work still to read opens its review. Beside the action a message steers what waits. A thing
+ * whose action went through leaves the list, its height closing in 200 ms. Under the rows a quiet
+ * line says what runs for the person and what they got today. ⌥↓ steps through them in the menu.
  *
  * The rail's count opens the same list, beside the rail (`SidebarWaitingPopover`).
  */
 import { cn } from "~/lib/utils";
 import { fadeFillIn } from "~/lib/loadFills";
-import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
-import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
+import {
+  EnvironmentId,
+  ThreadId,
+  type CrewCommand,
+  type ProviderApprovalDecision,
+} from "@t3tools/contracts";
+import { crewTaskReview } from "@t3tools/client-runtime/zerops";
+import { crewNeedSentence } from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import {
+  isAtomCommandInterrupted,
+  type AtomCommandResult,
+} from "@t3tools/client-runtime/state/runtime";
+import { MessageSquareIcon } from "lucide-react";
 import {
   useLayoutEffect,
   useRef,
@@ -26,32 +41,52 @@ import { findLatestProposedPlan } from "~/session-logic";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview, type OpenReviewOptions } from "~/zerops/review";
 import { useMateWrite } from "~/zerops/useMateWrite";
+import { useCrewValue } from "~/zerops/crew/useCrew";
+import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
+import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 
 import { Failure } from "../ui/failure";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
+import { List } from "../ui/list";
 import { LogoTile } from "../ui/logo-tile";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Row } from "../ui/row";
 import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { crewActionOffered, crewNeedActions, type CrewRowAction } from "./crew/CrewRows.logic";
 import { mateDecision } from "./mateDecision.logic";
+import { crewLandCommand } from "./review/ZeropsReview.logic";
 import { RailTip } from "./SidebarRailTip";
 import { MateFace } from "./primitives";
 import {
+  NEEDS_YOU_LINE,
+  NEEDS_YOU_TITLE,
+  needsYouChangesLine,
+  needsYouCountsLine,
+  needsYouCrewLine,
+  needsYouCrewOf,
+  needsYouReadyLine,
+  needsYouTaskLine,
+  needsYouTellLabel,
   releaseWaitingLine,
   WAITING_VERBS,
   waitingVerb,
   waitingCountWords,
   waitingTitle,
+  type NeedsYouCounts,
   type WaitingItem,
   type WaitingMate,
+  type WaitingMateItem,
+  type WaitingRelease,
 } from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
 
-/** What the list asks of the menu: a Mate's conversation, and the fix request's composer. */
+/** What the list asks of the menu: a Mate's conversation, its crew, the fix request's composer. */
 export interface WaitingVerbs {
   readonly onOpenMate: (projectId: string) => void;
+  readonly onOpenCrew: (projectId: string) => void;
   readonly onAskToFix: (projectId: string, problem: FixProblem) => void;
 }
 
@@ -92,12 +127,14 @@ function placementOf(trigger: HTMLElement): Placement {
 /** The list, opened from `trigger` — the menu's row, or the rail's count. */
 export function SidebarWaitingPopover({
   items,
+  counts,
   verbs,
   trigger,
   children,
   tooltip,
 }: {
   readonly items: ReadonlyArray<WaitingItem>;
+  readonly counts: NeedsYouCounts;
   readonly verbs: WaitingVerbs;
   /**
    * The element that opens it, marked `[data-waiting-trigger]`; its `[data-waiting-line]` names
@@ -140,15 +177,16 @@ export function SidebarWaitingPopover({
       <PopoverPopup
         align={placement.side === "bottom" ? "center" : "start"}
         alignOffset={placement.alignOffset}
-        aria-label="Waiting on you"
+        aria-label={NEEDS_YOU_TITLE}
         data-zerops-surface="sidebar-waiting-list"
         padding="compact"
         side={placement.side}
         sideOffset={placement.sideOffset}
-        width="lg"
+        width="xl"
       >
         <div className="text-body">
           <WaitingList
+            counts={counts}
             items={items}
             onClose={() => {
               setOpen(false);
@@ -163,15 +201,17 @@ export function SidebarWaitingPopover({
 
 /**
  * A bare count of what waits on the person — the menu's headline, the rail — that opens
- * the list; hovered, it says what it counts ("Waiting on you", the first things by name), so the
+ * the list; hovered, it says what it counts (Needs you, the first things by name), so the
  * number never stands without its noun.
  */
 export function SidebarWaitingCount({
   items,
+  counts,
   verbs,
   seat,
 }: {
   readonly items: ReadonlyArray<WaitingItem>;
+  readonly counts: NeedsYouCounts;
   readonly verbs: WaitingVerbs;
   /** Where it stands: beside the headline's Overview, or on the rail's Overview's corner. */
   readonly seat: "head" | "rail";
@@ -188,8 +228,9 @@ export function SidebarWaitingCount({
       )}
     >
       <SidebarWaitingPopover
+        counts={counts}
         items={items}
-        tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
+        tooltip={<RailTip line={words.line} name={NEEDS_YOU_TITLE} shortcut="⌥↓" />}
         trigger={
           <Button
             aria-label={words.label}
@@ -211,14 +252,18 @@ export function SidebarWaitingCount({
   );
 }
 
-/** The row under Overview: drawn only while something waits. */
-/** The list itself: its title, ⌥↓, and each thing with its buttons. */
+/**
+ * The list itself: its title and what it holds, ⌥↓, each thing as a row with its one action, and
+ * under them the quiet line of what runs for the person and what they got today.
+ */
 export function WaitingList({
   items,
+  counts,
   verbs,
   onClose,
 }: {
   readonly items: ReadonlyArray<WaitingItem>;
+  readonly counts: NeedsYouCounts;
   readonly verbs: WaitingVerbs;
   readonly onClose: () => void;
 }) {
@@ -228,7 +273,7 @@ export function WaitingList({
   const listed = items.filter((item) => !gone.has(item.key));
   return (
     <>
-      <div className="px-2 py-1.5">
+      <div className="px-2 pt-1.5 pb-2">
         <SectionHeader
           action={
             // A key's hint means nothing under a finger.
@@ -240,11 +285,13 @@ export function WaitingList({
               next
             </Text>
           }
+          count={listed.length}
           level={3}
-          title="Waiting on you"
+          line={NEEDS_YOU_LINE}
+          title={NEEDS_YOU_TITLE}
         />
       </div>
-      <div className="-mb-3">
+      <List>
         {listed.map((item) => (
           <WaitingEntry
             item={item}
@@ -258,7 +305,10 @@ export function WaitingList({
             verbs={verbs}
           />
         ))}
-      </div>
+      </List>
+      <Text className="block px-2 pt-2 pb-1" data-needs-you-counts="" variant="meta">
+        {needsYouCountsLine(counts)}
+      </Text>
     </>
   );
 }
@@ -295,6 +345,27 @@ function leave(element: HTMLElement | null, done: () => void) {
   ).onfinish = done;
 }
 
+/** What opens under a row — an answer, a message — grows in over 200 ms; reduced motion places it. */
+function growIn(element: HTMLElement | null) {
+  if (element === null || typeof element.animate !== "function" || prefersReducedMotion()) return;
+  const height = element.offsetHeight;
+  element.animate(
+    [
+      { height: "0px", opacity: 0 },
+      { height: `${String(height)}px`, opacity: 1 },
+    ],
+    { duration: 200, easing: EASE },
+  );
+}
+
+/** What an entry hands its row: where it leaves from, and how it says it went. */
+interface EntryProps {
+  readonly verbs: WaitingVerbs;
+  readonly onClose: () => void;
+  /** Its action went through: the row closes and leaves the list. */
+  readonly went: () => void;
+}
+
 function WaitingEntry({
   item,
   verbs,
@@ -307,98 +378,518 @@ function WaitingEntry({
   readonly onGone: () => void;
 }) {
   const element = useRef<HTMLDivElement>(null);
-  const went = () => {
-    leave(element.current, onGone);
+  const props: EntryProps = {
+    verbs,
+    onClose,
+    went: () => {
+      leave(element.current, onGone);
+    },
   };
   return (
-    <div
-      className="mb-3 grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 rounded-control p-2"
-      data-waiting-kind={item.kind}
-      data-waiting-key={item.key}
-      ref={element}
-    >
-      <span className="flex h-8" aria-hidden="true">
-        {item.kind === "release" ? (
-          <LogoTile>{item.release.name.trim().charAt(0).toLocaleUpperCase()}</LogoTile>
-        ) : (
-          <MateFace
-            shape={item.mate.shape}
-            size={32}
-            state={item.mate.face}
-            tint={item.mate.tint}
-          />
-        )}
-      </span>
-      <div className="min-w-0 pt-1.5">
-        <p className="truncate text-body font-semibold" data-waiting-title="">
-          {waitingTitle(item)}
-        </p>
-        <p className="mt-0.5 line-clamp-2 text-body empty:hidden">
-          {item.kind === "release" ? releaseWaitingLine(item.release) : item.mate.text}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {item.kind === "release" ? (
-            <ReviewButton
-              label={WAITING_VERBS.release}
-              onClose={onClose}
-              target={{ kind: "release", groupId: item.release.groupId }}
-            />
-          ) : item.kind === "sign-in" ? (
-            // Its conversation holds the sign-in.
-            <OpenButton
-              label={WAITING_VERBS["sign-in"]}
-              mate={item.mate}
-              onClose={onClose}
-              verbs={verbs}
-            />
-          ) : item.kind === "change" ? (
-            item.mate.change === undefined ? (
-              <OpenButton
-                label={waitingVerb(item)}
-                mate={item.mate}
-                onClose={onClose}
-                verbs={verbs}
-              />
-            ) : (
-              <ReviewButton
-                label={waitingVerb(item)}
-                onClose={onClose}
-                // "Review Nova's 3 changes" goes through every one, one review after another.
-                queue={item.mate.change.queue?.map((change) => ({
-                  kind: "change" as const,
-                  groupId: item.mate.change?.groupId ?? "",
-                  ...change,
-                }))}
-                target={{
-                  kind: "change",
-                  groupId: item.mate.change.groupId,
-                  repository: item.mate.change.repository,
-                  number: item.mate.change.number,
-                }}
-              />
-            )
-          ) : item.kind === "failed" ? (
-            <Button
-              aria-label={`Ask ${item.mate.name} to fix it`}
-              onClick={() => {
-                verbs.onAskToFix(item.mate.projectId, {
-                  what: `${item.mate.name} stopped on an error`,
-                  error: item.mate.text,
-                  ask: "Find out why, fix it, and carry on.",
-                });
-                went();
-                onClose();
-              }}
-            >
-              {WAITING_VERBS.failed}
-            </Button>
-          ) : (
-            <MateActions mate={item.mate} onClose={onClose} onDone={went} verbs={verbs} />
-          )}
-        </div>
-      </div>
+    <div data-waiting-kind={item.kind} data-waiting-key={item.key} ref={element}>
+      {item.kind === "release" ? (
+        <ReleaseEntry release={item.release} {...props} />
+      ) : item.kind === "crew" ? (
+        <CrewEntry item={item} {...props} />
+      ) : item.kind === "task" ? (
+        <TaskEntry item={item} {...props} />
+      ) : (
+        <MateEntry item={item} {...props} />
+      )}
     </div>
   );
+}
+
+/**
+ * One row of the list: who it is about, what waits, its one action at the row's end, and what
+ * opens under it in place — an answer's field and choices, a message, a refusal — at the words'
+ * edge.
+ */
+function EntryRow({
+  lead,
+  title,
+  meta,
+  line,
+  control,
+  children,
+}: {
+  readonly lead: ReactNode;
+  readonly title: string;
+  /** Whose it is, where the title alone does not say: a crewmate's Mate. */
+  readonly meta?: string | undefined;
+  readonly line: string | undefined;
+  readonly control: ReactNode;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <div className="py-1">
+      <Row
+        control={control}
+        controlStays
+        lead={<span aria-hidden="true">{lead}</span>}
+        line={line === undefined || line.length === 0 ? undefined : line}
+        meta={meta}
+        title={title}
+      />
+      {children === undefined || children === null || children === false ? null : (
+        <div className="flex flex-wrap gap-2 ps-13.5 pe-2.5 pb-2" ref={growIn}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MateLead({
+  tint,
+  shape,
+  face,
+}: {
+  readonly tint: MateTintId;
+  readonly shape: MateShapeId;
+  readonly face: MateMarkState;
+}) {
+  return <MateFace shape={shape} size={32} state={face} tint={tint} />;
+}
+
+/**
+ * The quiet press beside a row's action that steers what waits with a message: its Mate hears it
+ * in its conversation, a crewmate in its own chat.
+ */
+function TellButton({
+  name,
+  open,
+  onPress,
+}: {
+  readonly name: string;
+  readonly open: boolean;
+  readonly onPress: () => void;
+}) {
+  const label = needsYouTellLabel(name);
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-expanded={open}
+            aria-label={label}
+            onClick={onPress}
+            size="icon-sm"
+            variant="ghost"
+          />
+        }
+      >
+        <MessageSquareIcon aria-hidden="true" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function ReleaseEntry({ release, onClose }: EntryProps & { readonly release: WaitingRelease }) {
+  return (
+    <EntryRow
+      control={
+        <ReviewButton
+          label={WAITING_VERBS.release}
+          onClose={onClose}
+          target={{ kind: "release", groupId: release.groupId }}
+        />
+      }
+      lead={<LogoTile>{release.name.trim().charAt(0).toLocaleUpperCase()}</LogoTile>}
+      line={releaseWaitingLine(release)}
+      title={waitingTitle({ kind: "release", key: "", release })}
+    />
+  );
+}
+
+/**
+ * What a crewmate needs from the person, its one action read off its crew as the Crew tab reads it
+ * (`crewNeedActions`, offered by `crewActionOffered`): an answer in place, a press the crew takes
+ * at once (*Let it*, *Continue*, *Not now* beside it), finished work added to the Mate's code once
+ * reviewed, else its review; what only the crew can show opens the crew. A message to the
+ * crewmate steers it.
+ */
+function CrewEntry({
+  item,
+  verbs,
+  onClose,
+  went,
+}: EntryProps & { readonly item: Extract<WaitingItem, { readonly kind: "crew" }> }) {
+  const { crew } = item;
+  const environmentId =
+    crew.environmentId === undefined ? null : EnvironmentId.make(crew.environmentId);
+  const { snapshot } = useCrewValue(environmentId);
+  const access = useCrewAccess(environmentId, snapshot);
+  const command = useCrewCommand(environmentId);
+  const openReview = useOpenReview();
+  const [open, setOpen] = useState<"answer" | "tell" | null>(null);
+  const { need, crewmate } = crew;
+  const name = crewmate.name;
+  const openCrew = () => {
+    onClose();
+    verbs.onOpenCrew(crew.projectId);
+  };
+  const send = (next: CrewCommand, after: () => void) => {
+    void command.send(next, NEEDS_YOU_ORIGIN).then((result) => {
+      if (result !== null) after();
+    });
+  };
+  const row =
+    need.kind === "row" ? snapshot?.attention.find((each) => each.id === need.rowId) : undefined;
+  const task =
+    need.kind === "ready"
+      ? snapshot?.board.tasks.find((each) => each.id === need.taskId)
+      : undefined;
+  const actions =
+    row === undefined || snapshot === null
+      ? []
+      : crewNeedActions(row, snapshot, crew.mateName).filter((action) =>
+          crewActionOffered(action, access, null, false),
+        );
+  // Reviewed work the person adds themselves goes in from here; anything else is its review's.
+  const lands =
+    task !== undefined && task.review?.verdict === "accept"
+      ? crewTaskReview({
+          ownerName: name,
+          mateName: crew.mateName,
+          state: task.state,
+          check: task.check,
+          diffStat: task.diffStat,
+          conflicts: [],
+          waitingOn: task.waitingOn,
+          landedCommit: task.landedCommit,
+          reason: task.reason,
+        }).primary
+      : undefined;
+  const press = (action: CrewRowAction, variant: "primary" | "ghost") => (
+    <Button
+      disabled={command.pending}
+      key={action.label}
+      onClick={() => {
+        switch (action.kind) {
+          case "answer":
+            setOpen(open === "answer" ? null : "answer");
+            return;
+          case "review":
+            onClose();
+            if (environmentId !== null)
+              openReview({ kind: "crew-task", environmentId, taskId: action.taskId });
+            return;
+          case "command":
+            send(action.command, went);
+            return;
+          case "ask":
+          case "try":
+            openCrew();
+        }
+      }}
+      size="sm"
+      variant={variant}
+    >
+      {action.label}
+    </Button>
+  );
+  const [first, second] = actions;
+  const action =
+    need.kind === "ready" ? (
+      lands !== undefined && lands.enabled && task !== undefined ? (
+        <Button
+          disabled={command.pending}
+          onClick={() => {
+            send(crewLandCommand(task), went);
+          }}
+          size="sm"
+        >
+          {lands.label}
+        </Button>
+      ) : (
+        <Button
+          disabled={environmentId === null}
+          onClick={() => {
+            onClose();
+            if (environmentId !== null)
+              openReview({ kind: "crew-task", environmentId, taskId: need.taskId });
+          }}
+          size="sm"
+        >
+          {waitingVerb(item)}
+        </Button>
+      )
+    ) : first !== undefined ? (
+      <>
+        {second === undefined ? null : press(second, "ghost")}
+        {press(first, "primary")}
+      </>
+    ) : (
+      // Not read yet, or nothing it lets the person do from here: its crew shows it.
+      <Button onClick={openCrew} size="sm">
+        {waitingVerb(item)}
+      </Button>
+    );
+  const answering = open === "answer" && first?.kind === "answer" ? first : undefined;
+  const line =
+    need.kind === "ready"
+      ? task === undefined
+        ? needsYouCrewLine(need)
+        : needsYouReadyLine(task.title, task.review?.verdict === "accept")
+      : row !== undefined && snapshot !== null
+        ? crewNeedSentence(row, snapshot, crew.mateName)
+        : needsYouCrewLine(need);
+  const failure = command.errorAt(NEEDS_YOU_ORIGIN) ?? undefined;
+  return (
+    <EntryRow
+      control={
+        <>
+          <TellButton
+            name={name}
+            onPress={() => {
+              setOpen(open === "tell" ? null : "tell");
+            }}
+            open={open === "tell"}
+          />
+          {action}
+        </>
+      }
+      lead={<MateLead face="needs" shape={crewmate.shape} tint={crewmate.tint} />}
+      line={line}
+      meta={needsYouCrewOf(crew.mateName)}
+      title={name}
+    >
+      {open === "tell" ? (
+        <Replying
+          error={failure}
+          label={needsYouTellLabel(name)}
+          onCancel={() => {
+            setOpen(null);
+          }}
+          onSend={(text) => {
+            send({ _tag: "message", handle: crewmate.handle, text, attachments: [] }, () => {
+              setOpen(null);
+            });
+          }}
+          placeholder={needsYouTellLabel(name)}
+          replying
+          sending={command.pending}
+        >
+          {null}
+        </Replying>
+      ) : answering !== undefined ? (
+        <Replying
+          error={failure}
+          label="Your answer"
+          onCancel={() => {
+            setOpen(null);
+          }}
+          onSend={(text) => {
+            send(
+              { _tag: "answer", handle: answering.handle, taskId: answering.taskId, text },
+              went,
+            );
+          }}
+          placeholder={`Your answer to ${name}`}
+          replying
+          sending={command.pending}
+        >
+          {null}
+        </Replying>
+      ) : failure === undefined ? null : (
+        <Replying error={failure} replying={false} sending={false}>
+          {null}
+        </Replying>
+      )}
+    </EntryRow>
+  );
+}
+
+/** Where the list's crew presses are placed, so their refusal reads back here. */
+const NEEDS_YOU_ORIGIN = "needs-you";
+
+/** An automated Mate's task waits for an answer in its conversation, where its question stands. */
+function TaskEntry({
+  item,
+  verbs,
+  onClose,
+}: EntryProps & { readonly item: Extract<WaitingItem, { readonly kind: "task" }> }) {
+  const { task } = item;
+  return (
+    <EntryRow
+      control={
+        <Button
+          onClick={() => {
+            onClose();
+            verbs.onOpenMate(task.projectId);
+          }}
+          size="sm"
+        >
+          {waitingVerb(item)}
+        </Button>
+      }
+      lead={<MateLead face="needs" shape={task.shape} tint={task.tint} />}
+      line={needsYouTaskLine(task.title)}
+      title={waitingTitle(item)}
+    />
+  );
+}
+
+/**
+ * A Mate's own wait: its one action — approve its plan, answer it, ask it to fix what stopped it,
+ * review its changes, sign it in — and, beside it, a message that steers it.
+ */
+function MateEntry({
+  item,
+  verbs,
+  onClose,
+  went,
+}: EntryProps & { readonly item: WaitingMateItem }) {
+  const { mate } = item;
+  const [open, setOpen] = useState<"answer" | "tell" | null>(null);
+  const tells = mate.threadId !== undefined && mate.environmentId !== undefined;
+  const asks = item.kind === "plan" || item.kind === "question";
+  const tell = tells ? (
+    <TellButton
+      name={mate.name}
+      onPress={() => {
+        setOpen(open === "tell" ? null : "tell");
+      }}
+      open={open === "tell"}
+    />
+  ) : null;
+  const lead = <MateLead face={mate.face} shape={mate.shape} tint={mate.tint} />;
+  // A plan and a question are answered where they stand, from the conversation they were asked in.
+  if (asks && mate.threadId !== undefined && mate.environmentId !== undefined)
+    return (
+      <MateAsks
+        lead={lead}
+        mate={mate}
+        onClose={onClose}
+        onTell={() => {
+          setOpen(open === "tell" ? null : "tell");
+        }}
+        open={open}
+        setOpen={setOpen}
+        verbs={verbs}
+        went={went}
+      />
+    );
+  const action =
+    item.kind === "failed" ? (
+      <Button
+        aria-label={`Ask ${mate.name} to fix it`}
+        onClick={() => {
+          verbs.onAskToFix(mate.projectId, {
+            what: `${mate.name} stopped on an error`,
+            error: mate.text,
+            ask: "Find out why, fix it, and carry on.",
+          });
+          went();
+          onClose();
+        }}
+        size="sm"
+      >
+        {WAITING_VERBS.failed}
+      </Button>
+    ) : item.kind === "change" && mate.change !== undefined ? (
+      <ReviewButton
+        label={waitingVerb(item)}
+        onClose={onClose}
+        // "Review Nova's 3 changes" goes through every one, one review after another.
+        queue={mate.change.queue?.map((change) => ({
+          kind: "change" as const,
+          groupId: mate.change?.groupId ?? "",
+          ...change,
+        }))}
+        target={{
+          kind: "change",
+          groupId: mate.change.groupId,
+          repository: mate.change.repository,
+          number: mate.change.number,
+        }}
+      />
+    ) : (
+      // Its conversation holds it: a sign-in, a change not read yet, a question with nowhere here
+      // to answer it.
+      <OpenButton label={waitingVerb(item)} mate={mate} onClose={onClose} verbs={verbs} />
+    );
+  return (
+    <EntryRow
+      control={
+        <>
+          {tell}
+          {action}
+        </>
+      }
+      lead={lead}
+      line={mateWaitLine(item)}
+      title={waitingTitle(item)}
+    >
+      {open === "tell" ? (
+        <MateTell
+          mate={mate}
+          onDone={() => {
+            setOpen(null);
+          }}
+        />
+      ) : null}
+    </EntryRow>
+  );
+}
+
+/** What a Mate's row says under its name: its question, its plan, its error, its change. */
+function mateWaitLine(item: WaitingMateItem): string | undefined {
+  if (item.kind === "change") {
+    const count = item.mate.changes ?? 1;
+    return count > 1 ? needsYouChangesLine(count) : item.mate.text;
+  }
+  return item.mate.text;
+}
+
+/**
+ * A message to a Mate about what waits, sent into its conversation as the person's own words: it
+ * steers the Mate and settles nothing, so the row stays until its source says otherwise; sent, or
+ * Esc, the field closes.
+ */
+function MateTell({ mate, onDone }: { readonly mate: WaitingMate; readonly onDone: () => void }) {
+  const write = useMateWrite(
+    mate.environmentId === undefined ? null : EnvironmentId.make(mate.environmentId),
+    mate.threadId === undefined ? null : ThreadId.make(mate.threadId),
+  );
+  const { sending, error, settle } = useSettle(onDone);
+  return (
+    <Replying
+      error={error}
+      label={needsYouTellLabel(mate.name)}
+      onCancel={onDone}
+      onSend={(text) => {
+        settle(write.send(text));
+      }}
+      placeholder={needsYouTellLabel(mate.name)}
+      replying
+      sending={sending}
+    >
+      {null}
+    </Replying>
+  );
+}
+
+/** A press under way and its refusal: what every write from the list holds, and no answer. */
+function useSettle(onDone: () => void) {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const settle = (pending: Promise<AtomCommandResult<unknown, unknown>> | undefined) => {
+    if (pending === undefined) {
+      setError("Not sent: its conversation is still being read.");
+      return;
+    }
+    setSending(true);
+    setError(undefined);
+    void pending.then((result) => {
+      setSending(false);
+      if (result._tag === "Success") onDone();
+      else if (!isAtomCommandInterrupted(result)) setError("Not sent. Try again.");
+    });
+  };
+  return { sending, error, settle };
 }
 
 function ReviewButton({
@@ -421,6 +912,7 @@ function ReviewButton({
         onClose();
         openReview(target, { queue });
       }}
+      size="sm"
     >
       {label}
     </Button>
@@ -445,6 +937,7 @@ function OpenButton({
         onClose();
         verbs.onOpenMate(mate.projectId);
       }}
+      size="sm"
     >
       {label}
     </Button>
@@ -452,82 +945,97 @@ function OpenButton({
 }
 
 /**
- * A plan's and a question's buttons, read off the Mate's conversation as its composer reads it:
- * Approve plan and Change it…; a question's options and Answer…; an approval's choices. Anything
- * the list cannot answer in place — several questions at once — opens the conversation.
+ * A plan's and a question's row, read off the Mate's conversation as its composer reads it: a
+ * plan's one action approves it, and its message says what to change; a question's opens its
+ * choices and its answer under the row; an approval's choices stand there too. Anything the list
+ * cannot answer in place — several questions at once — opens the conversation.
  */
-function MateActions({
+function MateAsks({
   mate,
+  lead,
   verbs,
-  onDone,
+  open,
+  setOpen,
+  onTell,
+  went,
   onClose,
 }: {
   readonly mate: WaitingMate;
+  readonly lead: ReactNode;
   readonly verbs: WaitingVerbs;
-  readonly onDone: () => void;
+  readonly open: "answer" | "tell" | null;
+  readonly setOpen: (open: "answer" | "tell" | null) => void;
+  readonly onTell: () => void;
+  readonly went: () => void;
   readonly onClose: () => void;
 }) {
   const write = useMateWrite(
     mate.environmentId === undefined ? null : EnvironmentId.make(mate.environmentId),
     mate.threadId === undefined ? null : ThreadId.make(mate.threadId),
   );
-  const [replying, setReplying] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const { sending, error, settle } = useSettle(went);
+  // A plan's message says what to change and takes the plan's place; a question's steers it and
+  // leaves the question standing.
+  const told = useSettle(
+    mate.kind === "plan"
+      ? went
+      : () => {
+          setOpen(null);
+        },
+  );
   const { detail, requests } = write;
-
-  const settle = (pending: ReturnType<typeof write.send>) => {
-    if (pending === undefined) {
-      setError("Not sent: its conversation is still being read.");
-      return;
-    }
-    setSending(true);
-    setError(undefined);
-    void pending.then((result) => {
-      setSending(false);
-      if (result._tag === "Success") onDone();
-      else if (!isAtomCommandInterrupted(result)) setError("Not sent. Try again.");
-    });
-  };
+  const tell = <TellButton name={mate.name} onPress={onTell} open={open === "tell"} />;
+  const telling =
+    open === "tell" ? (
+      <Replying
+        error={told.error}
+        label={needsYouTellLabel(mate.name)}
+        onCancel={() => {
+          setOpen(null);
+        }}
+        onSend={(text) => {
+          told.settle(write.send(text, mate.kind === "plan" ? "plan" : undefined));
+        }}
+        placeholder={
+          mate.kind === "plan" ? `Tell ${mate.name} what to change` : needsYouTellLabel(mate.name)
+        }
+        replying
+        sending={told.sending}
+      >
+        {null}
+      </Replying>
+    ) : null;
+  const row = (control: ReactNode, under: ReactNode) => (
+    <EntryRow control={control} lead={lead} line={mate.text} title={mate.name}>
+      {under}
+    </EntryRow>
+  );
 
   if (mate.kind === "plan") {
     const plan =
       detail === undefined
         ? null
         : findLatestProposedPlan(detail.proposedPlans, detail.latestTurn?.turnId ?? null);
-    return (
-      <Replying
-        error={error}
-        onCancel={() => {
-          setReplying(false);
-        }}
-        onSend={(text) => {
-          settle(write.send(text, "plan"));
-        }}
-        placeholder={`Tell ${mate.name} what to change`}
-        replying={replying}
-        sending={sending}
-        label="What should change"
-      >
+    return row(
+      <>
+        {tell}
         <Button
           disabled={plan === null || sending}
           onClick={() => {
             if (plan !== null)
               settle(write.send(buildPlanImplementationPrompt(plan.planMarkdown), "default"));
           }}
+          size="sm"
         >
           Approve plan
         </Button>
-        <Button
-          disabled={sending}
-          onClick={() => {
-            setReplying(true);
-          }}
-          variant="secondary"
-        >
-          Change it…
-        </Button>
-      </Replying>
+      </>,
+      telling ??
+        (error === undefined ? null : (
+          <Replying error={error} replying={false} sending={sending}>
+            {null}
+          </Replying>
+        )),
     );
   }
 
@@ -542,75 +1050,125 @@ function MateActions({
           userInputs: requests.userInputs,
           failure: undefined,
         });
+  const answerPress = (
+    <Button
+      aria-expanded={open === "answer"}
+      disabled={decision?.kind === "reading" || sending}
+      onClick={() => {
+        setOpen(open === "answer" ? null : "answer");
+      }}
+      size="sm"
+    >
+      {WAITING_VERBS.question}
+    </Button>
+  );
   if (decision?.kind === "approval") {
-    return (
-      <Replying error={error} replying={false} sending={sending}>
-        {decision.choices.map((choice) => (
-          <Button
-            disabled={sending}
-            key={choice.value}
-            onClick={() => {
-              settle(write.decide(decision.requestId, choice.value as ProviderApprovalDecision));
-            }}
-            variant={choice.primary ? "primary" : "secondary"}
-          >
-            {choice.label}
-          </Button>
-        ))}
-      </Replying>
+    return row(
+      <>
+        {tell}
+        {answerPress}
+      </>,
+      telling ??
+        (open === "answer" ? (
+          <Replying error={error} replying={false} sending={sending}>
+            {decision.choices.map((choice) => (
+              <Button
+                disabled={sending}
+                key={choice.value}
+                onClick={() => {
+                  settle(
+                    write.decide(decision.requestId, choice.value as ProviderApprovalDecision),
+                  );
+                }}
+                size="sm"
+                variant={choice.primary ? "primary" : "secondary"}
+              >
+                {choice.label}
+              </Button>
+            ))}
+          </Replying>
+        ) : null),
     );
   }
   if (decision?.kind === "question") {
-    return (
-      <Replying
-        error={error}
-        label="Your answer"
-        onCancel={() => {
-          setReplying(false);
-        }}
-        onSend={(text) => {
-          settle(write.answer(decision.requestId, decision.questionId, text));
-        }}
-        placeholder={`Your answer to ${mate.name}`}
-        replying={replying}
-        sending={sending}
-      >
-        {decision.choices.map((choice) => (
-          <Button
-            disabled={sending}
-            key={choice.value}
-            onClick={() => {
-              settle(write.answer(decision.requestId, decision.questionId, choice.value));
-            }}
-            variant="secondary"
-          >
-            {choice.label}
-          </Button>
-        ))}
-        {decision.allowText ? (
-          <Button
-            disabled={sending}
-            onClick={() => {
-              setReplying(true);
-            }}
-            variant="secondary"
-          >
-            Answer…
-          </Button>
-        ) : null}
-      </Replying>
+    return row(
+      <>
+        {tell}
+        {answerPress}
+      </>,
+      telling ??
+        (open === "answer" ? (
+          <Replying error={error} replying={false} sending={sending}>
+            {decision.choices.map((choice) => (
+              <Button
+                disabled={sending}
+                key={choice.value}
+                onClick={() => {
+                  settle(write.answer(decision.requestId, decision.questionId, choice.value));
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                {choice.label}
+              </Button>
+            ))}
+            {decision.allowText ? (
+              <AnswerField
+                label="Your answer"
+                onSend={(text) => {
+                  settle(write.answer(decision.requestId, decision.questionId, text));
+                }}
+                placeholder={`Your answer to ${mate.name}`}
+                sending={sending}
+              />
+            ) : null}
+          </Replying>
+        ) : null),
     );
   }
   // Still being read: its answer's way in stands, waiting for what it asks.
-  if (decision?.kind === "reading" && mate.threadId !== undefined) {
-    return (
-      <Button disabled variant="secondary">
-        Answer…
-      </Button>
+  if (decision?.kind === "reading")
+    return row(
+      <>
+        {tell}
+        {answerPress}
+      </>,
+      telling,
     );
-  }
-  // More than the list can answer in place, or no conversation to answer in: its conversation.
-  return <OpenButton label={WAITING_VERBS.question} mate={mate} onClose={onClose} verbs={verbs} />;
+  // More than the list can answer in place: its conversation.
+  return row(
+    <>
+      {tell}
+      <OpenButton label={WAITING_VERBS.question} mate={mate} onClose={onClose} verbs={verbs} />
+    </>,
+    telling,
+  );
+}
+
+/** A one-line answer beside a question's choices: Enter sends it. */
+function AnswerField({
+  label,
+  placeholder,
+  sending,
+  onSend,
+}: {
+  readonly label: string;
+  readonly placeholder: string;
+  readonly sending: boolean;
+  readonly onSend: (text: string) => void;
+}) {
+  return (
+    <Replying
+      error={undefined}
+      label={label}
+      onSend={onSend}
+      placeholder={placeholder}
+      replying
+      sending={sending}
+    >
+      {null}
+    </Replying>
+  );
 }
 
 /**

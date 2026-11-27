@@ -1,4 +1,6 @@
 import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
+import type { SentAsk } from "@t3tools/client-runtime/data";
+import { isSlashCommand } from "@t3tools/shared/userAsk";
 import { onAccountLifetimeClose } from "../zerops/accountLifetime";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
@@ -49,6 +51,7 @@ import {
 import type { DraftThreadEnvMode } from "../composerDraftStore";
 import type { ComposerSubmissionIntent } from "../composer-logic";
 import type { TimelineEntry } from "../session-logic";
+import type { QueuedSendInFlight } from "../queuedMessageStore";
 import {
   NO_PROVIDER_MODEL_SELECTION,
   resolveSelectableProviderInstanceEntry,
@@ -1320,4 +1323,56 @@ export function helpersSessionLive(input: {
     input.backgroundLiveness === "working" ||
     input.backgroundLiveness === "monitoring"
   );
+}
+
+/**
+ * Whether a thread's last queued send is still waiting for the server to pick it up. The next
+ * message waits with it, so a send that starts a new turn and the one behind it never leave on
+ * one boundary.
+ */
+export function queuedSendAwaitsServer(input: {
+  readonly send: QueuedSendInFlight | undefined;
+  readonly thread: Thread | null;
+  readonly phase: SessionPhase;
+  readonly pendingRequest: boolean;
+}): boolean {
+  const { send, thread } = input;
+  if (send === undefined) return false;
+  if (send.phase === "preparing") return true;
+  const latestUserMessageId =
+    thread?.messages.findLast((message) => message.role === "user")?.id ?? null;
+  return !hasServerAcknowledgedLocalDispatch({
+    localDispatch: send.thread,
+    phase: input.phase,
+    latestTurn: thread?.latestTurn ?? null,
+    latestUserMessageId,
+    session: thread?.session ?? null,
+    hasPendingApproval: input.pendingRequest,
+    hasPendingUserInput: false,
+    latestTurnStartFailureId: latestTurnStartFailureId(thread ?? undefined, latestUserMessageId),
+    threadError: null,
+  });
+}
+
+/**
+ * What a turn send records in the account's turn receipts: the words the person typed, for a send
+ * that starts a turn with words — never a slash command, never a send of pictures alone, never
+ * words a page sent for them.
+ */
+export function turnSendAsk(input: {
+  readonly trimmedPrompt: string;
+  readonly messageId: string;
+  readonly threadId: string;
+  readonly at: string;
+  /** A page asked for the send (`ComposerSendIds.fromPanel`): never the menu's line. */
+  readonly fromPanel?: boolean;
+}): SentAsk | null {
+  if (input.fromPanel === true) return null;
+  if (input.trimmedPrompt.length === 0 || isSlashCommand(input.trimmedPrompt)) return null;
+  return {
+    messageId: input.messageId,
+    threadId: input.threadId,
+    text: input.trimmedPrompt,
+    at: input.at,
+  };
 }

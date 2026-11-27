@@ -14,7 +14,7 @@ import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
-const WIDTHS = ["auto", "sm", "md", "lg"] as const;
+const WIDTHS = ["auto", "sm", "md", "lg", "xl"] as const;
 const PADDINGS = ["default", "compact", "none"] as const;
 
 function Body() {

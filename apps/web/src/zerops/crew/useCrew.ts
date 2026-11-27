@@ -164,3 +164,24 @@ export const mateCrewAtom = Atom.family((projectId: string) =>
 export function useMateCrew(projectId: string | null): MateCrewRead {
   return useAtomValue(projectId === null ? NO_MATE_CREW : mateCrewAtom(projectId));
 }
+
+const NO_CREWS = Atom.make((): ReadonlyArray<MateCrewRead> => []);
+
+/**
+ * Many Mates' crews at once, by project (the menu's rows, what needs the viewer): one subscription
+ * per Mate, through one derived atom made anew only when which Mates are asked for changes.
+ */
+export function useMateCrews(projectIds: ReadonlyArray<string>): ReadonlyMap<string, MateCrewRead> {
+  const held = [...new Set(projectIds)].join("\n");
+  const readsAtom = useMemo(() => {
+    const ids = held === "" ? [] : held.split("\n");
+    return ids.length === 0 ? NO_CREWS : Atom.make((get) => ids.map((id) => get(mateCrewAtom(id))));
+  }, [held]);
+  const reads = useAtomValue(readsAtom);
+  return useMemo(() => {
+    const ids = held === "" ? [] : held.split("\n");
+    return new Map(
+      ids.flatMap((id, index) => (reads[index] === undefined ? [] : [[id, reads[index]]])),
+    );
+  }, [held, reads]);
+}

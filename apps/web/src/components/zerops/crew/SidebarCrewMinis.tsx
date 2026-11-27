@@ -13,16 +13,13 @@
  * The minis sit inside the row's own button: they open nothing and take no focus. A pointer on
  * one shows its name and what it is doing; the crew's words ride in the row's accessible name.
  *
- * Read from HQ (`mateCrewAtom`, the source `useMateCrew` reads), one subscription per Mate,
+ * Read from HQ (`useMateCrews`, the source `useMateCrew` reads), one subscription per Mate,
  * or a crew handed in instead (a harness).
  */
 import type { ZeropsUserId } from "@t3tools/contracts";
-import { useAtomValue } from "@effect/atom-react";
 import { crewFaceWord } from "@t3tools/client-runtime/zerops/crew/phrases";
-import { Atom } from "effect/reactivity";
 import {
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type AnimationEvent,
@@ -31,7 +28,7 @@ import {
 } from "react";
 
 import { prefersReducedMotion } from "~/lib/reducedMotion";
-import { mateCrewAtom, type MateCrewRead } from "../../../zerops/crew/useCrew";
+import { useMateCrews, type MateCrewRead } from "../../../zerops/crew/useCrew";
 import { useZeropsSessionOptional } from "../../../zerops/ZeropsSessionProvider";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { MateFace } from "../primitives";
@@ -85,29 +82,15 @@ function factsOf(
   return facts;
 }
 
-const NO_READS = Atom.make((): ReadonlyArray<MateCrewRead> => []);
-
 /**
  * Every listed Mate's crew facts at once (a group row needs its Mates' asks): one subscription
- * per Mate, keyed by its project; no Mate without a crew in the map. `read` hands a fixture in
- * instead of HQ's.
+ * per Mate, keyed by its project (`useMateCrews`); no Mate without a crew in the map. `read` hands
+ * a fixture in instead of HQ's.
  */
 export function useCrewRows(mates: ReadonlyArray<CrewRowMate>): ReadonlyMap<string, CrewRowFacts> {
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  const held = [
-    ...new Set(mates.flatMap((mate) => (mate.read === undefined ? [mate.projectId] : []))),
-  ].join("\n");
-  // The list's length changes between renders: one derived atom over the Mates' own, made anew
-  // only when which Mates are listed changes.
-  const readsAtom = useMemo(() => {
-    const projectIds = held === "" ? [] : held.split("\n");
-    return projectIds.length === 0
-      ? NO_READS
-      : Atom.make((get) => projectIds.map((projectId) => get(mateCrewAtom(projectId))));
-  }, [held]);
-  const reads = useAtomValue(readsAtom);
-  const fromHq = new Map(
-    held === "" ? [] : held.split("\n").map((id, index) => [id, reads[index]]),
+  const fromHq = useMateCrews(
+    mates.flatMap((mate) => (mate.read === undefined ? [mate.projectId] : [])),
   );
   const rows = new Map<string, CrewRowFacts>();
   for (const mate of mates) {

@@ -18,7 +18,7 @@ type PopoverWidth = NonNullable<PopoverProps["width"]>;
 type PopoverPadding = NonNullable<PopoverProps["padding"]>;
 
 const VARIANTS = variantsOf<PopoverVariant>({ default: true, tooltip: true });
-const WIDTHS = variantsOf<PopoverWidth>({ auto: true, sm: true, md: true, lg: true });
+const WIDTHS = variantsOf<PopoverWidth>({ auto: true, sm: true, md: true, lg: true, xl: true });
 const PADDINGS = variantsOf<PopoverPadding>({ default: true, compact: true, none: true });
 const SIDES = ["bottom", "top", "right", "left"] as const;
 const ALIGNS = ["start", "center", "end"] as const;

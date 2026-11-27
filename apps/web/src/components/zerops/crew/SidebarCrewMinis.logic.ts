@@ -21,7 +21,7 @@ import type { CrewStatus, EnvironmentId, ZeropsUserId } from "@t3tools/contracts
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 import type { CrewDigest, OverviewLogins } from "@t3tools/shared/mateLink";
 
-import { crewFaces, crewTaskReviewable } from "./SidebarCrewLine.logic";
+import { crewFaces, crewTaskReviewable } from "~/zerops/crew/crewDigest";
 
 /**
  * A crew handed to the menu instead of HQ's (a harness): its status for the Mate's menu, its
