@@ -303,6 +303,7 @@ function JobForm({
               ? null
               : crewMoreSummary({
                   runsOn: runsOnLabel,
+                  place: writes ? draft.pool || draft.host || null : null,
                   check: writes && draft.check.trim() !== "" ? draft.check.trim() : null,
                   run: writes && draft.run.trim() !== "" ? draft.run.trim() : null,
                 })

@@ -1218,6 +1218,7 @@ const CREW_ASK = parseCrewAsk(
         part: "Builds the payment API.",
         agent: "codex",
         model: "gpt-6-sol",
+        host: "apidev",
       },
       {
         name: "Ivo",
@@ -1231,9 +1232,18 @@ const CREW_ASK = parseCrewAsk(
   }),
 )!;
 
-type CrewAskState = "ready" | "signIn" | "applied" | "other" | "held" | "unread" | "off";
+type CrewAskState =
+  | "ready"
+  | "several"
+  | "signIn"
+  | "applied"
+  | "other"
+  | "held"
+  | "unread"
+  | "off";
 const CREW_ASK_STATES: ReadonlyArray<readonly [CrewAskState, string]> = [
   ["ready", "Waiting"],
+  ["several", "Several dev services"],
   ["signIn", "Not signed in to Codex"],
   ["applied", "Crew set up"],
   ["other", "Another crew"],
@@ -1245,6 +1255,7 @@ const CREW_ASK_STATES: ReadonlyArray<readonly [CrewAskState, string]> = [
 /** Each state's crew as the card reads it: the Mate's own, HQ's last word, or nobody's yet. */
 const CREW_ASK_STANDING: Readonly<Record<CrewAskState, CrewAskStanding>> = {
   ready: { status: "none", from: "mate", ours: false },
+  several: { status: "none", from: "mate", ours: false },
   signIn: { status: "none", from: "mate", ours: false },
   applied: { status: "applied", from: "mate", ours: true },
   other: { status: "applied", from: "mate", ours: false },
@@ -1271,6 +1282,13 @@ function CrewSetUp({ density }: { readonly density: AskDensity }) {
         onSignIn={() => undefined}
         availability={state === "signIn" ? CODEX_SIGNED_OUT : undefined}
         providers={[CLAUDE_LOGIN, CODEX_LOGIN]}
+        places={
+          state === "unread"
+            ? null
+            : state === "several"
+              ? { devHosts: ["apidev", "webdev"], pools: [] }
+              : { devHosts: ["appdev"], pools: [] }
+        }
         standing={CREW_ASK_STANDING[state]}
       />
     </Specimen>

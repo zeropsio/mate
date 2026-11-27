@@ -69,11 +69,16 @@ export function crewSuggestState(input: {
   return { disabled: input.busy, reason: null };
 }
 
-/** *Start the crew*: it needs someone on it and the goal, and a crew this viewer may start. */
+/**
+ * *Start the crew*: it needs someone on it, the goal, each builder's place where there are several
+ * to choose from, and a crew this viewer may start.
+ */
 export function crewStartState(input: {
   readonly goal: string;
   /** Someone is on the crew. */
   readonly drafted: boolean;
+  /** A builder has nowhere for its copy, among several places: the person picks it. */
+  readonly unplaced: boolean;
   /** Something else holds it: a write in flight, a crew standing, a home that doesn't read. */
   readonly blocked: boolean;
   /** Why this viewer may not start it (D6); `null` where they may. */
@@ -81,6 +86,7 @@ export function crewStartState(input: {
 }): CrewSetupPress {
   if (!input.drafted) return { disabled: true, reason: CREW_SETUP_WORDS.pickFirst };
   if (input.goal.trim() === "") return { disabled: true, reason: CREW_SETUP_WORDS.goalFirst };
+  if (input.unplaced) return { disabled: true, reason: CREW_SETUP_WORDS.placeFirst };
   if (input.lock !== null) return { disabled: true, reason: input.lock };
   return { disabled: input.blocked, reason: null };
 }

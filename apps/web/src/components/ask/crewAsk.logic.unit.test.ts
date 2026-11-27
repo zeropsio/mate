@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 
-import { crewAskStanding, crewAskState } from "./crewAsk.logic";
+import { crewAskPlace, crewAskStanding, crewAskState } from "./crewAsk.logic";
 
 const stateOf = (
   mate: { readonly status: "off" | "none" | "applied" | null; readonly ask: string | undefined },
@@ -15,4 +15,25 @@ it("AK+1: A crew card says its crew is set up only once the Mate's own crew name
   expect(stateOf({ status: null, ask: undefined }, "applied")).toBe("replaced");
   expect(stateOf({ status: "none", ask: undefined }, "applied")).toBe("waiting");
   expect(stateOf({ status: null, ask: undefined }, null)).toBe("waiting");
+});
+
+// witness: apps/web/src/components/ask/crewAsk.logic.ts | if (places === null) return { kind: "unread" }; → if (places === null) return crewmate.host === undefined ? { kind: "unread" } : { kind: "on", place: crewmate.host };
+it("AK+2: A crew card's builder works on the place the card named only where the Mate has it, else on the Mate's one place, and among several the person chooses; nothing is placed before the Mate's dev services and pools are read; breaks: a card's named pool is saved as a dev service, or a builder starts on a place nobody chose", () => {
+  const builder = (host: string | undefined) => ({ kind: "writer" as const, host });
+  const several = { devHosts: ["appdev"], pools: ["tinypool"] };
+  expect([
+    crewAskPlace(builder("tinypool"), null),
+    crewAskPlace(builder("tinypool"), several),
+    crewAskPlace(builder(undefined), several),
+    crewAskPlace(builder("apidev"), { devHosts: ["appdev"], pools: [] }),
+    crewAskPlace(builder(undefined), { devHosts: [], pools: [] }),
+    crewAskPlace({ kind: "reader", host: undefined }, several),
+  ]).toEqual([
+    { kind: "unread" },
+    { kind: "on", place: "tinypool" },
+    { kind: "choose" },
+    { kind: "on", place: "appdev" },
+    { kind: "none" },
+    null,
+  ]);
 });

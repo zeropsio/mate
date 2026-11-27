@@ -12,6 +12,7 @@ import {
   parseCrewHome,
   renderCrewHome,
   validateCrewTopology,
+  unplacedBuilders,
   withBuildersPlaced,
 } from "./crewHome.ts";
 import { crewFromAsk } from "./crewTemplates.ts";
@@ -543,7 +544,7 @@ it("SH11: OpenCode stands in for a person's sign-in only on a model key they set
   ]).toEqual([false, false, true, true]);
 });
 
-// witness: packages/shared/src/crewHome.ts | if (!unplaced(member)) return member; → return member;
+// witness: packages/shared/src/crewHome.ts | unplaced(member) ? { ...member, ...only } : member → member
 it("SH13: A crew drafted before the Mate's dev services are read keeps every crewmate, and its builder is placed on the only dev service, sharing the database it reaches, before Apply admits it; breaks: a crew card pressed on a Mate with a new dev service saves nobody, or a builder starts with nowhere for its copy", () => {
   const drafted = crewFromAsk({
     crew: "crew",
@@ -572,5 +573,33 @@ it("SH13: A crew drafted before the Mate's dev services are read keeps every cre
       ["reviewer", undefined, undefined],
     ],
     admitted: [],
+  });
+});
+
+// witness: packages/shared/src/crewHome.ts | if (places.devHosts.length + pools.length !== 1) return null; → if (places.devHosts.length + pools.length === 0) return null;
+it("SH+1: Among several dev services and dev pools a crew's builder is placed only where its crew card or the person named it, a named pool as a pool, and never by itself: it stays unplaced until the person picks; breaks: a builder starts on a service nobody chose, or a card's pool is taken for a service", () => {
+  const places = { devHosts: ["appdev", "apidev"], pools: ["tinypool"] };
+  const drafted = crewFromAsk({
+    crew: "crew",
+    ...places,
+    seats: [
+      { name: "Lead", kind: "lead", part: "Plans the work." },
+      { name: "Api", kind: "writer", part: "Builds the API.", place: "apidev" },
+      { name: "Pages", kind: "writer", part: "Builds the pages.", place: "tinypool" },
+      { name: "Admin", kind: "writer", part: "Builds the admin." },
+    ],
+  });
+  const placed = withBuildersPlaced(drafted, places);
+  expect({
+    placed: placed.members.map((member) => [member.handle, member.host, member.pool]),
+    toPick: unplacedBuilders(placed).map((member) => member.handle),
+  }).toEqual({
+    placed: [
+      ["lead", undefined, undefined],
+      ["api", "apidev", undefined],
+      ["pages", undefined, "tinypool"],
+      ["admin", undefined, undefined],
+    ],
+    toPick: ["admin"],
   });
 });

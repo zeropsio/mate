@@ -24,6 +24,8 @@
  * over fixture crew files.
  *
  * Add `&pool=1` for a Mate with only tinypool. Its job view opens a new builder.
+ * Add `&places=2` for a Mate with two dev services: the setup's draft has one
+ * builder on the service its card named and the others still to place.
  * Served by the dev server at `/design-crew.html`. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
@@ -69,6 +71,8 @@ const params = new URLSearchParams(location.search);
 const pooled = params.get("pool") === "1";
 const pools = pooled ? ["tinypool"] : [];
 const writerPlace = pooled ? { pool: "tinypool" } : { host: "appdev" };
+/** Two dev services: nothing places a builder by itself, so the person picks each one's. */
+const SEVERAL = params.get("places") === "2";
 const STATE = params.get("state") ?? "idle";
 
 /** Who looks: the person who runs the crew's agent, or — `&viewer=` — somebody who may not. */
@@ -639,7 +643,12 @@ function snapshotOf(state: CrewState): CrewSnapshot {
     board: { tasks: state.tasks },
     run: state.run,
     attention: state.attention,
-    devHosts: pooled ? [] : [{ host: "appdev", database: false }],
+    devHosts: pooled
+      ? []
+      : [
+          { host: "appdev", database: false },
+          ...(SEVERAL ? [{ host: "apidev", database: false }] : []),
+        ],
     landedNotDelivered: state.notShipped,
     lastError: null,
   };
@@ -675,10 +684,22 @@ const DEFINITION: CrewDefinition = (() => {
   };
 })();
 
-/** The crew home as the setup drafts it: the goal's first paragraph, and the crew Fen suggested. */
+/**
+ * The crew home as the setup drafts it: the goal's first paragraph, and the crew Fen suggested —
+ * with two dev services, the server's builder on the one its card named and the others unplaced.
+ */
 const DRAFT: CrewDefinition = {
   ...DEFINITION,
   brief: parseBrief("Letopis — shared persistent world", `${GOAL.body.split("\n")[0]}\n`),
+  members: SEVERAL
+    ? DEFINITION.members.map(({ host: _host, ...member }) =>
+        member.kind !== "writer"
+          ? member
+          : member.handle === SERVER.handle
+            ? { ...member, host: "apidev" }
+            : member,
+      )
+    : DEFINITION.members,
 };
 
 /** `setup-start` has the goal and nobody on the crew; `setup-draft` the crew Fen suggested. */

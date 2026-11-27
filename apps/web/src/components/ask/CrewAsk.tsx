@@ -1,7 +1,7 @@
 /**
  * A Mate's crew ask (`crew-ask` fence) as its card, read as the setup it opens reads: the goal,
- * then who's on it, each crewmate with its part and, at the row's end, the agent's mark and the
- * model it runs on among this Mate's sign-ins. An agent the Mate isn't signed in to is a warning on
+ * then who's on it, each crewmate with its part, a builder with where it works (`crewAskPlace`),
+ * and, at the row's end, the agent's mark and the model it runs on among this Mate's sign-ins. An agent the Mate isn't signed in to is a warning on
  * its row, a line saying what its crewmates start on instead and a press to sign in, after which
  * the rows follow. The main press opens the Crew tab's setup filled in with the crew, to change
  * and start there. Once a crew stands it opens the crew instead, and says it is set up only when
@@ -20,6 +20,7 @@ import type {
   ZeropsAgentId,
 } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
+import type { CrewPlaces } from "@t3tools/shared/crewHome";
 import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/data";
 import { type CrewAskSeat, crewFromAsk } from "@t3tools/shared/crewTemplates";
 import { createContext, type ReactNode, use, useMemo } from "react";
@@ -28,6 +29,7 @@ import { useServerConfigs } from "~/state/entities";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { openCrewTab, openCrewView } from "~/zerops/crew/crewTab";
 import { useCrew, useMateCrew } from "~/zerops/crew/useCrew";
+import { useCrewPools } from "~/zerops/crew/useCrewPools";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { PROVIDER_ICON_BY_PROVIDER } from "../chat/providerIconUtils";
@@ -38,6 +40,7 @@ import { List } from "../ui/list";
 import { Row } from "../ui/row";
 import { Text } from "../ui/text";
 import { MateFace } from "../zerops/primitives";
+import { crewDevHosts } from "../zerops/crew/CrewEditors.logic";
 import { AskCard, AskFooter } from "./AskCard";
 import {
   type CrewAsk,
@@ -47,6 +50,8 @@ import {
   crewAskGoalLead,
   crewAskMissing,
   crewAskMissingWords,
+  crewAskPlace,
+  crewAskPlaceWords,
   crewAskRunsOn,
   crewAskRunsOnWords,
   crewAskSeats,
@@ -116,6 +121,16 @@ function CrewAskCard({
     held,
     ask.key,
   );
+  // Where its builders can work: the dev services its crew reads, and the project's dev pools.
+  const pools = useCrewPools(environmentId);
+  const snapshot = crew.snapshot;
+  const places = useMemo(
+    (): CrewPlaces | null =>
+      snapshot === null || pools === undefined
+        ? null
+        : { devHosts: crewDevHosts(snapshot).map((host) => host.host), pools },
+    [pools, snapshot],
+  );
   const signIn = use(CrewAskSignInContext);
   return (
     <CrewAskCardView
@@ -130,6 +145,7 @@ function CrewAskCard({
           proposed: { key: ask.key, goal: ask.goal, seats },
         })
       }
+      places={places}
       providers={providers}
       standing={standing}
     />
@@ -145,6 +161,7 @@ export function CrewAskCardView({
   mate,
   providers,
   availability,
+  places,
   standing,
   onSetUp,
   onOpenCrew,
@@ -156,6 +173,8 @@ export function CrewAskCardView({
   /** Which of them may run, by their sign-in; `undefined` where nothing gates them. */
   readonly availability: CrewAskAvailability;
   readonly standing: CrewAskStanding;
+  /** Where its builders can work; `null` while unread. */
+  readonly places: CrewPlaces | null;
   /** Opens the setup filled in with the crew, each crewmate on what it runs on here. */
   readonly onSetUp: (seats: ReadonlyArray<CrewAskSeat>) => void;
   readonly onOpenCrew: () => void;
@@ -180,8 +199,9 @@ export function CrewAskCardView({
       ask.crew.map((crewmate) => ({
         crewmate,
         runsOn: crewAskRunsOn(crewmate, providers, availability),
+        place: crewAskPlace(crewmate, places),
       })),
-    [ask, availability, providers],
+    [ask, availability, places, providers],
   );
   const missing = crewAskMissing(rows);
   // One press per agent this viewer can sign this Mate in to here; the rows follow the sign-in.
@@ -227,9 +247,10 @@ export function CrewAskCardView({
             live
               ? {
                   label: "Set up crew…",
-                  // The setup opens on the Mate's own crew, never on HQ's word for it.
-                  disabled: standing?.from !== "mate",
-                  onPress: () => onSetUp(crewAskSeats(ask, providers, availability)),
+                  // The setup opens on the Mate's own crew, never on HQ's word for it, and on
+                  // its places read, so a builder's named place is never guessed.
+                  disabled: standing?.from !== "mate" || places === null,
+                  onPress: () => onSetUp(crewAskSeats(ask, providers, availability, places)),
                 }
               : null
           }
@@ -262,7 +283,7 @@ export function CrewAskCardView({
             </Text>
             <Card variant="inset">
               <List render={<ul />}>
-                {rows.map(({ crewmate, runsOn }, index) => {
+                {rows.map(({ crewmate, runsOn, place }, index) => {
                   const sentence = crewJobLine(crewmate.part, crewmate.name);
                   const tag = crewRoleTag(crewmate.kind, crewmate.name, sentence);
                   return (
@@ -271,7 +292,19 @@ export function CrewAskCardView({
                     <li data-crew-ask-crewmate={crewmate.kind} data-md-li="" key={index}>
                       <Row
                         lead={<MateFace size={24} state="idle" tint={tints[index] ?? "slate"} />}
-                        line={sentence}
+                        line={
+                          place === null ? (
+                            sentence
+                          ) : (
+                            <>
+                              <span className="block">{sentence}</span>
+                              {/* Its room is kept while the places read: the card never grows. */}
+                              <span aria-hidden={place.kind === "unread"} className="block">
+                                {crewAskPlaceWords(place) ?? "\u00a0"}
+                              </span>
+                            </>
+                          )
+                        }
                         lineWraps
                         meta={<RunsOn runsOn={runsOn} />}
                         title={

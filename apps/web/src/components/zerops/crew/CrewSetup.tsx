@@ -7,8 +7,10 @@
  * fills the rows to edit — or from *Start with a lead and two builders*, or
  * *Add someone yourself*. Once drafted, a row per crewmate exactly like the
  * tab's, each opening its job. *Start the crew* places each builder with
- * nowhere for its copy on the Mate's dev services as last read, or its pool
- * (`withBuildersPlaced`): a crew can be drafted before they are read. It then
+ * nowhere for its copy on the Mate's one dev service or pool as last read
+ * (`withBuildersPlaced`): a crew can be drafted before they are read. Among
+ * several, such a builder's row asks the person to choose, its job picks the
+ * place, and *Start the crew* waits for it. It then
  * makes each builder its own copy of the Mate's code, and each row says how
  * that goes, until the crew stands and the view becomes the tab.
  *
@@ -49,6 +51,7 @@ import {
   CREW_BRIEF_FILE,
   CREW_HOME_FILE,
   renderCrewHome,
+  unplacedBuilders,
   withBuildersPlaced,
   type CrewDefinition,
   type CrewMemberSpec,
@@ -197,15 +200,17 @@ export function CrewSetup(props: CrewSetupProps) {
   // does: the goal and the rows, over a draft here — its card's press asked for it, and the crew
   // names the card, so the card says it is set up once it starts (`crewAskState`) — on a Mate
   // whose server reads that name (`crewCardAsk`); an older one refuses it, so it goes unnamed
-  // there and the card says only that the Mate has a crew. It fills in at
-  // once, on the dev services as the crew last read them; opening the tab reads them again only
-  // after, so a builder may have nowhere for its copy yet: it keeps its row, and Start places it.
+  // there and the card says only that the Mate has a crew. It fills in once the Mate's pools are
+  // read, on the dev services as the crew last read them; a builder the card placed nowhere keeps
+  // its row with nowhere for its copy, and Start places it where there is one place.
   const filledIn = useRef<string | null>(null);
   const { proposed } = props;
   const capabilities = useServerConfigs().get(props.environmentId)?.environment.capabilities;
   useEffect(() => {
     if (proposed === undefined || filledIn.current === proposed.key) return;
     if (props.applied || members === null || busy || capabilities === undefined) return;
+    // The Mate's pools are read first: a card's named pool is never written as a dev service.
+    if (props.pools === undefined) return;
     filledIn.current = proposed.key;
     proposal.cancel();
     setStartFailure(null);
@@ -264,6 +269,13 @@ export function CrewSetup(props: CrewSetupProps) {
     props.devHosts.length === 0 &&
     !props.pools?.length &&
     writers.some((member) => member.pool === undefined);
+  // Among several places nothing picks a builder's for it: its row asks, and Start waits.
+  const severalPlaces = devHosts.length + (props.pools?.length ?? 0) > 1;
+  const toPlace = new Set(
+    severalPlaces && definition !== null
+      ? unplacedBuilders(definition).map((member) => member.handle)
+      : [],
+  );
   // The services whose database its builders share: the footer says how many, never their names.
   const sharedDatabases = new Set(
     writers.flatMap((member) =>
@@ -289,6 +301,7 @@ export function CrewSetup(props: CrewSetupProps) {
   const startPress = crewStartState({
     goal,
     drafted,
+    unplaced: toPlace.size > 0,
     blocked:
       busy ||
       props.applied ||
@@ -427,6 +440,7 @@ export function CrewSetup(props: CrewSetupProps) {
             {members.map((member) => (
               <SetupRow
                 applied={props.applied}
+                choosePlace={toPlace.has(member.handle)}
                 crewmate={props.crewmates.find((row) => row.handle === member.handle)}
                 key={member.handle}
                 mateName={mate.name}
@@ -552,17 +566,23 @@ function TrioFaces({ mateTint }: { readonly mateTint: MateTintId | undefined }) 
   );
 }
 
-/** A crewmate being set up: the tab's row — its name, the first line of its job — and its copy's progress once it starts. */
+/**
+ * A crewmate being set up: the tab's row — its name, the first line of its job — that a builder
+ * with nowhere for its copy among several places has yet to be placed, and its copy's progress
+ * once it starts.
+ */
 function SetupRow({
   member,
   crewmate,
   applied,
+  choosePlace,
   mateName,
   onOpen,
 }: {
   readonly member: CrewMemberSpec;
   readonly crewmate: Crewmate | undefined;
   readonly applied: boolean;
+  readonly choosePlace: boolean;
   readonly mateName: string;
   readonly onOpen: () => void;
 }) {
@@ -582,6 +602,7 @@ function SetupRow({
       line={
         <>
           <span className="block">{sentence}</span>
+          {choosePlace ? <span className="block">{CREW_SETUP_WORDS.choosePlace}</span> : null}
           {readying ? <span className="block">{CREW_COPY_READYING}</span> : null}
           {broken === null ? null : (
             <Text className="block" variant="error">

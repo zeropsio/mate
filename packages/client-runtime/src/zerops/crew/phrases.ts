@@ -765,6 +765,10 @@ export const CREW_SETUP_WORDS = {
   addYourself: "Add someone yourself",
   start: "Start the crew",
   pickFirst: "Pick who's on it first.",
+  /** Why *Start the crew* waits while a builder has nowhere for its copy among several places. */
+  placeFirst: "Choose where each builder works first.",
+  /** A builder's row while it has nowhere for its copy among several places; its job picks one. */
+  choosePlace: "Choose where it works",
   /** Why *Start the crew* and *Let Fen suggest a crew* wait. */
   goalFirst: "Write the goal first.",
   /** Throws the setup's goal and picks away; the crew home goes back to nobody. */
@@ -945,15 +949,21 @@ export const crewOneOfWord = (mateName: string, lead: boolean): string =>
 export const crewBuildsLine = (mateName: string): string =>
   `Changes code, in its own copy of ${crewPossessive(mateName)} code.`;
 
+/** Where a builder works: its dev service, or its dev pool (a copy of its own from it). */
+export const crewPlaceWord = (place: string): string => `works on ${place}`;
+
 /** More's summary line while it is folded. */
 export function crewMoreSummary(input: {
   readonly runsOn: string;
+  /** A builder's dev service or pool; `null` for a crewmate that reads, or one not chosen yet. */
+  readonly place: string | null;
   readonly check: string | null;
   readonly run: string | null;
 }): string {
   return [
     "Its name and face",
     `runs on ${input.runsOn}`,
+    input.place === null ? null : crewPlaceWord(input.place),
     input.check === null ? null : `checks its work with ${input.check}`,
     input.run === null ? null : `starts its app with ${input.run}`,
   ]

@@ -67,8 +67,9 @@
  * service, and a writer on a service with a database declares `env:` or
  * `database: shared` (PRD §5.1). Apply needs both to be empty. A draft may
  * hold a writer with nowhere for its copy yet — the setup can draft a crew
- * before the Mate's dev services are read — and `withBuildersPlaced` places it
- * on what the project has.
+ * before the Mate's dev services are read, or the project has several places
+ * — and `withBuildersPlaced` places it where the project has one place only;
+ * among several the person picks.
  *
  * @module crewHome
  */
@@ -566,47 +567,56 @@ export const withSharedDatabase = (
       }
     : definition;
 
-/** Where a crew's builders can work. */
+/** Where a crew's builders can work: its dev services and its dev pools, each a place. */
 export interface CrewPlaces {
-  /** The Mate's dev services; builders take them in turn. */
+  /** The Mate's dev services. */
   readonly devHosts: ReadonlyArray<string>;
   /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
   readonly databaseHosts?: ReadonlyArray<string>;
-  /** Each builder takes its own copy from the first pool when there is no dev service. */
+  /** Its dev pools: a builder there takes a copy of its own from the pool. */
   readonly pools?: ReadonlyArray<string>;
 }
+
+/** The one place a builder can work, where the project has exactly one; `null` otherwise. */
+export const onlyCrewPlace = (
+  places: CrewPlaces,
+): { readonly host: string } | { readonly pool: string } | null => {
+  const pools = places.pools ?? [];
+  if (places.devHosts.length + pools.length !== 1) return null;
+  return places.devHosts[0] === undefined ? { pool: pools[0]! } : { host: places.devHosts[0] };
+};
 
 /** A writer with neither a host nor a pool: nowhere for its copy of the code. */
 const unplaced = (member: CrewMemberSpec): boolean =>
   member.kind === "writer" && member.host === undefined && member.pool === undefined;
 
 /**
- * The definition with each writer that has nowhere for its copy placed — on the dev services in
- * turn, else on the first pool — and each writer on a service with a database sharing it
+ * The definition with each writer that has nowhere for its copy placed on the project's one place
+ * (`onlyCrewPlace`), and each writer on a service with a database sharing it
  * (`withSharedDatabase`): what the setup writes for a builder, whenever the project is read. A
- * writer already placed keeps its place; with neither a dev service nor a pool, it stays unplaced
- * and Apply refuses it. The same definition when nothing needs it.
+ * writer already placed keeps its place. Among several places it stays unplaced until the person
+ * picks one, and with none Apply refuses it. The same definition when nothing needs it.
  */
 export const withBuildersPlaced = (
   definition: CrewDefinition,
   places: CrewPlaces,
 ): CrewDefinition => {
-  const pool = places.pools?.[0];
-  const placeable =
-    (places.devHosts.length > 0 || pool !== undefined) && definition.members.some(unplaced);
-  let turn = 0;
-  const placed = placeable
-    ? {
-        ...definition,
-        members: definition.members.map((member): CrewMemberSpec => {
-          if (!unplaced(member)) return member;
-          if (places.devHosts.length === 0) return { ...member, pool: pool! };
-          return { ...member, host: places.devHosts[turn++ % places.devHosts.length]! };
-        }),
-      }
-    : definition;
+  const only = onlyCrewPlace(places);
+  const placed =
+    only !== null && definition.members.some(unplaced)
+      ? {
+          ...definition,
+          members: definition.members.map((member): CrewMemberSpec =>
+            unplaced(member) ? { ...member, ...only } : member,
+          ),
+        }
+      : definition;
   return withSharedDatabase(placed, places.databaseHosts ?? []);
 };
+
+/** The writers with nowhere for their copy yet: among several places, the person picks each one's. */
+export const unplacedBuilders = (definition: CrewDefinition): ReadonlyArray<CrewMemberSpec> =>
+  definition.members.filter(unplaced);
 
 /** The checks that need the project's services (PRD §5.1, CONCEPT §3.3 *The shared database*). */
 export const validateCrewTopology = (
