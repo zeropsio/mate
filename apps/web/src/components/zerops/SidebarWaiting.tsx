@@ -562,7 +562,7 @@ function CrewEntry({
           reason: task.reason,
         }).primary
       : undefined;
-  const press = (action: CrewRowAction, variant: "primary" | "ghost") => (
+  const press = (action: CrewRowAction) => (
     <Button
       disabled={command.pending}
       key={action.label}
@@ -585,12 +585,13 @@ function CrewEntry({
         }
       }}
       size="sm"
-      variant={variant}
     >
       {action.label}
     </Button>
   );
-  const [first, second] = actions;
+  // One action per row: the crew's first press. Any other stays in the Crew panel, where the row's
+  // name and line still fit beside it.
+  const [first] = actions;
   const action =
     need.kind === "ready" ? (
       lands !== undefined && lands.enabled && task !== undefined ? (
@@ -617,10 +618,7 @@ function CrewEntry({
         </Button>
       )
     ) : first !== undefined ? (
-      <>
-        {second === undefined ? null : press(second, "ghost")}
-        {press(first, "primary")}
-      </>
+      press(first)
     ) : (
       // Not read yet, or nothing it lets the person do from here: its crew shows it.
       <Button onClick={openCrew} size="sm">

@@ -438,7 +438,7 @@ it("CD16: A task back from rework is reviewed afresh, its earlier accept gone", 
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.land.ts | if (review.state !== "blocked") continue; → if (review.state !== "working") continue;
-it("CD+1: A reader blocked while the task it reviews went back to its builder goes on with its review, unasked, once that task is back in review", () => {
+it("CD84: A reader blocked while the task it reviews went back to its builder goes on with its review, unasked, once that task is back in review", () => {
   const w = underReview();
   // The lead's wake for #1 waits for the reader's verdict.
   w.run("lead");
