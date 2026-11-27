@@ -44,7 +44,30 @@ const lines = (head: string, body: ReadonlyArray<string>): string =>
   [CREW_CARD_OPENER, head, ...body].join("\n");
 
 /** A task's first turn: the whole brief, never a summary. */
-export const taskCard = (task: TaskRecord, resetTo: string | null): SentCard => {
+/** What a reader's task reviews: the writer's task, and where that writer's own app answers. */
+export interface ReviewedWork {
+  readonly number: number;
+  readonly title: string;
+  readonly owner: string;
+  readonly app: string | null;
+}
+
+const reviewLines = (work: ReviewedWork): ReadonlyArray<string> => [
+  `You review #${work.number} ${work.title}, @${work.owner}'s work: read its changes with ` +
+    `crew_diff (handle ${work.owner}), then give your verdict on #${work.number} with crew_review.`,
+  ...(work.app === null
+    ? []
+    : [
+        `@${work.owner}'s own app runs from its copy at ${work.app} while it runs: open it there ` +
+          "with zerops_browser.",
+      ]),
+];
+
+export const taskCard = (
+  task: TaskRecord,
+  resetTo: string | null,
+  reviews?: ReviewedWork,
+): SentCard => {
   const doneWhen = task.card.doneWhen.trim();
   return {
     text: lines(`#${task.number} ${task.title} · ${SOURCE_LABELS[task.source]}`, [
@@ -53,11 +76,13 @@ export const taskCard = (task: TaskRecord, resetTo: string | null): SentCard => 
       ...(resetTo === null
         ? []
         : [`Your copy starts again from your tree's head (${short(resetTo)}).`]),
+      ...(reviews === undefined ? [] : reviewLines(reviews)),
       "",
       task.card.brief.trim(),
     ]),
     card: taskCardOf(task, "task", task.card.brief.trim(), {
       doneWhen: doneWhen === "" ? null : doneWhen,
+      ...(reviews === undefined ? {} : { links: [{ kind: "crewmate", handle: reviews.owner }] }),
     }),
   };
 };

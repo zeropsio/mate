@@ -55,7 +55,7 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
-import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
+import { mapAcpToAdapterError, readOnlyThreadDirectory } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
   makeAcpAssistantItemEvent,
@@ -71,7 +71,11 @@ import {
   parsePermissionRequest,
 } from "../acp/AcpRuntimeModel.ts";
 import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
-import { applyCursorAcpModelSelection, makeCursorAcpRuntime } from "../acp/CursorAcpSupport.ts";
+import {
+  applyCursorAcpModelSelection,
+  cursorReadOnlySettings,
+  makeCursorAcpRuntime,
+} from "../acp/CursorAcpSupport.ts";
 import { CursorTransportFailure } from "../acp/CursorTransportFailure.ts";
 import {
   CursorAskQuestionRequest,
@@ -97,6 +101,7 @@ import {
   rewriteCursorSkillMentions,
 } from "../Drivers/CursorSkills.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
+const encodeUnknownJsonString = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
 const PROVIDER = ProviderDriverKind.make("cursor");
 const CURSOR_RESUME_VERSION = 1 as const;
@@ -558,6 +563,36 @@ export function makeCursorAdapter(
           );
           // A crewmate asks before every call, whatever mode its thread names.
           const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
+          // A read-only crewmate's Cursor reads only below its working folder: its own settings,
+          // written anew for each session from what lies beside the way down.
+          const readOnlySettings = profileSetup?.readOnly
+            ? yield* Effect.gen(function* () {
+                const directory = readOnlyThreadDirectory(
+                  serverConfig.stateDir,
+                  PROVIDER,
+                  input.threadId,
+                );
+                const settings = yield* cursorReadOnlySettings(cwd, (entry) =>
+                  fileSystem.readDirectory(entry),
+                );
+                yield* fileSystem.makeDirectory(directory, { recursive: true });
+                yield* fileSystem.writeFileString(
+                  path.join(directory, "cli-config.json"),
+                  yield* encodeUnknownJsonString(settings),
+                );
+                return directory;
+              }).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderAdapterProcessError({
+                      provider: PROVIDER,
+                      threadId: input.threadId,
+                      detail: "Could not write a read-only crewmate's Cursor settings.",
+                      cause,
+                    }),
+                ),
+              )
+            : undefined;
 
           const resumeSessionId = parseCursorResume(input.resumeCursor)?.sessionId;
           const acpNativeLoggers = makeAcpNativeLoggers({
@@ -584,6 +619,7 @@ export function makeCursorAdapter(
             childProcessSpawner,
             cwd,
             runtimeMode,
+            ...(readOnlySettings === undefined ? {} : { readOnlySettings }),
             ...(resumeSessionId ? { resumeSessionId } : {}),
             ...(profileSetup ? { mcpServers: profileSetup.mcpServers } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
@@ -1367,9 +1403,11 @@ export function makeCursorAdapter(
         supportsConversationRollback: false,
         // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model.
         // Cursor reads `.cursor/cli.json` only from the git root it works in down, so zcp's,
-        // which lets Zerops tools run unasked, never reaches a crewmate's copy, a git root of its
-        // own: there it asks (measured, cursor-agent 2026.10.22). An "always" it saved globally
-        // would skip the gate, so Mate never answers with one (`CURSOR_APPROVAL_OPTIONS`).
+        // which lets Zerops tools run unasked, never reaches a writer's copy, a git root of its
+        // own: there it asks (measured, cursor-agent 2026.10.22). A read-only crewmate works in
+        // no git root and starts with project settings off (`buildCursorAcpSpawnInput`). An
+        // "always" it saved globally would skip the gate, so Mate never answers with one
+        // (`CURSOR_APPROVAL_OPTIONS`).
         threadProfile: { tools: true, reportsSpend: false },
       },
       compaction: { type: "slash-command", command: "/compress" },

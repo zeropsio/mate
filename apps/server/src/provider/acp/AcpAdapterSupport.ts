@@ -5,6 +5,17 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import { ProviderAdapterProcessError, ProviderAdapterRequestError } from "../Errors.ts";
 import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 const isAcpProcessExitedError = Schema.is(EffectAcpErrors.AcpProcessExitedError);
+
+/**
+ * A read-only thread's own folder on an agent (`AcpThreadSetup.readOnly`), the same for each of
+ * the thread's sessions: the agent keeps its sessions by that folder, so they resume after a
+ * restart.
+ */
+export const readOnlyThreadDirectory = (
+  stateDir: string,
+  provider: ProviderDriverKind,
+  threadId: ThreadId,
+): string => `${stateDir}/read-only-threads/${provider}/${threadId}`;
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
 
 export function mapAcpToAdapterError(

@@ -286,23 +286,36 @@ const sameInput = (input: Record<string, unknown>, updated: Record<string, unkno
  * allow that rewrites the call: ACP's answer is an option, so the agent would
  * run what it asked, not what the gate allowed.
  */
-const allows = (
+/**
+ * Why the gate refuses a call as it stands: its reason, or that it would rewrite the call, which
+ * an ACP agent cannot take; `undefined` when it allows the call unchanged.
+ */
+const gateRefusal = (
   profile: ThreadToolProfile,
   call: AcpGateCall,
   toolUseId: string,
-): Effect.Effect<boolean> =>
+): Effect.Effect<string | undefined> =>
   profile.decideTool({ ...call, toolUseId }).pipe(
     Effect.catchCause(() => Effect.succeed(deny("The tool gate failed."))),
     Effect.timeoutOrElse({
       duration: DECIDE_TOOL_TIMEOUT,
       orElse: () => Effect.succeed(deny("The tool gate gave no decision in time.")),
     }),
-    Effect.map(
-      (decision) =>
-        decision.kind === "allow" &&
-        (decision.updatedInput === undefined || sameInput(call.input, decision.updatedInput)),
+    Effect.map((decision) =>
+      decision.kind === "deny"
+        ? decision.reason
+        : decision.updatedInput === undefined || sameInput(call.input, decision.updatedInput)
+          ? undefined
+          : "The crew's gate runs this call only in another form.",
     ),
   );
+
+const allows = (
+  profile: ThreadToolProfile,
+  call: AcpGateCall,
+  toolUseId: string,
+): Effect.Effect<boolean> =>
+  gateRefusal(profile, call, toolUseId).pipe(Effect.map((refusal) => refusal === undefined));
 
 /**
  * The answer to one permission request: its one-time allow when every call
@@ -359,6 +372,17 @@ export interface AcpThreadSetup {
   readonly decidePermission: (
     request: EffectAcpSchema.RequestPermissionRequest,
   ) => Effect.Effect<EffectAcpSchema.RequestPermissionResponse>;
+  /**
+   * Why the gate refuses a file the agent reads through the client's file system, which asks no
+   * permission; `undefined` when the profile may read it.
+   */
+  readonly refuseRead: (path: string) => Effect.Effect<string | undefined>;
+  /**
+   * The thread never changes files (`ThreadToolProfile.readOnly`). An agent that reads some paths
+   * without asking, even in a mode of its own that only reads, is started so that only its
+   * working folder is among them: every other read reaches the gate.
+   */
+  readonly readOnly: boolean;
 }
 
 /** The text a profiled thread's prompts carry after the runtime instructions. */
@@ -394,6 +418,13 @@ export const acpThreadSetup = (
     return {
       mcpServers,
       decidePermission: (request) => decideAcpPermission(profile, request, thread.cwd),
+      refuseRead: (path) =>
+        gateRefusal(
+          profile,
+          { toolName: "Read", input: { file_path: path } },
+          `client-read:${path}`,
+        ),
+      readOnly: profile.readOnly === true,
     };
   });
 

@@ -512,6 +512,25 @@ const REVIEW_UNDER_WAY: ReadonlySet<CrewTaskState> = new Set([
 export const reviewsOf = (state: CrewState, task: TaskRecord): ReadonlyArray<TaskRecord> =>
   tasksInOrder(state).filter((other) => other.reviews === task.id);
 
+/**
+ * Where a writer's own app answers inside the project: its service and crew port. A copy on a
+ * pool's lease has no address the crew knows.
+ */
+export const appAddressOf = (member: MemberRecord): string | null =>
+  member.host === null || member.pool !== null || member.crewPort === null
+    ? null
+    : `http://${member.host}:${member.crewPort}`;
+
+/** The writer's task a reader's task reviews, and that writer. */
+export const reviewedWorkOf = (
+  state: CrewState,
+  task: TaskRecord,
+): { readonly task: TaskRecord; readonly owner: MemberRecord } | undefined => {
+  const reviewed = task.reviews === undefined ? undefined : state.tasks[task.reviews];
+  const owner = reviewed === undefined ? undefined : state.members[reviewed.owner];
+  return reviewed === undefined || owner === undefined ? undefined : { task: reviewed, owner };
+};
+
 /** A reader still reviews `task`: the lead's verdict waits for theirs. */
 export const reviewUnderWay = (state: CrewState, task: TaskRecord): boolean =>
   reviewsOf(state, task).some((other) => REVIEW_UNDER_WAY.has(other.state));

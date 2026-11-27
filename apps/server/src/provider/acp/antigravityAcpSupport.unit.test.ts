@@ -45,6 +45,22 @@ it("AP16: Antigravity starts with its own approve-everything flag only under ful
   });
 });
 
+// witness: apps/server/src/provider/acp/AntigravityAcpSupport.ts | : { ...input.environment, TMPDIR: input.temporaryDirectory }, → : input.environment,
+it("AP+2: Antigravity started with a temporary folder of its own has it as its TMPDIR over the server's, the rest of its environment unchanged", () => {
+  const spawn = (temporaryDirectory?: string) =>
+    buildAntigravityAcpSpawnInput({
+      binaryPath: "agy",
+      cwd: "/state/read-only-threads/antigravity/thread-1",
+      environment: { HOME: "/home/mate", TMPDIR: "/tmp" },
+      temporaryDirectory,
+    }).env;
+  expect(spawn("/state/read-only-threads/antigravity/thread-1")).toEqual({
+    HOME: "/home/mate",
+    TMPDIR: "/state/read-only-threads/antigravity/thread-1",
+  });
+  expect(spawn()).toEqual({ HOME: "/home/mate", TMPDIR: "/tmp" });
+});
+
 // witness: apps/server/src/provider/acp/AntigravityAcpSupport.ts | if (input.model && input.model !== ANTIGRAVITY_DEFAULT_MODEL) return input.model; → if (input.model === ANTIGRAVITY_DEFAULT_MODEL) return input.model;
 it.effect(
   "AP17: An Antigravity session restores the conversation's saved model over the cold-resume default, and a model the account does not offer is refused, never replaced by a fallback",

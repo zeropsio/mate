@@ -73,7 +73,10 @@ export function withoutGoogleBilling(environment: NodeJS.ProcessEnv): NodeJS.Pro
  * `agy acp`, the agy CLI's own ACP server. It signs in with the Google login
  * `agy acp --login` saved; full access is agy's own flag for approving every
  * tool request, and a caller's own Gemini folder (`--gemini-dir`) keeps that
- * login while dropping the user's MCP servers and hooks.
+ * login while dropping the user's MCP servers and hooks. agy reads its working
+ * folder and its temporary folder (`TMPDIR`, else `/tmp`) without asking and
+ * puts every other read to `session/request_permission` (measured, agy
+ * 1.5.18): `temporaryDirectory` moves the second off `/tmp`.
  */
 export function buildAntigravityAcpSpawnInput(input: {
   readonly binaryPath: string;
@@ -81,6 +84,7 @@ export function buildAntigravityAcpSpawnInput(input: {
   readonly environment: NodeJS.ProcessEnv;
   readonly runtimeMode?: RuntimeMode | undefined;
   readonly geminiDirectory?: string | undefined;
+  readonly temporaryDirectory?: string | undefined;
 }): AcpSessionRuntime.AcpSpawnInput {
   return {
     command: input.binaryPath || "agy",
@@ -90,7 +94,10 @@ export function buildAntigravityAcpSpawnInput(input: {
       ...(input.geminiDirectory === undefined ? [] : ["--gemini-dir", input.geminiDirectory]),
     ],
     cwd: input.cwd,
-    env: input.environment,
+    env:
+      input.temporaryDirectory === undefined
+        ? input.environment
+        : { ...input.environment, TMPDIR: input.temporaryDirectory },
   };
 }
 

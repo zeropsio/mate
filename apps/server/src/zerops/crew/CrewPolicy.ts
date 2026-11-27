@@ -11,9 +11,10 @@
  * - **Every crew thread:** `ToolSearch`, `TodoWrite`, the plan tools
  *   (`TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`), the crew's own tools
  *   (`mcp__crew__*`), `Read` — and `Glob`/`Grep` with an explicit root — by
- *   realpath outside the refused roots, and zcp's read-only tools.
+ *   realpath inside the code (`codeRoot`), and zcp's read-only tools.
  *   `zerops_workflow` for `status` only; `zerops_verify` and
- *   `zerops_browser` only while this crewmate's work is shown on dev.
+ *   `zerops_browser` only while this crewmate's work is shown on dev, and a
+ *   reader's browser on the own app of the writer whose task it reviews.
  * - **Writers:** `Write`/`Edit`/`MultiEdit`/`NotebookEdit` only inside their
  *   own copy by realpath, never on another crewmate's `migrations:` paths.
  *   `Bash` only as `ssh <host> <payload>` to their own host: a leading
@@ -27,8 +28,10 @@
  *   command drives the supervisor (`zcp-devsup`).
  *   The `zerops_dev_server` tool is closed to a crewmate in every turn.
  * - **Readers and the lead:** no `Write`, `Edit` or `Bash`.
- * - **Refused roots:** the workspace's `.zcp` and `.mate`, `~/.claude`,
- *   `~/.codex`, `~/.t3`, `/proc`, and every `.git` internal.
+ * - **Inside the code:** a crewmate reads only under the Mate's tree, in its
+ *   services' trees and the crewmates' copies there: never the tree's dot
+ *   entries (the crew home, zcp's state), anything outside it (the agents'
+ *   homes and logs, `/proc`, `/tmp`), or a `.git` internal.
  * - **Deny-all:** a crew thread without a live stint gets nothing.
  *
  * `zerops_deploy` is refused: previews by `sha=` are phase D.
@@ -60,6 +63,8 @@ export interface CrewGateMember {
   /** A writer's copy; readers and the lead have none. */
   readonly lane?: CrewLane;
   readonly crewPort?: number;
+  /** A reader's: the app of the writer whose task it reviews, the one place its browser opens. */
+  readonly reviewsApp?: string;
   readonly env: Readonly<Record<string, string>>;
 }
 
@@ -68,7 +73,11 @@ export interface LiveGateContext {
   readonly member: CrewGateMember;
   /** Other crewmates' `migrations:` globs on this member's host, repo-relative. */
   readonly foreignMigrations: ReadonlyArray<string>;
-  readonly refusedRoots: ReadonlyArray<string>;
+  /**
+   * The Mate's tree: the services' trees and the crewmates' copies in them, the only place a
+   * crewmate reads. Its dot entries are not code: the crew home, zcp's state, agents' settings.
+   */
+  readonly codeRoot: string;
   /** The canonical path of an absolute, normalized path (symlinks resolved). */
   readonly realpath: (path: string) => string;
   /** The zcp container's cwd, which relative paths resolve against. */
@@ -93,18 +102,6 @@ const absolutePath = (base: string, path: string): string => {
   }
   return `/${segments.join("/")}`;
 };
-
-export const crewRefusedRoots = (input: {
-  readonly workspaceRoot: string;
-  readonly home: string;
-}): ReadonlyArray<string> => [
-  absolutePath(input.workspaceRoot, ".zcp"),
-  absolutePath(input.workspaceRoot, ".mate"),
-  absolutePath(input.home, ".claude"),
-  absolutePath(input.home, ".codex"),
-  absolutePath(input.home, ".t3"),
-  "/proc",
-];
 
 const ALWAYS_ALLOWED = new Set([
   "ToolSearch",
@@ -153,8 +150,13 @@ const resolvePaths = (
 
 const refusal = (ctx: LiveGateContext, path: string): string | undefined => {
   if (hasGitSegment(path)) return "git's internals are the engine's.";
-  const root = ctx.refusedRoots.find((refused) => isWithin(path, refused));
-  return root === undefined ? undefined : `${root} is not the crew's to read or write.`;
+  if (path === ctx.codeRoot || !isWithin(path, ctx.codeRoot)) {
+    return `${path} is outside the code: read inside a service's directory under ${ctx.codeRoot}/.`;
+  }
+  const top = path.slice(ctx.codeRoot.length + 1).split("/")[0]!;
+  return top.startsWith(".")
+    ? `${ctx.codeRoot}/${top} is not the crew's to read or write.`
+    : undefined;
 };
 
 const decideRead = (ctx: LiveGateContext, raw: unknown): GateDecision => {
@@ -164,19 +166,11 @@ const decideRead = (ctx: LiveGateContext, raw: unknown): GateDecision => {
   return refused ? deny(refused) : allow;
 };
 
-/** A search root must be given, and must not hold a refused root below it. */
-const decideSearch = (ctx: LiveGateContext, raw: unknown): GateDecision => {
-  const paths = resolvePaths(ctx, raw);
-  if (!paths) return deny("Give a path to search in, inside a service's directory.");
-  const read = decideRead(ctx, raw);
-  if (read.kind === "deny") return read;
-  const holds = ctx.refusedRoots.find(
-    (refused) => isWithin(refused, paths.lexical) || isWithin(refused, paths.real),
-  );
-  return holds
-    ? deny(`Searching ${paths.lexical} would read ${holds}; search inside a service's directory.`)
-    : allow;
-};
+/** A search root must be given, inside a service's directory. */
+const decideSearch = (ctx: LiveGateContext, raw: unknown): GateDecision =>
+  resolvePaths(ctx, raw) === undefined
+    ? deny("Give a path to search in, inside a service's directory.")
+    : decideRead(ctx, raw);
 
 const globPattern = (glob: string): RegExp => {
   let source = "";
@@ -483,8 +477,21 @@ const notShowingOnDev = (ctx: LiveGateContext, what: string): GateDecision =>
   deny(
     ctx.member.kind === "writer"
       ? `${what} runs only while dev shows your work: ask with crew_show_on_dev, then call again once the person grants it.`
-      : `${what} is a writer's, while dev shows its work; ask through crew_report with a question.`,
+      : ctx.member.reviewsApp !== undefined
+        ? `${what} opens only ${ctx.member.reviewsApp}, the app of the work you review.`
+        : `${what} is a writer's, while dev shows its work; ask through crew_report with a question.`,
   );
+
+/** A URL on the reviewed writer's own app: same scheme, host and port. */
+const onReviewedApp = (ctx: LiveGateContext, url: unknown): boolean => {
+  const app = ctx.member.reviewsApp;
+  if (app === undefined || typeof url !== "string") return false;
+  try {
+    return new URL(url).origin === new URL(app).origin;
+  } catch {
+    return false;
+  }
+};
 
 const decideZerops = (ctx: LiveGateContext, tool: string, input: unknown): GateDecision => {
   if (ZEROPS_READ_ONLY.has(tool)) return allow;
@@ -499,7 +506,9 @@ const decideZerops = (ctx: LiveGateContext, tool: string, input: unknown): GateD
       return args.serviceHostname === host ? allow : deny(`Verify only your own host, ${host}.`);
     }
     case "zerops_browser":
-      return underClaim ? allow : notShowingOnDev(ctx, "The browser");
+      return underClaim || onReviewedApp(ctx, args.url)
+        ? allow
+        : notShowingOnDev(ctx, "The browser");
     case "zerops_workflow":
       return args.action === "status"
         ? allow

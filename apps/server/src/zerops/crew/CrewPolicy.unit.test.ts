@@ -2,7 +2,7 @@ import { expect, it } from "vite-plus/test";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { crewLane } from "./CrewDefinition.ts";
-import { crewRefusedRoots, decideCrewTool, type LiveGateContext } from "./CrewPolicy.ts";
+import { decideCrewTool, type LiveGateContext } from "./CrewPolicy.ts";
 
 const lane = crewLane(
   { host: "appdev", mountPath: "/var/www/appdev", remotePath: "/var/www" },
@@ -33,7 +33,7 @@ const writer: LiveGateContext = {
     env: { DATABASE_URL: "postgres://db/backend" },
   },
   foreignMigrations: ["db/migrations/**"],
-  refusedRoots: crewRefusedRoots({ workspaceRoot: "/var/www", home: "/home/zerops" }),
+  codeRoot: "/var/www",
   realpath,
   workspaceRoot: "/var/www",
   turn: "work",
@@ -76,6 +76,19 @@ it("CM43: A crewmate reads and searches only inside the services' trees and the 
     "deny",
   );
   expect(decision(reader, "Read", { file_path: "/proc/1/environ" }).kind).toBe("deny");
+  for (const outside of [
+    "/home/zerops/.gemini/settings.json",
+    "/home/zerops/.cursor/cli-config.json",
+    "/tmp/antigravity/session.log",
+    "/etc/passwd",
+    "/var/www/.cursor/cli.json",
+  ]) {
+    expect([outside, decision(reader, "Read", { file_path: outside }).kind]).toEqual([
+      outside,
+      "deny",
+    ]);
+  }
+  expect(decision(reader, "Read", { file_path: "/var/www/AGENTS.md" }).kind).toBe("allow");
   expect(decision(reader, "Read", { file_path: "/var/www/appdev/.git/config" }).kind).toBe("deny");
   expect(
     decision(writer, "Read", { file_path: "/var/www/appdev/.crew/backend/sneaky/HEAD" }).kind,
@@ -317,4 +330,21 @@ it("CM49: A crewmate verifies its own host and opens the browser only while dev 
   expect(decision(writer, "mcp__zerops__zerops_browser", { url: "https://appdev" }).kind).toBe(
     "deny",
   );
+});
+
+// witness: apps/server/src/zerops/crew/CrewPolicy.ts | return new URL(url).origin === new URL(app).origin; → return new URL(url).hostname === new URL(app).hostname;
+it("CM+1: A reader's browser opens only the own app of the writer whose task it reviews: any other port or host is refused, as is the browser for a reader that reviews nothing", () => {
+  const reviewing: LiveGateContext = {
+    ...reader,
+    member: { ...reader.member, reviewsApp: "http://appdev:3001" },
+  };
+  const browse = (ctx: LiveGateContext, url: string) =>
+    decision(ctx, "mcp__zerops__zerops_browser", { url }).kind;
+  expect([
+    browse(reviewing, "http://appdev:3001/guestbook?page=2"),
+    browse(reviewing, "http://appdev:3000/"),
+    browse(reviewing, "http://apidev:3001/"),
+    browse(reviewing, "https://mate.zerops.io/"),
+    browse(reader, "http://appdev:3001/"),
+  ]).toEqual(["allow", "deny", "deny", "deny", "deny"]);
 });

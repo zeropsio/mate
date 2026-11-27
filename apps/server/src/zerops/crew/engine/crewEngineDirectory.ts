@@ -31,7 +31,7 @@ import type { ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { crewLane } from "../CrewDefinition.ts";
 import { CREW_ID } from "../CrewHome.ts";
 import type { CrewMemoryService, CrewMemoryTask } from "../CrewMemory.ts";
-import { crewRefusedRoots, type GateContext, type GateTurn } from "../CrewPolicy.ts";
+import { type GateContext, type GateTurn } from "../CrewPolicy.ts";
 import type { CrewPromptMember } from "../crewPrompt.ts";
 import type { CrewReadsService } from "../CrewReads.ts";
 import type {
@@ -43,9 +43,11 @@ import type {
 import type { CrewInput, CrewToolCall } from "./command.ts";
 import type { CrewAccepted } from "./CrewOwner.ts";
 import {
+  appAddressOf,
   isOpenTask,
   membersInOrder,
   openTaskOf,
+  reviewedWorkOf,
   sessionBudgetUsd,
   tasksInOrder,
   type CrewState,
@@ -82,8 +84,6 @@ export interface EngineCrewDirectoryInputs {
   readonly agentOf: (login: string) => Effect.Effect<ProviderInstanceAgent | undefined>;
   /** The Mate's tree: where readers and the lead work, and relative paths resolve. */
   readonly workspaceRoot: string;
-  /** The Mate's home directory (`ServerConfig.homeDir`), refused as a writer root. */
-  readonly homeDir: string;
   /** Tells the crew owner one input as `principal`. */
   readonly ask: (
     input: CrewInput,
@@ -132,10 +132,7 @@ export const makeEngineCrewDirectory = (inputs: EngineCrewDirectoryInputs) => {
               other.host === member.host,
           )
           .flatMap((other) => other.migrations),
-        refusedRoots: crewRefusedRoots({
-          workspaceRoot: inputs.workspaceRoot,
-          home: inputs.homeDir,
-        }),
+        codeRoot: inputs.workspaceRoot,
         realpath: realpathOrNearest,
         workspaceRoot: inputs.workspaceRoot,
         turn,
@@ -147,10 +144,18 @@ export const makeEngineCrewDirectory = (inputs: EngineCrewDirectoryInputs) => {
         payloadTimeoutSeconds: CREW_PAYLOAD_TIMEOUT_SECONDS,
       } as const;
       if (member.kind !== "writer") {
+        const own = openTaskOf(state, member.handle);
+        const reviewed = own === undefined ? undefined : reviewedWorkOf(state, own);
+        const app = reviewed === undefined ? null : appAddressOf(reviewed.owner);
         return {
           gate: {
             kind: "live",
-            member: { handle: member.handle, kind: member.kind, env: spec.env },
+            member: {
+              handle: member.handle,
+              kind: member.kind,
+              ...(app === null ? {} : { reviewsApp: app }),
+              env: spec.env,
+            },
             ...base,
           },
           prompt: { handle: member.handle, kind: member.kind },
