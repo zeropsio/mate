@@ -1,6 +1,6 @@
 /** Renders the deletion review and HQ's running or stopped operation. */
 import { BoxIcon, GitBranchIcon, GlobeIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -61,11 +61,14 @@ import {
   deletionStart,
   sameDeletionStart,
   deletionPageWords,
+  deletionReturn,
   deletionStandingWords,
+  deletionWaitingPerson,
   partStateWords,
   type ApplicationHoldings,
   type DeletionChoice,
   type DeletionPart,
+  type DeletionReturn,
   type DeletionRow,
 } from "./deletion.logic";
 import {
@@ -92,6 +95,8 @@ export function ZeropsDeletionPage({
   pending,
   error,
   waiting,
+  canGoBack,
+  onReturn,
   onCancel,
   onConfirm,
   onAgain,
@@ -113,12 +118,17 @@ export function ZeropsDeletionPage({
   readonly error: string | null;
   readonly waiting?:
     | {
-        readonly person: ReactNode;
+        /** Whom it waits for, as `deletionWaitingPerson` says it. */
+        readonly person: string;
         readonly press: string;
         readonly onContinue?: () => void;
         readonly onEnd?: () => void;
       }
     | undefined;
+  /** Whether there is a page before this one to go back to. */
+  readonly canGoBack: boolean;
+  /** The gone or refused page's one button, to the place `deletionReturn` names. */
+  readonly onReturn: (to: DeletionReturn["to"]) => void;
   readonly onCancel: () => void;
   readonly onConfirm: (review: ReturnType<typeof deletionReview>) => void;
   readonly onAgain: () => void;
@@ -129,7 +139,8 @@ export function ZeropsDeletionPage({
   );
   const page = deletionPageWords("project" in state ? state.project.name : "");
   if (state.kind === "reading") return <Loading label={page.reading} shape="words" />;
-  if (state.kind === "gone" || state.kind === "refused")
+  if (state.kind === "gone" || state.kind === "refused") {
+    const away = deletionReturn({ gone: state.kind === "gone", canGoBack });
     return (
       <>
         <PageHeader
@@ -137,12 +148,13 @@ export function ZeropsDeletionPage({
           line={state.kind === "refused" ? state.line : undefined}
         />
         <div>
-          <Button onClick={onCancel} type="button" variant="secondary">
-            {state.kind === "gone" ? page.projects : page.back}
+          <Button onClick={() => onReturn(away.to)} type="button" variant="secondary">
+            {away.label}
           </Button>
         </div>
       </>
     );
+  }
   const { project, offer } = state;
 
   if (offer.kind === "standing") {
@@ -388,11 +400,6 @@ export function ZeropsDeletionPage({
   );
 }
 
-function WaitingPerson({ orgId, userId }: { readonly orgId: string; readonly userId: string }) {
-  const name = useHqPersonNames(orgId)(userId);
-  return name ?? "the person who started it";
-}
-
 /** Reads the page's facts and writes only the operation the person presses. */
 export function ZeropsDeletionPageContainer({
   appId,
@@ -407,6 +414,7 @@ export function ZeropsDeletionPageContainer({
   const account = useAccountData();
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;
+  const calledOf = useHqPersonNames(orgId);
   const structure = useHqStructure();
   const environmentRead = useProjection(
     appEnvironments,
@@ -573,7 +581,7 @@ export function ZeropsDeletionPageContainer({
     deletion.kind !== "waiting" || orgId === undefined
       ? undefined
       : {
-          person: <WaitingPerson orgId={orgId} userId={deletion.continueBy} />,
+          person: deletionWaitingPerson(calledOf(deletion.continueBy)),
           press: deletion.press,
           ...(deletion.yours
             ? {
@@ -583,10 +591,11 @@ export function ZeropsDeletionPageContainer({
             : {}),
           ...(end === undefined ? {} : { onEnd: () => settle(submit(end)) }),
         };
-  const back = () => {
-    if (canGoBack) window.history.back();
-    else void navigate({ to: "/zerops" });
+  const goTo = (to: DeletionReturn["to"]) => {
+    if (to === "back") window.history.back();
+    else void navigate({ to });
   };
+  const back = () => goTo(canGoBack ? "back" : "/zerops");
   return (
     <ZeropsHostedFrame bar={false} width="column">
       <ZeropsDeletionPage
@@ -598,6 +607,8 @@ export function ZeropsDeletionPageContainer({
         error={error}
         waiting={waiting}
         initial={failedFormId === undefined ? againChoice : undefined}
+        canGoBack={canGoBack}
+        onReturn={goTo}
         onCancel={back}
         onConfirm={confirm}
         onAgain={() => {

@@ -1,4 +1,4 @@
-next: MN137
+next: MN140
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -128,3 +128,6 @@ next: MN137
 - MN133 — A place's address that names no place of its project says so once HQ told the project's environments and the inventory is read, and waits until both are; breaks: a removed place's link, or an address this version has no page for, stands in with a skeleton forever
 - MN134 — The pane of a draft that is in the app now becomes Your app, its part's stage, and a draft still open or discarded, or Your app with no address, keeps its pane; breaks: Open draft pressed after the add says the draft is in the app instead of opening the app
 - MN135 — Of a Mate's part, Sites takes its stage for Your app and never its dev; breaks: Sites names the app by its stage container, or calls the dev service Your app
+- MN137 — A gone project's deletion page returns to the Overview and its button says Overview, and a page that refuses the deletion goes Back where there is a page to go back to and to the Overview otherwise; breaks: the gone project's button opens the gone project's own page before it, or names a place it does not open.
+- MN138 — A project deletion HQ stopped names the person it waits for by what HQ calls them, the live page and the design flow alike, and says the person who started it while HQ has not said; breaks: a stopped deletion waits for an unnamed person whom HQ has named, or the design flow shows a name the live page never would.
+- MN139 — A repository's Delete says what stays on the host of the remote HQ records for it, or of the one it follows, and nothing where its code goes nowhere; breaks: a GitLab repository's Delete says it stays on GitHub.

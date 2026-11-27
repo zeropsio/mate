@@ -398,7 +398,7 @@ export function RepositoryUpkeepView({
           ) : panel === "delete" ? (
             <DeleteFromMate
               busy={busy}
-              destination={state.destination?.label ?? null}
+              keeps={upkeep.deleteFromMateKeeps(entry, state.destination)}
               onCancel={() => setPanel(null)}
               onDelete={async () => {
                 if (actions.deleteRepository === undefined) return;
@@ -687,13 +687,14 @@ function ReplaceToken({
 
 function DeleteFromMate({
   repo,
-  destination,
+  keeps,
   busy,
   onDelete,
   onCancel,
 }: {
   readonly repo: string;
-  readonly destination: string | null;
+  /** `deleteFromMateKeeps`' line: what stays on the remote's host; `null` where nothing does. */
+  readonly keeps: string | null;
   readonly busy: boolean;
   readonly onDelete: () => void;
   readonly onCancel: () => void;
@@ -706,7 +707,7 @@ function DeleteFromMate({
       <Text render={<p />} variant="description">
         Its code and history kept by Mate are deleted: main, its changes, and what releases build
         from. The files in its Mate's workspace stay.
-        {destination === null ? "" : ` ${destination} on GitHub stays as it is.`}
+        {keeps === null ? "" : ` ${keeps}`}
       </Text>
       <div className="grid gap-1.5">
         <Label htmlFor={id}>Type {repo} to confirm</Label>

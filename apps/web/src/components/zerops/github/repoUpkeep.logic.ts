@@ -1,5 +1,5 @@
 import type { HqRemoteProbe, RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { RepoPress, RepoState } from "../gitMirror.logic";
+import { hostWords, type RepoPress, type RepoState } from "../gitMirror.logic";
 
 /** Operations available to a repository's upkeep. */
 export interface RepoRowActions {
@@ -73,4 +73,17 @@ export function repositoryUpkeepGroups(
   return groups
     .map((group) => group.filter((entry) => entries.includes(entry)))
     .filter((group) => group.length > 0);
+}
+
+/**
+ * What the repository's Delete leaves where its code goes, named on the host of the remote HQ
+ * records for it, or of the one it follows; `null` while it goes nowhere.
+ */
+export function deleteFromMateKeeps(
+  repo: Pick<RepoListEntry, "remote" | "follows">,
+  destination: RepoState["destination"],
+): string | null {
+  const url = repo.remote?.url ?? repo.follows;
+  if (url === undefined || destination === null) return null;
+  return `${destination.label} on ${hostWords(url)} stays as it is.`;
 }

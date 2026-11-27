@@ -11,6 +11,7 @@ import { isActiveChange } from "@t3tools/shared/hqChanges";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
+import { SIDEBAR_ACCOUNT_DESTINATIONS } from "./SidebarZeropsAccount.logic";
 import { deleteMateConfirmed, lastMateGoes } from "./ZeropsDeleteMateDialog.logic";
 
 /** A Stage or a Production of the project, as its deletion weighs it. */
@@ -1011,8 +1012,6 @@ export function deletionPageWords(name: string) {
     nothing: "Nothing in Zerops.",
     reading: "Reading the project from HQ…",
     gone: "This project is gone.",
-    back: "Back",
-    projects: "Projects",
     cancel: "Cancel",
     again: "Delete again",
     waitingFor: "waiting for",
@@ -1020,4 +1019,32 @@ export function deletionPageWords(name: string) {
     stays: "Stays",
     holdingsReading: "Reading what HQ holds",
   };
+}
+
+/** Where a page goes when it returns: the page before it, or the account's own overview. */
+export interface DeletionReturn {
+  readonly to: "back" | "/zerops";
+  readonly label: string;
+}
+
+/** The overview as the account menu names it, so the button and the menu say one word. */
+const OVERVIEW_LABEL =
+  SIDEBAR_ACCOUNT_DESTINATIONS.find((place) => place.to === "/zerops")?.label ?? "Overview";
+
+/**
+ * Where the gone or refused deletion page's one button goes, named as the place it opens. A gone
+ * project's page before this one is the project's own, gone too, so it opens the overview; a
+ * refused page goes back where there is a page to go back to.
+ */
+export function deletionReturn(input: {
+  readonly gone: boolean;
+  readonly canGoBack: boolean;
+}): DeletionReturn {
+  if (input.gone || !input.canGoBack) return { to: "/zerops", label: OVERVIEW_LABEL };
+  return { to: "back", label: "Back" };
+}
+
+/** Whom a stopped project deletion waits for: what HQ calls them, until HQ has said. */
+export function deletionWaitingPerson(called: string | undefined): string {
+  return called ?? "the person who started it";
 }

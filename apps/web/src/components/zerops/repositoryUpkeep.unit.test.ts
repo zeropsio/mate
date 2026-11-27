@@ -1,6 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import {
+  deleteFromMateKeeps,
   repositoryUpkeep,
   repositoryUpkeepGroups,
   type RepoRowActions,
@@ -156,4 +157,25 @@ it("MN90: A repository's menu groups what it offers as the way out to its host, 
     { entries: ["change", "unfollow", "limit"], groups: [["change", "unfollow"], ["limit"]] },
   ];
   for (const { entries, groups } of rows) expect(repositoryUpkeepGroups(entries)).toEqual(groups);
+});
+
+// witness: apps/web/src/components/zerops/github/repoUpkeep.logic.ts | return `${destination.label} on ${hostWords(url)} stays as it is.`; → return `${destination.label} on GitHub stays as it is.`;
+it("MN139: A repository's Delete says what stays on the host of the remote HQ records for it, or of the one it follows, and nothing where its code goes nowhere; breaks: a GitLab repository's Delete says it stays on GitHub.", () => {
+  const lab = { label: "gitlab.com/acme/code", href: "https://gitlab.com/acme/code" };
+  const rows = [
+    {
+      repo: { remote: token },
+      destination: lab,
+      keeps: "gitlab.com/acme/code on GitLab stays as it is.",
+    },
+    { repo: { remote }, destination, keeps: "acme/code on GitHub stays as it is." },
+    {
+      repo: { remote: null, follows: "https://git.example.org/octo/lab.git" },
+      destination: { label: "git.example.org/octo/lab", href: "https://git.example.org/octo/lab" },
+      keeps: "git.example.org/octo/lab on git.example.org stays as it is.",
+    },
+    { repo: { remote: null }, destination: null, keeps: null },
+  ];
+  for (const { repo, destination: to, keeps } of rows)
+    expect(deleteFromMateKeeps(repo, to)).toBe(keeps);
 });

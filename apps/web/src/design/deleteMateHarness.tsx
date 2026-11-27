@@ -26,6 +26,7 @@ import {
   deletionOffer,
   deletionChoiceAgain,
   deletionPageState,
+  deletionWaitingPerson,
   type DeletionProject,
 } from "~/components/zerops/deletion.logic";
 import { ZeropsDeleteMateDialog } from "~/components/zerops/ZeropsDeleteMateDialog";
@@ -227,7 +228,12 @@ const ACME_DELETIONS: Readonly<Record<string, HqOperation>> = {
 };
 const ACME_OPERATION =
   STATE === "waiting" || STATE === "waiting-other"
-    ? { ...ACME_DELETIONS.waiting!, offers: [STATE === "waiting" ? "continue" : "end"] }
+    ? {
+        ...ACME_DELETIONS.waiting!,
+        // HQ offers Continue only to the person it waits for: the viewer, Nina, in `waiting`.
+        continueBy: STATE === "waiting" ? "nina" : "theo",
+        offers: [STATE === "waiting" ? "continue" : "end"],
+      }
     : STATE === "delete-again"
       ? ACME_DELETIONS.stopped
       : STATE === "stopped-member"
@@ -474,6 +480,8 @@ const THEO: ZeropsMateOwner = {
   avatarUrl: null,
   isViewer: false,
 };
+/** HQ's people by user id, as the live page reads what each is called. */
+const PEOPLE: Readonly<Record<string, ZeropsMateOwner>> = { nina: NINA, theo: THEO };
 const OWNERS = new Map<string, ZeropsMateOwner>([
   [FEN.project.id, NINA],
   [QUINN.project.id, STATE === "colleague" ? THEO : NINA],
@@ -670,8 +678,10 @@ function Harness() {
                     }
                   : undefined
               }
+              canGoBack
               onAgain={() => {}}
               onCancel={() => {}}
+              onReturn={() => {}}
               onConfirm={() => {
                 setPressed((count) => count + 1);
                 setPending(true);
@@ -679,13 +689,15 @@ function Harness() {
               pending={pending}
               waiting={
                 PAGE_STATE.kind === "standing" && PAGE_STATE.offer.deletion.kind === "waiting"
-                  ? STATE === "waiting-other"
-                    ? { person: THEO.name, press: PAGE_STATE.offer.deletion.press, onEnd: () => {} }
-                    : {
-                        person: "you",
-                        press: PAGE_STATE.offer.deletion.press,
-                        onContinue: () => {},
-                      }
+                  ? {
+                      person: deletionWaitingPerson(
+                        PEOPLE[PAGE_STATE.offer.deletion.continueBy]?.called,
+                      ),
+                      press: PAGE_STATE.offer.deletion.press,
+                      ...(PAGE_STATE.offer.deletion.yours
+                        ? { onContinue: () => {} }
+                        : { onEnd: () => {} }),
+                    }
                   : undefined
               }
             />

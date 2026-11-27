@@ -9,6 +9,8 @@ import {
   deletionPageMate,
   deletionPageState,
   deletionProjectOf,
+  deletionReturn,
+  deletionWaitingPerson,
   deletionParts,
   deletionStandingWords,
   deletionStart,
@@ -2032,4 +2034,21 @@ it("MN105: A part whose own data goes from Zerops for good asks a slide before D
   expect(review(project, MATE, again).rows.find((row) => row.id === "live")?.slide?.confirmed).toBe(
     false,
   );
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | if (input.gone || !input.canGoBack) return { to: "/zerops", label: OVERVIEW_LABEL }; → if (!input.canGoBack) return { to: "/zerops", label: OVERVIEW_LABEL };
+it("MN137: A gone project's deletion page returns to the Overview and its button says Overview, and a page that refuses the deletion goes Back where there is a page to go back to and to the Overview otherwise; breaks: the gone project's button opens the gone project's own page before it, or names a place it does not open.", () => {
+  const rows = [
+    { input: { gone: true, canGoBack: true }, away: { to: "/zerops", label: "Overview" } },
+    { input: { gone: true, canGoBack: false }, away: { to: "/zerops", label: "Overview" } },
+    { input: { gone: false, canGoBack: true }, away: { to: "back", label: "Back" } },
+    { input: { gone: false, canGoBack: false }, away: { to: "/zerops", label: "Overview" } },
+  ] as const;
+  for (const { input, away } of rows) expect(deletionReturn(input)).toEqual(away);
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | return called ?? "the person who started it"; → return "the person who started it";
+it("MN138: A project deletion HQ stopped names the person it waits for by what HQ calls them, the live page and the design flow alike, and says the person who started it while HQ has not said; breaks: a stopped deletion waits for an unnamed person whom HQ has named, or the design flow shows a name the live page never would.", () => {
+  expect(deletionWaitingPerson("Theo")).toBe("Theo");
+  expect(deletionWaitingPerson(undefined)).toBe("the person who started it");
 });
