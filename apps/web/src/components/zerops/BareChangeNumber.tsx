@@ -1,10 +1,12 @@
 /**
  * Links to changes the conversation's application already holds in the client data layer, and a
- * Mate's bold *Open draft* and *Add to your app* as the presses of the one change its block names.
+ * turn answer's bold *Open draft* and *Add to your app* as the presses of the change its turn left
+ * for the person (`TurnChangeContext`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqAppChangesAtom } from "@t3tools/client-runtime/data";
 import type { ScopedThreadRef, ServerProviderSkill } from "@t3tools/contracts";
+import type { ZeropsOperationPullRequest } from "@t3tools/client-runtime/zerops/model";
 import { changeUrl } from "@t3tools/shared/hqChanges";
 import {
   Children,
@@ -28,7 +30,6 @@ import { useOpenDraft } from "~/zerops/openInMatePanel";
 import { useOpenReview } from "~/zerops/review";
 import { InlineButton } from "../ui/button";
 import {
-  blockChange,
   changeActionOf,
   indexChangeNumbers,
   resolveChangeNumbers,
@@ -45,6 +46,12 @@ interface ConversationChanges {
 }
 
 const ConversationChangesContext = createContext<ConversationChanges | null>(null);
+
+/**
+ * The change the turn whose answer this is left for the person (`OutcomeModel.change`); none in
+ * any other words, whose bold presses stay words.
+ */
+export const TurnChangeContext = createContext<ZeropsOperationPullRequest | null>(null);
 
 /** One read per conversation; it does not hold or fetch application detail. */
 function ConversationChangesProvider({
@@ -118,23 +125,20 @@ function BareChangeText({
   });
 }
 
-/** The press a Mate names in bold, bound to the change its block names. */
+/** The press a Mate names in bold, bound to the change its turn left for the person. */
 function ChangeActionButton({
   action,
-  block,
   children,
 }: {
   readonly action: ChangeAction;
-  /** The words of the block the press stands in. */
-  readonly block: string;
   readonly children: ReactNode;
 }) {
   const context = use(ConversationChangesContext);
+  const change = use(TurnChangeContext);
   const openDraft = useOpenDraft();
   const openReview = useOpenReview();
-  const change = context === null ? undefined : blockChange(block, context.byNumber);
-  if (context === null || change === undefined) return children;
-  const target = { groupId: context.appId, repository: change.repo, number: change.number };
+  if (context === null || change === null) return children;
+  const target = { groupId: context.appId, repository: change.repository, number: change.number };
   const mateProjectId = context.mateProjectId;
   if (action === "draft" && mateProjectId === undefined) return children;
   return (
@@ -164,7 +168,6 @@ const textOf = (children: ReactNode): string =>
 
 function linkChanges(
   children: ReactNode,
-  block: string,
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>,
 ): ReactNode {
   return Children.map(children, (child) => {
@@ -176,18 +179,14 @@ function linkChanges(
     if (tag === "code" || tag === "a" || !("children" in child.props)) return child;
     const action = tag === "strong" ? changeActionOf(textOf(child.props.children)) : undefined;
     if (action !== undefined)
-      return (
-        <ChangeActionButton action={action} block={block}>
-          {child}
-        </ChangeActionButton>
-      );
-    return cloneElement(child, undefined, linkChanges(child.props.children, block, skills));
+      return <ChangeActionButton action={action}>{child}</ChangeActionButton>;
+    return cloneElement(child, undefined, linkChanges(child.props.children, skills));
   });
 }
 
 /**
  * Markdown children with known bare change numbers linked outside code and existing links, and
- * the block's bold presses bound to the one change it names.
+ * their bold presses bound to the change of the turn they answer.
  */
 export function renderBareChangeNumbers(
   children: ReactNode,
@@ -195,5 +194,5 @@ export function renderBareChangeNumbers(
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [],
 ): ReactNode {
   if (!enabled) return children;
-  return linkChanges(children, textOf(children), skills);
+  return linkChanges(children, skills);
 }

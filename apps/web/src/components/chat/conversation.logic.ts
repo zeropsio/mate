@@ -32,10 +32,12 @@ import {
   browserCheckUrl,
   devServerAction,
   envChangeWords,
+  handedChangeOfCall,
   isGitPushOnly,
   isReadOperationKind,
   standupStepRole,
   type ZeropsOperation,
+  type ZeropsOperationPullRequest,
 } from "@t3tools/client-runtime/zerops/model";
 
 import { brokeOffReason } from "@t3tools/shared/threadStatus";
@@ -2380,7 +2382,7 @@ export interface OutcomeModel {
   readonly notDone: ReadonlyArray<OutcomeNotDone>;
   /** Steps of its plan it did not finish. */
   readonly planLeft: ReadonlyArray<string>;
-  /** The pull request its push landed through: the change it left for the person. */
+  /** The change it left for the person (`turnChanges`): its last push's, or the Draft it handed over. */
   readonly change: { readonly repository: string; readonly number: number } | null;
   /** The crew task it worked, as its card named it. */
   readonly crewTask: { readonly number: number; readonly title: string } | null;
@@ -2589,6 +2591,31 @@ interface TurnClaims {
 
 const claimsByTurn = new WeakMap<ConversationTurn, TurnClaims>();
 
+/**
+ * The changes a turn left for the person, in the order it left them: each its settled pushes
+ * landed through, and each Draft zcp's handover named (open-change, describe-change).
+ */
+function turnChanges(turn: ConversationTurn): ReadonlyArray<ZeropsOperationPullRequest> {
+  return turn.stretches
+    .flatMap((stretch) => stretch.entries)
+    .flatMap((entry) => {
+      if (entry.kind === "operation")
+        return splitBatchDeploy(entry.operation).flatMap((operation) =>
+          operation.phase !== "running" && operation.pullRequest !== undefined
+            ? [operation.pullRequest]
+            : [],
+        );
+      if (entry.kind !== "generic-call") return [];
+      const handed = handedChangeOfCall({
+        toolName: entry.entry.label,
+        input: entry.entry.toolInput,
+        completed: entry.entry.toolLifecycleStatus === "completed",
+        resultText: entry.entry.detail,
+      });
+      return handed === null ? [] : [handed];
+    });
+}
+
 function turnClaims(turn: ConversationTurn): TurnClaims {
   const known = claimsByTurn.get(turn);
   if (known !== undefined) return known;
@@ -2596,12 +2623,10 @@ function turnClaims(turn: ConversationTurn): TurnClaims {
   const changes: string[] = [];
   const pages: string[] = [];
   const views: string[] = [];
+  for (const change of turnChanges(turn)) changes.push(`${change.repository}#${change.number}`);
   for (const operation of turn.stretches.flatMap(stretchOperations).flatMap(splitBatchDeploy)) {
     if (operation.phase === "running") continue;
     services.push(...takenServices(operation));
-    if (operation.pullRequest !== undefined) {
-      changes.push(`${operation.pullRequest.repository}#${operation.pullRequest.number}`);
-    }
     if (operation.kind === "browser") {
       pages.push(browserCheckPage(operation));
       views.push(pageView(browserCheckPage(operation), operation.deviceName ?? null));
@@ -2949,8 +2974,7 @@ export function deriveOutcome(input: {
     created,
     notDone,
     planLeft: planLeftOf(turn),
-    change:
-      settled.findLast((operation) => operation.pullRequest !== undefined)?.pullRequest ?? null,
+    change: turnChanges(turn).at(-1) ?? null,
     crewTask: crewTaskOf(turn),
     activity: input.activity ?? [],
     later: laterClaims(input.later ?? []),

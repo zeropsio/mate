@@ -26,6 +26,7 @@ export {
   type MateMessageSent,
 } from "./mateMessage.ts";
 export { deriveZeropsThreadModel } from "./deriveThreadModel.ts";
+export { handedChangeOfCall } from "./handedChange.ts";
 export type {
   ZeropsBrowserRead,
   ZeropsCall,
@@ -34,6 +35,7 @@ export type {
   ZeropsOperation,
   ZeropsOperationKind,
   ZeropsOperationPhase,
+  ZeropsOperationPullRequest,
   ZeropsOperationStep,
   ZeropsReadResult,
   ZeropsTimelineEntry,

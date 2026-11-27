@@ -21,6 +21,7 @@ import {
   humanizeToolName,
   sentToName,
   type ZeropsOperation,
+  type ZeropsOperationPullRequest,
 } from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
@@ -548,6 +549,11 @@ type MessagesTimelineRowBody =
       showAssistantMeta: boolean;
       /** The Mate's last word under a run that has nothing to report: see `FoldsFrom`. */
       foldsFrom?: FoldsFrom;
+      /**
+       * A turn's answer: the change its turn left for the person (`OutcomeModel.change`), which
+       * the answer's bold Open draft and Add to your app press.
+       */
+      change?: ZeropsOperationPullRequest;
     }
   | ({
       /**
@@ -3654,6 +3660,7 @@ export function deriveMessagesTimelineRows(input: {
         imageOnly: false,
         showAssistantMeta: !answer.message.streaming,
         ...(foldsFrom === undefined ? {} : { foldsFrom }),
+        ...(outcome === null || outcome.change === null ? {} : { change: outcome.change }),
       });
     }
     // What it asked the person for follows its words: the person answers it there.
@@ -4041,7 +4048,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.aside === bm.aside &&
         a.imageOnly === bm.imageOnly &&
         a.showAssistantMeta === bm.showAssistantMeta &&
-        sameFold(a.foldsFrom, bm.foldsFrom)
+        sameFold(a.foldsFrom, bm.foldsFrom) &&
+        a.change?.repository === bm.change?.repository &&
+        a.change?.number === bm.change?.number
       );
     }
     case "record": {

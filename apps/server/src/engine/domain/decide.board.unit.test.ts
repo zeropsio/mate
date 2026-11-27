@@ -147,7 +147,7 @@ it("ED147: A conversation opened with a task the person took from the Board link
   });
 });
 
-// witness: apps/server/src/engine/pump/changeOpened.ts | if (matched === null || Number(matched[2]) !== number) return null; → if (matched === null) return null;
+// witness: packages/shared/src/hqChanges.ts | if (matched === null || Number(matched[2]) !== number) return null; → if (matched === null) return null;
 it("ED148: A change the agent opened is read off zcp's `open-change` answer as the repository its address names and the number it answers, only where both agree; any other answer or tool names no change", () => {
   const opened = (pullRequest: unknown, pullRequestUrl: unknown) => ({
     service: "appdev",

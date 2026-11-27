@@ -1136,3 +1136,34 @@ export function parseAttachmentUrl(href: string, officialHqAddress: string): Att
     ? null
     : { appId, repo, number, id };
 }
+
+/** A change's address as zcp words it: `/changes/<appId>/<repo>/<n>` at HQ's origin. */
+const ZCP_CHANGE_PATH = /^\/changes\/[^/]+\/([^/]+)\/([1-9]\d{0,8})$/u;
+
+/**
+ * The change a zcp answer about one change names (`zerops_workflow` open-change, describe-change,
+ * close-change): the repository its address (`pullRequestUrl`) names and the number it answers
+ * (`pullRequest`), only where both agree; null for any other answer.
+ */
+export function changeOfZcpAnswer(
+  answer: Readonly<Record<string, unknown>>,
+): { readonly repo: string; readonly number: number } | null {
+  const number = answer.pullRequest;
+  const url = answer.pullRequestUrl;
+  if (typeof number !== "number" || typeof url !== "string") return null;
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+  const matched = ZCP_CHANGE_PATH.exec(path);
+  if (matched === null || Number(matched[2]) !== number) return null;
+  let repo: string;
+  try {
+    repo = decodeURIComponent(matched[1]!);
+  } catch {
+    return null;
+  }
+  return repo.trim() === "" ? null : { repo, number };
+}

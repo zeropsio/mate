@@ -1,4 +1,4 @@
-next: ZV217
+next: ZV218
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -180,3 +180,4 @@ next: ZV217
 - ZV214 — Try it for a change offers only its own repository's part: Your app is that part's stage and the Draft that part's working copy, never another part's stage or dev; breaks: a change in a two-part project opens the other part's app or dev
 - ZV215 — A change's Draft carries the state zcp last wrote for its copy, and a state this build does not know draws as none; breaks: a person sees a stopped, failed or lost Draft as if it ran
 - ZV216 — An Add that came back unadded says why in words for every reason HQ gives, and a reason this build does not know reads as not added, never as HQ's code; breaks: the person reads a raw code such as github_main_diverged
+- ZV217 — The change a call hands the person is the one zcp's answer to its open-change or describe-change names, by the repository its address names and the number it answers, and none for its close-change, an unfinished or failed call, or another tool's; breaks: a finishing message's Open draft opens a closed change, or another change than the one its turn handed over

@@ -8,14 +8,12 @@
  * @module engine/pump/changeOpened
  */
 import type { ItemBody } from "@t3tools/contracts";
+import { changeOfZcpAnswer } from "@t3tools/shared/hqChanges";
 
 import { zcpAnswerOfCall } from "./vaultAsk.ts";
 
 /** zcp's tool whose `open-change` action opens a change in HQ. */
 export const CHANGE_OPEN_TOOL = "zerops_workflow";
-
-/** A change's address as zcp words it: `/changes/<appId>/<repo>/<n>` at HQ's origin. */
-const CHANGE_PATH = /^\/changes\/[^/]+\/([^/]+)\/([1-9]\d{0,8})$/u;
 
 /** The action of the tool that opens a change; its describe and close answer the same fields. */
 export const CHANGE_OPEN_ACTION = "open-change";
@@ -33,22 +31,5 @@ export function changeOpenedOfCall(
   if (typeof args !== "object" || args === null || !("action" in args)) return null;
   if (args.action !== CHANGE_OPEN_ACTION) return null;
   const answer = zcpAnswerOfCall(body, CHANGE_OPEN_TOOL);
-  const number = answer?.pullRequest;
-  const url = answer?.pullRequestUrl;
-  if (typeof number !== "number" || typeof url !== "string") return null;
-  let path: string;
-  try {
-    path = new URL(url).pathname;
-  } catch {
-    return null;
-  }
-  const matched = CHANGE_PATH.exec(path);
-  if (matched === null || Number(matched[2]) !== number) return null;
-  let repo: string;
-  try {
-    repo = decodeURIComponent(matched[1]!);
-  } catch {
-    return null;
-  }
-  return repo.trim() === "" ? null : { repo, number };
+  return answer === null ? null : changeOfZcpAnswer(answer);
 }

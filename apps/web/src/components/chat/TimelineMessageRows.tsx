@@ -34,6 +34,7 @@ import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../times
 import { TimelineRowCtx } from "./timelineContext";
 import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
+import { TurnChangeContext } from "../zerops/BareChangeNumber";
 import { MateAnswerFrame } from "../zerops/MateMessageRow";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
 import { Text } from "~/components/ui/text";
@@ -396,7 +397,9 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
   return (
     <>
       <FoldRoom fold={row.foldsFrom} words={row.message.id} />
-      <MateProse message={row.message} showMeta={row.showAssistantMeta} />
+      <TurnChangeContext value={row.change ?? null}>
+        <MateProse message={row.message} showMeta={row.showAssistantMeta} />
+      </TurnChangeContext>
     </>
   );
 }
