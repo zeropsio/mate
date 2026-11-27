@@ -68,6 +68,8 @@ const MessageEntry = Schema.Struct({
   end: Schema.optionalKey(MateMessageEnd),
   /** The reason an unadmitted check notice ended, kept with the end until HQ acknowledges it. */
   reason: Schema.optionalKey(MateMessageNotAdmittedReason),
+  /** Its settled notice reason has reached the conversation's durable record. */
+  notAdmittedRecorded: Schema.optionalKey(Schema.Literal(true)),
   /** An ask's answer, as `message-ended` carries it. */
   words: Schema.optionalKey(Schema.String),
   /** HQ recorded the end (`message-ack`): it is told no more. */

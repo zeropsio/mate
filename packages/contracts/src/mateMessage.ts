@@ -61,6 +61,7 @@ export const MateMessageAbout = Schema.Struct({
   number: Schema.Int,
   branch: Schema.String,
   head: Schema.String,
+  failed: Schema.Array(Schema.Literals(["review-build", "github"])),
 });
 
 const peerFields = { kind: Schema.Literals(["ask", "answer"]), from: MateMessageFrom };
@@ -96,7 +97,11 @@ export type MateMessage = typeof MateMessage.Type;
  */
 export const MateMessageItem = Schema.Union([
   Schema.Struct({ ...itemFields, ...peerFields }),
-  Schema.Struct({ ...itemFields, ...noticeFields }),
+  Schema.Struct({
+    ...itemFields,
+    ...noticeFields,
+    notAdmittedReason: Schema.optionalKey(MateMessageNotAdmittedReason),
+  }),
 ]);
 export type MateMessageItem = typeof MateMessageItem.Type;
 
@@ -143,5 +148,14 @@ export const mateMessageSenderName = (from: MateMessageFrom): string => {
 
 /** The heading used wherever a notice's conversation is shown. */
 export const mateMessageNoticeHeading = (
-  about: Pick<typeof MateMessageAbout.Type, "number">,
-): string => `GitHub's checks failed on change #${about.number}`;
+  about: Pick<typeof MateMessageAbout.Type, "number" | "failed">,
+  title?: string,
+): string => {
+  const change = title?.trim() || `#${about.number}`;
+  const reviewBuild = about.failed.includes("review-build");
+  const github = about.failed.includes("github");
+  if (reviewBuild && github)
+    return `Your app did not build, and GitHub's checks failed, on ${change}`;
+  if (reviewBuild) return `Your app did not build with "${change}"`;
+  return `GitHub's checks failed on ${change}`;
+};

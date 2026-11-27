@@ -95,6 +95,15 @@ const projectWith = (
           state = 'closed', closed_seq = ${event.seq}, rev = ${event.seq}
         WHERE item_id = ${event.itemId}
       `.pipe(Effect.asVoid);
+    case "MateNoticeNotAdmitted":
+      return sql`
+        UPDATE engine_item
+        SET body_json = json_set(body_json, '$.mateMessage.notAdmittedReason', ${event.reason}),
+            rev = ${event.seq}
+        WHERE conversation_id = ${c} AND kind = 'person'
+          AND json_extract(body_json, '$.mateMessage.kind') = 'notice'
+          AND json_extract(body_json, '$.mateMessage.id') = ${event.messageId}
+      `.pipe(Effect.asVoid);
     case "RequestOpened":
       return sql`
         INSERT INTO engine_request (

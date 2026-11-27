@@ -38,12 +38,15 @@ it("CT7: A message of kind notice decodes with the change it is about and no sen
       number: 7,
       branch: "b",
       head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      failed: ["github"],
     },
     words:
       "GitHub's checks failed on change #7 (repository repo, branch b): pull request #9 https://github.example/pull/9, commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.\n- build: failure, check run 1, https://github.example/runs/1",
     sentAt: "2026-11-24T00:00:00.000Z",
   };
   expect(decoded(decode(message))).toEqual(message);
+  const { failed: _failed, ...withoutFailed } = message.about;
+  expect(Exit.isFailure(decode({ ...message, about: withoutFailed }))).toBe(true);
   const { about: _about, ...withoutAbout } = message;
   expect(Exit.isFailure(decode(withoutAbout))).toBe(true);
   for (const kind of ["ask", "answer"]) {

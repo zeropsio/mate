@@ -340,6 +340,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "mate-message" ? (
         <MateMessageRow
           item={row.item}
+          mateName={ctx.speaker.name}
           markdownCwd={ctx.markdownCwd}
           skills={ctx.skills}
           text={row.text}

@@ -28,6 +28,7 @@ import type {
   KnownEngineEvent,
   MateMessageFrom,
   MateMessageItem,
+  MateMessageNotAdmittedReason,
   MateTaskMessage,
   MateTaskSource,
   MessageAbout,
@@ -360,6 +361,12 @@ export type Command =
    * where it did not open here (`MateAnswerHeard`); nothing where it no longer waits on it.
    */
   | { readonly _tag: "ForgetMateAnswer"; readonly messageId: string }
+  /** The message ledger's settled reason for a delivered notice. */
+  | {
+      readonly _tag: "RecordNoticeNotAdmitted";
+      readonly messageId: string;
+      readonly reason: MateMessageNotAdmittedReason;
+    }
   /**
    * The Zerops side's: the note that went back as the answer to another Mate's message, and that
    * Mate: a `mate.answer` marker, so every client draws the note as addressed to it.

@@ -9,3 +9,4 @@ next: ES10
 - ES7 — A snapshot of another state version is never read: the conversation is folded from its record; breaks: a release that changes the state's shape loads its conversations wrong
 - ES8 — The conversation's row names the agent it belongs to, as the boot and the usage watch read it; breaks: after a restart the conversation's agent is unknown and its usage unwatched
 - ES9 — A step whose event this build cannot encode (a driver's call state the contracts do not know) is refused as invalid-signal, writing only its receipt, and the conversation still loads; breaks: one unreadable event makes the conversation unloadable for good
+- ES+1 — A delivered check notice keeps the ledger's settled reason in its conversation item across a reload and later delivery updates, without changing another notice; breaks: a notice that needs a person says the Mate is fixing it after the ledger forgets the end
