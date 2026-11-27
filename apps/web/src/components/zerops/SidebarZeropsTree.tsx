@@ -2406,6 +2406,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           : () => {
               onOpenGroup(group.groupId);
             },
+      onBoard: () => {
+        void navigate({ to: "/group/$groupId/board", params: { groupId: group.groupId } });
+      },
       onAddresses:
         place === undefined || accountOrgId === null
           ? undefined

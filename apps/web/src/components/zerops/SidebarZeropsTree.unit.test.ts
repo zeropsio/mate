@@ -14,6 +14,7 @@ it("MN1: A project that cannot move is offered no move", () => {
     onToggle: () => {},
     onAddMate: () => {},
     onOpen: () => {},
+    onBoard: () => {},
     reorder: { canMoveUp: false, canMoveDown: false, onMove: () => {} },
     setUp: [],
     onBrowseProjects: () => {},

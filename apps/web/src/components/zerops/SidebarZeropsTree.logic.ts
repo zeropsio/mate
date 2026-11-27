@@ -54,8 +54,8 @@ export function addressesPlace(input: {
 }
 
 /**
- * A project heading's ··· (round 5): Fold, Add a Mate and Open project first — the heading's own
- * verbs, none of them on it at rest — then its Addresses where it has a place, Invite people for
+ * A project heading's ··· (round 5): Fold, Add a Mate, Open project and its Board first — the
+ * heading's own verbs, none of them on it at rest — then its Addresses where it has a place, Invite people for
  * someone who may bring people in (the project picked in the invitation), then moving it
  * among the others, then adding a stage or a production it lacks, and where projects are added.
  * The New Mate dialog opens over the view on screen: Add a Mate goes nowhere. A project without a
@@ -75,6 +75,8 @@ export function projectHeadingMenu(input: {
   /** Why the project takes no Mate now, known before the press (`newMateGate`); Add stands off. */
   readonly addMateWhy?: string | null | undefined;
   readonly onOpen: () => void;
+  /** Opens the project's page at its Board (`/group/$groupId/board`). */
+  readonly onBoard: () => void;
   /** Opens the addresses sheet for its place (`addressesPlace`); absent while it has none. */
   readonly onAddresses?: (() => void) | undefined;
   /** Opens the invitation with this project picked; absent for someone who may not invite. */
@@ -130,6 +132,7 @@ export function projectHeadingMenu(input: {
             },
           ]),
     item("Open project", input.onOpen),
+    item("Board", input.onBoard),
     ...(input.onAddresses === undefined ? [] : [item("Addresses", input.onAddresses)]),
     ...(input.onInvite === undefined ? [] : [item("Invite people", input.onInvite)]),
     separator,
