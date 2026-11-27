@@ -1124,12 +1124,15 @@ export function changeMergeVerdict(
   // described before, why HQ made it a draft again though its own diff may be as it was.
   const draft = pull.ready === false;
   const again = draft ? draftAgain(pull.draftReason) : undefined;
+  // A Mate's code change is a draft its person adds to their app (the chat script): its verdict
+  // says neither merge, the base branch nor commits.
+  const added = pull.kind === "code";
   return {
     enabled: true,
     verdict: {
       state: "ready",
       tone: "quiet",
-      title: draft ? "Draft" : "Ready to merge",
+      title: draft ? "Draft" : added ? "Ready to add to your app" : "Ready to merge",
       why: [
         again !== undefined
           ? `HQ couldn't ${again.couldNot} the latest push${again.inTime ? " in time" : ""}, so ${who} needs to describe it again`
@@ -1138,10 +1141,12 @@ export function changeMergeVerdict(
             : undefined,
         // Behind `main` and merging cleanly is a quiet fact, never a step: `main` moves every few
         // minutes, and asking its Mate to catch up only fell behind again (the owner, 2026-11-17).
-        pull.behind
-          ? `${base} moved on since ${who} branched · it still merges cleanly`
-          : `No conflicts with ${base}`,
-        commits,
+        added
+          ? undefined
+          : pull.behind
+            ? `${base} moved on since ${who} branched · it still merges cleanly`
+            : `No conflicts with ${base}`,
+        added ? undefined : commits,
       ]
         .filter((part) => part !== undefined)
         .join(" · "),
@@ -1539,8 +1544,11 @@ function changeReviewModelOfHead(
   // that its Mate described. A draft, a conflict or a check still running keeps its own words.
   const asksForMerge = verdictOf.enabled && pull.ready !== false;
   const facts = asksForMerge ? input.standing : undefined;
+  // A Mate's draft its person adds keeps its own words (`changeMergeVerdict`): never "merge".
   const verdict: ReviewVerdict =
-    asksForMerge && verdictOf.verdict.state === "ready"
+    asksForMerge &&
+    verdictOf.verdict.state === "ready" &&
+    !(pull.kind === "code" && (facts?.standing.kind ?? "to-merge") === "to-merge")
       ? {
           ...verdictOf.verdict,
           title: standingWord(

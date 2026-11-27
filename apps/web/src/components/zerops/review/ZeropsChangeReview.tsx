@@ -1351,6 +1351,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   // A Mate's several changes in one repository read apart by their branches.
   const branch = reviewBranch(pull);
   const others = props.others ?? NO_OTHERS;
+  // A Mate's code change is a draft: said in the chat script's words, by its title, never by its
+  // number, its branch or the main it merges into.
+  const draftWords = pull.kind === "code";
   return (
     <ZeropsReviewSurface
       ask={
@@ -1467,24 +1470,28 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       kind={KIND}
       kindLabel={props.project === undefined ? mate.name : `${mate.name} · ${props.project}`}
       meta={
-        <span>
-          #{pull.number}
-          {branch === undefined ? null : ` · ${branch}`}
-          {props.under === undefined || over ? null : (
-            <>
-              {" · Builds on "}
-              <InlineButton
-                data-zerops-surface="change-builds-on"
-                onClick={() => {
-                  if (props.under !== undefined) props.onOpenChange?.(props.under.number);
-                }}
-              >
-                #{props.under.number}
-                {props.under.title === undefined ? null : ` ${props.under.title}`}
-              </InlineButton>
-            </>
-          )}
-        </span>
+        // A Mate's draft goes by its title alone (the chat script): no number, no branch.
+        draftWords && (props.under === undefined || over) ? undefined : (
+          <span>
+            {draftWords ? null : `#${String(pull.number)}`}
+            {draftWords || branch === undefined ? null : ` · ${branch}`}
+            {props.under === undefined || over ? null : (
+              <>
+                {draftWords ? "Builds on " : " · Builds on "}
+                <InlineButton
+                  data-zerops-surface="change-builds-on"
+                  onClick={() => {
+                    if (props.under !== undefined) props.onOpenChange?.(props.under.number);
+                  }}
+                >
+                  {draftWords
+                    ? (props.under.title ?? "another draft")
+                    : `#${String(props.under.number)}${props.under.title === undefined ? "" : ` ${props.under.title}`}`}
+                </InlineButton>
+              </>
+            )}
+          </span>
+        )
       }
       elsewhere={
         pull.pullRequest === undefined ? undefined : (
@@ -1595,7 +1602,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       titleId={props.titleId}
       verdict={model.verdict}
       verdictInLine={!checking}
-      where={MERGES_INTO}
+      where={draftWords ? undefined : MERGES_INTO}
       whySaid={
         !onLine &&
         !checking &&
@@ -1612,17 +1619,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       ) : null}
       {others.length === 0 ? null : (
         <p className="text-body leading-5.5 text-pretty" data-zerops-surface="change-others">
-          Other open changes in {pull.repository}:{" "}
+          {draftWords ? "Other drafts: " : `Other open changes in ${pull.repository}: `}
           {others.map((other, index) => (
             <Fragment key={other.number}>
-              {index === 0 ? null : ", "}
+              {index === 0 ? null : draftWords ? " · " : ", "}
               <InlineButton
                 onClick={() => {
                   props.onOpenChange?.(other.number);
                 }}
-                title={other.title}
+                title={draftWords ? undefined : other.title}
               >
-                #{other.number}
+                {draftWords ? other.title : `#${String(other.number)}`}
               </InlineButton>
             </Fragment>
           ))}
