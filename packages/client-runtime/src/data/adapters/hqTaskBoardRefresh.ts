@@ -6,7 +6,9 @@
  * gets a pull request; when one of them opens a change; and when its queue grows or shrinks. The
  * organization's limits (with what was spent this month) are read again when any automated task
  * starts, changes state or ends. A task's cost and time alone moving reads nothing again: a row
- * at work takes them from navigation, re-sent on each report.
+ * at work takes them from navigation, re-sent on each report. An HQ with the Board raises the
+ * application's Board revision on every write to one of its tasks (a person's put, take, release,
+ * done and stop included), which reads it again too.
  */
 import { hqAppsScope, placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
 import type { AccountState } from "../model.ts";
@@ -43,7 +45,7 @@ function automatedMates(state: AccountState, orgId: string, appId: string | null
   return mates.sort(([a], [b]) => a.localeCompare(b));
 }
 
-/** What moves an application's task board: its Mates' tasks, their open changes, its queue. */
+/** What moves an application's task board: its Board revision, else its Mates' tasks, their open changes, its queue. */
 export function appTasksSignature(state: AccountState, orgId: string, appId: string): string {
   const mates = automatedMates(state, orgId, appId);
   const read = readsOfState(state);
@@ -59,7 +61,9 @@ export function appTasksSignature(state: AccountState, orgId: string, appId: str
           .sort()
       : [];
   const waiting = app?.kind === "known" ? (app.value.intake?.waiting ?? null) : null;
-  return JSON.stringify([mates.map(([id, task]) => [id, stateOf(task)]), changes, waiting]);
+  // HQ raises it on every write to one of the application's tasks, a person's or the pool's.
+  const board = app?.kind === "known" ? (app.value.boardRevision ?? null) : null;
+  return JSON.stringify([mates.map(([id, task]) => [id, stateOf(task)]), changes, waiting, board]);
 }
 
 /** What moves the organization's spend this month: any automated task's state. */

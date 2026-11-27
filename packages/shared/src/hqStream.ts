@@ -567,6 +567,12 @@ export const HqNavigationApp = Schema.Struct({
    */
   intake: Schema.optionalKey(Schema.NullOr(HqNavigationIntake)),
   /**
+   * The application's Board revision: a number HQ raises on every write to one of its tasks (a
+   * put, a take, a release, a done, a stop, a hand-out, an end), so the Board and a conversation's
+   * task rows read again when it moves, never on a timer. Absent from an HQ without the Board.
+   */
+  boardRevision: Schema.optionalKey(Schema.Int),
+  /**
    * Who merges its changes, present only where it limits that (`HqMergers`): the organization's
    * Owner and Admins, and the people it names. Absent, or null: whoever may push merges.
    */

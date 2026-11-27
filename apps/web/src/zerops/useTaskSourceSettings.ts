@@ -6,7 +6,7 @@
  * apps are read and made the same way (`useGithubApp`).
  */
 import {
-  appTaskStops,
+  appTaskWrites,
   makeTaskSourceSettings,
   taskSourceSetting,
   type AccountStore,
@@ -15,7 +15,7 @@ import {
   type TaskSourceSettingRead,
   type TaskSourceSettingValue,
   type TaskSourceWrite,
-  type TaskStopAction,
+  type TaskWriteAction,
 } from "@t3tools/client-runtime/data";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import type {
@@ -134,17 +134,17 @@ export function useAppTaskSource<F extends AppSetting>(
   };
 }
 
-const NO_STOPS = Atom.make<Readonly<Record<string, TaskStopAction>>>({});
+const NO_STOPS = Atom.make<Readonly<Record<string, TaskWriteAction>>>({});
 
 export interface TaskStops {
   /** Where this account's stop of each task stands, by the task; a task with none is absent. */
-  readonly stops: Readonly<Record<string, TaskStopAction>>;
+  readonly stops: Readonly<Record<string, TaskWriteAction>>;
   /** Asks HQ to stop the task; its answer is `stops[taskId]`. */
   readonly stop: (taskId: string) => void;
 }
 
 /**
- * The stops of an application's tasks a surface shows, one record per task (`appTaskStops`): the
+ * The stops of an application's tasks a surface shows, one record per task (`appTaskWrites`): the
  * session band and the board read the same one, and a second stop never hides the first.
  */
 export function useAppTaskStops(appId: string | null, taskIds: ReadonlyArray<string>): TaskStops {
@@ -158,7 +158,7 @@ export function useAppTaskStops(appId: string | null, taskIds: ReadonlyArray<str
     [orgId, appId, ids],
   );
   const stops = useAtomValue(
-    store === null || key === null ? NO_STOPS : store.data.project(appTaskStops, key),
+    store === null || key === null ? NO_STOPS : store.data.project(appTaskWrites, key),
   );
   return {
     stops,

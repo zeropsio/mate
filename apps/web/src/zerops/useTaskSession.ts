@@ -4,7 +4,7 @@
  * else the one its Mate is on): HQ's navigation for its Mate's
  * latest task, its activity for whether it works now, its application's board (`hqAppTasks`,
  * read again as navigation says its tasks moved) for the task's own record — and the person's
- * stop of it, the same write and the same record the board's Stop has (`appTaskStops`).
+ * stop of it, the same write and the same record the board's Stop has (`appTaskWrites`).
  */
 import type { EnvironmentId, MateTaskSource } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";

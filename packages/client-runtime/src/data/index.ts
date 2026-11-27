@@ -431,9 +431,10 @@ export { makeTaskSourceSettings } from "./adapters/hqTaskSources.ts";
 export type { AppSetting, OrgSetting } from "./families/hqTaskSources.ts";
 export type { TaskSourceWrite } from "./operations/hqTaskSources.ts";
 export {
-  appTaskStops,
+  appTaskPut,
+  appTaskWrites,
   taskSourceSetting,
-  type TaskStopAction,
+  type TaskWriteAction,
   type SettingValue,
   type TaskSourceSettingRead,
   type TaskSourceSettingValue,

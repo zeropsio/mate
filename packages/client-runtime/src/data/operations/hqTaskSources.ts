@@ -10,7 +10,11 @@
  *
  * @module data/operations/hqTaskSources
  */
-import type { HqScheduleRequest, HqTaskLimitsRequest } from "@t3tools/shared/hqIntake";
+import type {
+  HqPutTaskRequest,
+  HqScheduleRequest,
+  HqTaskLimitsRequest,
+} from "@t3tools/shared/hqIntake";
 import type { TaskSourceSetting } from "../families/hqTaskSources.ts";
 import type { OperationKind } from "./kind.ts";
 
@@ -35,6 +39,19 @@ export type TaskSourceWrite =
   | { readonly kind: "task-limits"; readonly limits: HqTaskLimitsRequest }
   /** One of an application's tasks stopped from its board. */
   | { readonly kind: "task-stop"; readonly taskId: string }
+  /**
+   * A person's Put on board from a conversation, pressed on `card` (a board ask's request id, or
+   * the composer's): HQ's answer, the task queued, goes back to the card (`putTask`).
+   */
+  | { readonly kind: "task-put"; readonly card: string; readonly request: HqPutTaskRequest }
+  /** A queued task taken for one of the person's own Mates. */
+  | { readonly kind: "task-take"; readonly taskId: string; readonly mateProjectId: string }
+  /** A taken task given back to the queue. */
+  | { readonly kind: "task-release"; readonly taskId: string }
+  /** A taken task marked done by its taker. */
+  | { readonly kind: "task-done"; readonly taskId: string }
+  /** Its putter's answer or steer on a conversation's task a pool Mate holds. */
+  | { readonly kind: "task-message"; readonly taskId: string; readonly text: string }
   /** HQ's manifest for the app goes to the screen that asked, never into the record. */
   | {
       readonly kind: "github-manifest";
@@ -86,6 +103,11 @@ export function taskSourceWriteSetting(write: TaskSourceWrite): TaskSourceSettin
     case "task-limits":
       return "hqTaskLimits";
     case "task-stop":
+    case "task-put":
+    case "task-take":
+    case "task-release":
+    case "task-done":
+    case "task-message":
       return "hqAppTasks";
     case "github-manifest":
     case "github-forget":

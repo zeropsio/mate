@@ -4,7 +4,7 @@
  * and whether a person can stop it now. The Mate's latest task is read from HQ's navigation (live);
  * a task before it from the task's own record (`HqAppTask`, the application's task board).
  */
-import type { TaskStopAction } from "@t3tools/client-runtime/data";
+import type { TaskWriteAction } from "@t3tools/client-runtime/data";
 import {
   MATE_TASKS_CONVERSATION_ID,
   mateTaskIdOfConversation,
@@ -30,8 +30,8 @@ export interface TaskSessionInput {
   readonly record: HqAppTask | undefined;
   /** The person may stop it: an Owner or Admin, as HQ's `keep_intake` asks. */
   readonly canStop: boolean;
-  /** Where this account's stop of it stands (`appTaskStops`); absent: none asked. */
-  readonly stop?: TaskStopAction | undefined;
+  /** Where this account's stop of it stands (`appTaskWrites`); absent: none asked. */
+  readonly stop?: TaskWriteAction | undefined;
 }
 
 export interface TaskSession {

@@ -11,6 +11,7 @@
 import type {
   HqAppTask,
   HqChannelView,
+  HqSnooze,
   HqDiscordView,
   HqScheduleView,
   HqSlackChannels,
@@ -31,6 +32,11 @@ declare module "../model.ts" {
     readonly hqSlackChannels: HqSlackChannels;
     readonly hqDiscord: HqDiscordView;
     readonly hqTaskLimits: HqTaskLimitsView;
+    /**
+     * What the person set aside until it changes (`HqSnooze`), theirs on every device: read while
+     * a surface that hides them is shown.
+     */
+    readonly hqSnoozes: ReadonlyArray<HqSnooze>;
     /** The organization's GitHub app: where it is installed, never its key. */
     readonly hqGithub: HqGithubView;
     readonly hqAppSlack: { readonly channel: HqChannelView | null };
@@ -45,8 +51,9 @@ declare module "../model.ts" {
      */
     readonly hqAppTasks: ReadonlyArray<HqAppTask>;
     /**
-     * The latest write of this account's to one of them (a task's stop: to that task,
-     * `taskStopRequestId`), by its request, and — once HQ answered
+     * The latest write of this account's to one of them (to one task — a take, release, done,
+     * stop or answer: `taskWriteRequestId`; a put, by the card it came from: `taskPutRequestId`),
+     * by its request, and — once HQ answered
      * it — the last read started before that answer: the write shows done once a read started
      * after it lands. `null` until HQ answers.
      */
@@ -72,6 +79,7 @@ export const ORG_SETTINGS = [
   "hqDiscord",
   "hqTaskLimits",
   "hqGithub",
+  "hqSnoozes",
 ] as const;
 export const APP_SETTINGS = [
   "hqAppSlack",
@@ -94,6 +102,7 @@ const SUFFIX: Readonly<Record<TaskSourceSetting, string>> = {
   hqDiscord: "discord",
   hqTaskLimits: "task-limits",
   hqGithub: "github",
+  hqSnoozes: "snoozes",
   hqAppSlack: "app-slack",
   hqAppDiscord: "app-discord",
   hqAppWebhooks: "app-webhooks",
@@ -119,13 +128,23 @@ export const settingRequestScope = (
   key: OrgSettingKey | AppSettingKey,
 ): ScopeKey => `hq:${key.orgId}:task-source-request:${settingRequestId(family, key)}`;
 /**
- * A stop of one of an application's tasks has a request record of its own, by the task: a second
- * stop never hides where the first stands, and every surface showing the task reads the same one.
+ * A write to one of an application's tasks (a take, release, done, stop or answer) has a request
+ * record of its own, by the task: every surface showing the task reads the same one, and a write to
+ * another task never hides where this one stands.
  */
-export const taskStopRequestId = (key: AppSettingKey, taskId: string): string =>
-  JSON.stringify(["hqAppTasks", settingId(key), "stop", taskId]);
-export const taskStopRequestScope = (key: AppSettingKey, taskId: string): ScopeKey =>
-  `hq:${key.orgId}:task-source-request:${taskStopRequestId(key, taskId)}`;
+export const taskWriteRequestId = (key: AppSettingKey, taskId: string): string =>
+  JSON.stringify(["hqAppTasks", settingId(key), "task", taskId]);
+export const taskWriteRequestScope = (key: AppSettingKey, taskId: string): ScopeKey =>
+  `hq:${key.orgId}:task-source-request:${taskWriteRequestId(key, taskId)}`;
+/**
+ * A Put on board has a request record by the card it was pressed on (`card`: the board ask's
+ * request id, or the composer's own): the card reads where its put stands, and HQ's id of the task
+ * it made once answered.
+ */
+export const taskPutRequestId = (key: AppSettingKey, card: string): string =>
+  JSON.stringify(["hqAppTasks", settingId(key), "put", card]);
+export const taskPutRequestScope = (key: AppSettingKey, card: string): ScopeKey =>
+  `hq:${key.orgId}:task-source-request:${taskPutRequestId(key, card)}`;
 export const webhookRevealScope = (key: AppSettingKey): ScopeKey =>
   `hq:${key.orgId}:webhook-reveal:${settingId(key)}`;
 
@@ -144,6 +163,7 @@ export const hqSlackChannelsFamily = detail("hqSlackChannels", SUFFIX.hqSlackCha
 export const hqDiscordFamily = detail("hqDiscord", SUFFIX.hqDiscord);
 export const hqTaskLimitsFamily = detail("hqTaskLimits", SUFFIX.hqTaskLimits);
 export const hqGithubFamily = detail("hqGithub", SUFFIX.hqGithub);
+export const hqSnoozesFamily = detail("hqSnoozes", SUFFIX.hqSnoozes);
 export const hqAppSlackFamily = detail("hqAppSlack", SUFFIX.hqAppSlack);
 export const hqAppDiscordFamily = detail("hqAppDiscord", SUFFIX.hqAppDiscord);
 export const hqAppWebhooksFamily = detail("hqAppWebhooks", SUFFIX.hqAppWebhooks);

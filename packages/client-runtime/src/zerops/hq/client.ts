@@ -87,6 +87,12 @@ import {
   HqIntakeView,
   HqScheduleView,
   HqAppTasksView,
+  HqSnoozesView,
+  HqTaskAnswer,
+  type HqPutTaskRequest,
+  type HqSnooze,
+  type HqTakeTaskRequest,
+  type HqTaskMessageRequest,
   HqSlackChannels,
   HqSlackView,
   type HqTaskLimitsRequest,
@@ -993,6 +999,26 @@ export interface HqApi {
   readonly appTasks: (appId: string) => Promise<ReadonlyArray<HqAppTask>>;
   /** Stops one of them (`POST /api/apps/:appId/tasks/:taskId/stop`). */
   readonly stopAppTask: (appId: string, taskId: string) => Promise<void>;
+  /** A person's Put on board from a conversation (`POST /api/apps/:appId/tasks`): the task queued. */
+  readonly putAppTask: (appId: string, request: HqPutTaskRequest) => Promise<HqAppTask>;
+  /** A queued task taken for one of the person's own Mates (`POST …/tasks/:taskId/take`). */
+  readonly takeAppTask: (
+    appId: string,
+    taskId: string,
+    request: HqTakeTaskRequest,
+  ) => Promise<HqAppTask>;
+  /** A taken task given back to the queue (`POST …/tasks/:taskId/release`). */
+  readonly releaseAppTask: (appId: string, taskId: string) => Promise<HqAppTask>;
+  /** A taken task marked done by its taker (`POST …/tasks/:taskId/done`). */
+  readonly doneAppTask: (appId: string, taskId: string) => Promise<HqAppTask>;
+  /** Its putter's answer or steer on a conversation's task a pool Mate holds (`POST …/messages`). */
+  readonly messageAppTask: (
+    appId: string,
+    taskId: string,
+    request: HqTaskMessageRequest,
+  ) => Promise<void>;
+  /** What the person set aside until it changes, on every device (`GET /api/me/snoozes`). */
+  readonly snoozes: () => Promise<ReadonlyArray<HqSnooze>>;
   /** The organization's limits on each task (`GET /api/org/task-limits`). */
   readonly taskLimits: () => Promise<HqTaskLimitsView>;
   readonly setTaskLimits: (limits: HqTaskLimitsRequest) => Promise<HqTaskLimitsView>;
@@ -1455,6 +1481,15 @@ const readSchedules = decoded(
   "a project's schedules",
 );
 const readAppTasks = decoded(HqAppTasksView, "a project's tasks");
+const readTaskAnswer = decoded(HqTaskAnswer, "a task");
+const readSnoozes = decoded(HqSnoozesView, "what you set aside");
+
+/**
+ * The Board's opt-in on a read of an application's tasks: an HQ that knows the Board answers its
+ * fields (`HqAppTask.source`, `taker`, `takenAt`, `changes`, the `taken` state) only to a read that
+ * asks for them, so older clients keep decoding; this client always asks.
+ */
+export const HQ_BOARD_READ = "with=board";
 const readTaskLimits = decoded(HqTaskLimitsView, "the limits per task");
 const readCreatedBirth = decoded(
   Schema.Struct({ ...HqRecordedBirth.fields, appId: Schema.String }),
@@ -2592,7 +2627,11 @@ export function makeHqApi(input: {
       );
     },
     appTasks: async (appId) =>
-      (await readAppTasks(await authorized(`/api/apps/${encodeURIComponent(appId)}/tasks`))).tasks,
+      (
+        await readAppTasks(
+          await authorized(`/api/apps/${encodeURIComponent(appId)}/tasks?${HQ_BOARD_READ}`),
+        )
+      ).tasks,
     stopAppTask: async (appId, taskId) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/stop`,
@@ -2600,6 +2639,54 @@ export function makeHqApi(input: {
         true,
       );
     },
+    putAppTask: async (appId, request) =>
+      (
+        await readTaskAnswer(
+          await authorized(
+            `/api/apps/${encodeURIComponent(appId)}/tasks`,
+            { method: "POST", body: JSON.stringify(request satisfies HqPutTaskRequest) },
+            true,
+          ),
+        )
+      ).task,
+    takeAppTask: async (appId, taskId, request) =>
+      (
+        await readTaskAnswer(
+          await authorized(
+            `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/take`,
+            { method: "POST", body: JSON.stringify(request satisfies HqTakeTaskRequest) },
+            true,
+          ),
+        )
+      ).task,
+    releaseAppTask: async (appId, taskId) =>
+      (
+        await readTaskAnswer(
+          await authorized(
+            `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/release`,
+            { method: "POST", body: JSON.stringify({}) },
+            true,
+          ),
+        )
+      ).task,
+    doneAppTask: async (appId, taskId) =>
+      (
+        await readTaskAnswer(
+          await authorized(
+            `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/done`,
+            { method: "POST", body: JSON.stringify({}) },
+            true,
+          ),
+        )
+      ).task,
+    messageAppTask: async (appId, taskId, request) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/messages`,
+        { method: "POST", body: JSON.stringify(request satisfies HqTaskMessageRequest) },
+        true,
+      );
+    },
+    snoozes: async () => (await readSnoozes(await authorized("/api/me/snoozes"))).snoozes,
     taskLimits: async () => readTaskLimits(await authorized("/api/org/task-limits")),
     setTaskLimits: async (limits) =>
       readTaskLimits(

@@ -10,7 +10,8 @@ import {
   settingId,
   settingRequestId,
   settingScope,
-  taskStopRequestId,
+  taskPutRequestId,
+  taskWriteRequestId,
   type TaskSourceSetting,
 } from "../families/hqTaskSources.ts";
 import type { FamilyValues } from "../model.ts";
@@ -112,35 +113,67 @@ export const taskSourceSetting: Projection<
   equals: sameValue,
 };
 
-interface AppTaskStopsKey {
+interface AppTaskWritesKey {
   readonly orgId: string;
   readonly appId: string;
   /** The tasks a surface shows. */
   readonly taskIds: ReadonlyArray<string>;
 }
 
-/** Where a person's stop of a task stands, by the task. */
-export type TaskStopAction = AutomationAction<TaskSourceWrite["kind"]>;
+/**
+ * Where this account's latest write to a task stands (a take, release, done, stop or answer), by
+ * the task; `verb` names which write it is.
+ */
+export type TaskWriteAction = AutomationAction<TaskSourceWrite["kind"]>;
 
 /**
- * Where this account's stop of each of an application's tasks stands, by the task, one record
- * each (`taskStopRequestId`): the session band and the board read the same one, and a second
- * stop never hides the first one's refusal. Done once a read of the board started after HQ's
- * answer lands.
+ * Where this account's latest write to each of an application's tasks stands, by the task, one
+ * record each (`taskWriteRequestId`): the session band, the conversation's task row and the Board
+ * read the same one, and a write to another task never hides it. Done once a read of the board
+ * started after HQ's answer lands.
  */
-export const appTaskStops: Projection<AppTaskStopsKey, Readonly<Record<string, TaskStopAction>>> = {
-  name: "appTaskStops",
+export const appTaskWrites: Projection<
+  AppTaskWritesKey,
+  Readonly<Record<string, TaskWriteAction>>
+> = {
+  name: "appTaskWrites",
   keyOf: (key) => JSON.stringify([key.orgId, key.appId, key.taskIds]),
   derive: (read, key) => {
     const owner = { orgId: key.orgId, appId: key.appId };
     const fact = read.fact("hqAppTasks", settingId(owner));
     const stream = read.stream(settingScope("hqAppTasks", owner));
-    const stops: Record<string, TaskStopAction> = {};
+    const writes: Record<string, TaskWriteAction> = {};
     for (const taskId of key.taskIds) {
-      const action = writeAction(read, taskStopRequestId(owner, taskId), fact, stream);
-      if (action.kind !== "idle") stops[taskId] = action;
+      const action = writeAction(read, taskWriteRequestId(owner, taskId), fact, stream);
+      if (action.kind !== "idle") writes[taskId] = action;
     }
-    return stops;
+    return writes;
+  },
+  equals: sameValue,
+};
+
+interface AppTaskPutKey {
+  readonly orgId: string;
+  readonly appId: string;
+  /** The card it was pressed on (`TaskSourceWrite` `task-put`'s `card`). */
+  readonly card: string;
+}
+
+/**
+ * Where a Put on board pressed on one card stands (`taskPutRequestId`): idle where none was pressed
+ * there, done once a read of the board started after HQ's answer lands.
+ */
+export const appTaskPut: Projection<AppTaskPutKey, TaskWriteAction> = {
+  name: "appTaskPut",
+  keyOf: (key) => JSON.stringify([key.orgId, key.appId, key.card]),
+  derive: (read, key) => {
+    const owner = { orgId: key.orgId, appId: key.appId };
+    return writeAction(
+      read,
+      taskPutRequestId(owner, key.card),
+      read.fact("hqAppTasks", settingId(owner)),
+      read.stream(settingScope("hqAppTasks", owner)),
+    );
   },
   equals: sameValue,
 };

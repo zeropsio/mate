@@ -6,7 +6,7 @@
  */
 import * as Effect from "effect/Effect";
 import type { HqGithubManifestView } from "@t3tools/shared/hqGithub";
-import type { HqWebhookView } from "@t3tools/shared/hqIntake";
+import type { HqAppTask, HqWebhookView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 
@@ -24,6 +24,11 @@ export type TaskSourceWrites = Pick<
   | "deleteSchedule"
   | "setTaskLimits"
   | "stopAppTask"
+  | "putAppTask"
+  | "takeAppTask"
+  | "releaseAppTask"
+  | "doneAppTask"
+  | "messageAppTask"
   | "githubManifest"
   | "githubForget"
   | "githubInstall"
@@ -56,8 +61,19 @@ function installationRefusal(cause: HqError, of: "installation" | "app"): string
  * `undefined`: HQ's own words stand.
  */
 function taskStopRefusal(cause: HqError): string | undefined {
-  if (cause.status === 403) return "Only an Owner or Admin can stop a task.";
+  if (cause.status === 403)
+    return "Only the person who put it, the person who took it, or an Owner or Admin can stop a task.";
   if (cause.reason === "task_not_found") return "That task has ended already.";
+  return undefined;
+}
+
+/**
+ * HQ's refusal of a write to a task on the Board in words: one no longer where the write needs it
+ * (taken by somebody else meanwhile, released, ended) says so. `undefined`: HQ's own words stand.
+ */
+function boardRefusal(cause: HqError): string | undefined {
+  if (cause.reason === "task_not_found") return "That task is no longer on the Board.";
+  if (cause.status === 409) return "That task moved meanwhile. Look at the Board again.";
   return undefined;
 }
 
@@ -72,6 +88,10 @@ export function makeTaskSourceExecutor(options: {
   readonly manifested: (requestId: string, view: HqGithubManifestView) => void;
   /** HQ's install link for the organization's GitHub app, for the screen that asked for it alone. */
   readonly linked: (requestId: string, url: string) => void;
+  /** The task as HQ answered a write to it (a put, take, release, done), for its request. */
+  readonly answeredTask: (requestId: string, task: HqAppTask) => void;
+  /** HQ's words while it is away from this organization (`hqAwayAnswer`); `null`: it is not. */
+  readonly away: (orgId: string) => string | null;
 }): OperationExecutor {
   const refused = (message: string) => ({ outcome: "definitive-refusal" as const, message });
   return {
@@ -82,6 +102,14 @@ export function makeTaskSourceExecutor(options: {
           return yield* Effect.fail(refused("This Zerops sign-in has ended."));
         if (intent.kind !== "task-source")
           return yield* Effect.fail(refused("This action is unavailable."));
+        // HQ away since it last answered here: answered at once, nothing sent (`hqLink`).
+        const away = options.away(intent.orgId);
+        if (away !== null)
+          return yield* Effect.fail({
+            outcome: "definitive-refusal" as const,
+            message: away,
+            writeNotSent: true,
+          });
         const { api } = options;
         const { write } = intent;
         const appId = intent.appId ?? "";
@@ -134,6 +162,26 @@ export function makeTaskSourceExecutor(options: {
               return api.setTaskLimits(write.limits);
             case "task-stop":
               return api.stopAppTask(appId, write.taskId);
+            case "task-put":
+              return api.putAppTask(appId, write.request).then((task) => {
+                options.answeredTask(requestId, task);
+              });
+            case "task-take":
+              return api
+                .takeAppTask(appId, write.taskId, { mateProjectId: write.mateProjectId })
+                .then((task) => {
+                  options.answeredTask(requestId, task);
+                });
+            case "task-release":
+              return api.releaseAppTask(appId, write.taskId).then((task) => {
+                options.answeredTask(requestId, task);
+              });
+            case "task-done":
+              return api.doneAppTask(appId, write.taskId).then((task) => {
+                options.answeredTask(requestId, task);
+              });
+            case "task-message":
+              return api.messageAppTask(appId, write.taskId, { text: write.text });
             case "github-manifest":
               return api
                 .githubManifest({
@@ -172,13 +220,19 @@ export function makeTaskSourceExecutor(options: {
                   refused(
                     (write.kind === "task-stop"
                       ? taskStopRefusal(cause)
-                      : write.kind === "github-install" || write.kind === "github-forget"
-                        ? installationRefusal(cause, "app")
-                        : write.kind === "github-accept" ||
-                            write.kind === "github-suspend" ||
-                            write.kind === "github-resume"
-                          ? installationRefusal(cause, "installation")
-                          : undefined) ??
+                      : write.kind === "task-put" ||
+                          write.kind === "task-take" ||
+                          write.kind === "task-release" ||
+                          write.kind === "task-done" ||
+                          write.kind === "task-message"
+                        ? boardRefusal(cause)
+                        : write.kind === "github-install" || write.kind === "github-forget"
+                          ? installationRefusal(cause, "app")
+                          : write.kind === "github-accept" ||
+                              write.kind === "github-suspend" ||
+                              write.kind === "github-resume"
+                            ? installationRefusal(cause, "installation")
+                            : undefined) ??
                       (typed.some((value) => cause.message.includes(value))
                         ? "HQ did not take what was entered."
                         : cause.message),

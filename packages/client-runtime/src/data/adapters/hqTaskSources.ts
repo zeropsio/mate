@@ -10,7 +10,7 @@
  * its own request, and is gone once sent.
  */
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
-import type { HqWebhookView } from "@t3tools/shared/hqIntake";
+import type { HqAppTask, HqPutTaskRequest, HqWebhookView } from "@t3tools/shared/hqIntake";
 import * as Effect from "effect/Effect";
 import type { HqApi } from "../../zerops/hq/client.ts";
 import {
@@ -19,8 +19,10 @@ import {
   settingRequestId,
   settingRequestScope,
   settingScope,
-  taskStopRequestId,
-  taskStopRequestScope,
+  taskPutRequestId,
+  taskPutRequestScope,
+  taskWriteRequestId,
+  taskWriteRequestScope,
   webhookRevealScope,
   type AppSetting,
   type AppSettingKey,
@@ -36,7 +38,9 @@ import {
   type TypedSecrets,
 } from "../operations/executors/hqTaskSources.ts";
 import { taskSourceWriteSetting, type TaskSourceWrite } from "../operations/hqTaskSources.ts";
-import type { AccountStore } from "../store.ts";
+import { hqAwayAnswer, hqLinkOf } from "../projections/hqLink.ts";
+import type { ScopeKey } from "../model.ts";
+import { readsOfState, type AccountStore } from "../store.ts";
 import { streamOf } from "../reducer.ts";
 import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
 import { appTasksSignature, orgTasksSignature } from "./hqTaskBoardRefresh.ts";
@@ -54,7 +58,35 @@ type TaskSourceApi = TaskSourceWrites &
     | "schedules"
     | "appTasks"
     | "github"
+    | "snoozes"
   >;
+
+/** Where a write's request record is kept: a task's by its task, a put's by its card, else its setting's. */
+function requestRecordOf(
+  key: OrgSettingKey | AppSettingKey,
+  change: TaskSourceWrite,
+  family: TaskSourceSetting,
+): { readonly id: string; readonly scope: ScopeKey } {
+  if ("appId" in key) {
+    if (change.kind === "task-put")
+      return {
+        id: taskPutRequestId(key, change.card),
+        scope: taskPutRequestScope(key, change.card),
+      };
+    if (
+      change.kind === "task-stop" ||
+      change.kind === "task-take" ||
+      change.kind === "task-release" ||
+      change.kind === "task-done" ||
+      change.kind === "task-message"
+    )
+      return {
+        id: taskWriteRequestId(key, change.taskId),
+        scope: taskWriteRequestScope(key, change.taskId),
+      };
+  }
+  return { id: settingRequestId(family, key), scope: settingRequestScope(family, key) };
+}
 
 /** A webhook's answer as a list holds it: never its secret. */
 const withoutSecret = ({ secret: _secret, ...view }: HqWebhookView): HqWebhookView => view;
@@ -88,6 +120,8 @@ export function makeTaskSourceSettings(options: {
           return api.taskLimits();
         case "hqGithub":
           return api.github();
+        case "hqSnoozes":
+          return api.snoozes();
         case "hqAppSlack":
           return api.appChannel(appId, "slack").then((channel) => ({ channel }));
         case "hqAppDiscord":
@@ -179,6 +213,8 @@ export function makeTaskSourceSettings(options: {
   const manifests = new Map<string, HqGithubManifestView>();
   /** HQ's install link, by the request that asked: taken by that request alone. */
   const links = new Map<string, string>();
+  /** The task as HQ answered a write to it, by the request that asked: taken by that request alone. */
+  const tasks = new Map<string, HqAppTask>();
   const operations = makeOperations({
     store,
     makeId: options.makeId,
@@ -206,6 +242,10 @@ export function makeTaskSourceSettings(options: {
         linked: (requestId, url) => {
           if (!closed) links.set(requestId, url);
         },
+        answeredTask: (requestId, task) => {
+          if (!closed) tasks.set(requestId, task);
+        },
+        away: (orgId) => hqAwayAnswer(hqLinkOf(readsOfState(store.state()), orgId)),
       }),
     },
   });
@@ -217,16 +257,9 @@ export function makeTaskSourceSettings(options: {
   ): Promise<string> => {
     const requestId = options.makeId();
     const family = taskSourceWriteSetting(change);
-    // A task's stop is recorded by its task; every other write by the setting it changes.
-    const stopOf = change.kind === "task-stop" && "appId" in key ? change.taskId : null;
-    const scope =
-      stopOf === null
-        ? settingRequestScope(family, key)
-        : taskStopRequestScope(key as AppSettingKey, stopOf);
-    const id =
-      stopOf === null
-        ? settingRequestId(family, key)
-        : taskStopRequestId(key as AppSettingKey, stopOf);
+    // A write to one task is recorded by its task, a put by its card; every other write by the
+    // setting it changes.
+    const { id, scope } = requestRecordOf(key, change, family);
     const spec = specOf(family, key as never);
     if (typed !== undefined) secrets.set(requestId, typed);
     commitOwn(store, "hqTaskSourceRequest", scope, id, { requestId, after: null });
@@ -305,9 +338,36 @@ export function makeTaskSourceSettings(options: {
     return url;
   };
 
+  /**
+   * A write to a task on the Board whose answer is the task as it stands: that task, for the surface
+   * that pressed (a put's card answers its agent with the task's id; a take opens its conversation),
+   * or `null` where HQ refused or did not answer — its words are the write's action.
+   */
+  const taskWrite = async (
+    key: AppSettingKey,
+    change: Extract<
+      TaskSourceWrite,
+      { readonly kind: "task-put" | "task-take" | "task-release" | "task-done" }
+    >,
+  ): Promise<HqAppTask | null> => {
+    const requestId = await write(key, change);
+    const task = tasks.get(requestId) ?? null;
+    tasks.delete(requestId);
+    return task;
+  };
+
   return {
     githubManifest,
     githubInstall,
+    /** Puts work on the Board from a conversation, pressed on `card`: the task queued, or `null`. */
+    putTask: (key: AppSettingKey, card: string, request: HqPutTaskRequest) =>
+      taskWrite(key, { kind: "task-put", card, request }),
+    /** Takes a queued task for one of the person's own Mates: the task taken, or `null`. */
+    takeTask: (key: AppSettingKey, taskId: string, mateProjectId: string) =>
+      taskWrite(key, { kind: "task-take", taskId, mateProjectId }),
+    releaseTask: (key: AppSettingKey, taskId: string) =>
+      taskWrite(key, { kind: "task-release", taskId }),
+    doneTask: (key: AppSettingKey, taskId: string) => taskWrite(key, { kind: "task-done", taskId }),
     /** Reads an organization's setting while a screen shows it. */
     demandOrg: (family: OrgSetting, key: OrgSettingKey) => demandFollowed(specOf(family, key), key),
     /** Reads an application's setting while a screen shows it. */
@@ -338,6 +398,7 @@ export function makeTaskSourceSettings(options: {
       following.clear();
       secrets.clear();
       manifests.clear();
+      tasks.clear();
       revealedFor.clear();
       views.clear();
       epochs.clear();
