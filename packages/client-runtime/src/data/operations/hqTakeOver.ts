@@ -1,11 +1,12 @@
 /**
- * A member's take-over write, which HQ answers at once: one integration token the member minted
- * replaced with one the person mints, and the old one deleted. A lost answer is read in the
- * member's list once it is read again: a token replaced is no longer in it.
+ * A member's take-over write: HQ deletes a token it no longer uses within the call, and replaces one
+ * in use by starting the operation that owns its replacement as `id` (the Mate's hand-over, the
+ * environment's deploy key), which runs on without the tab and shows on its Mate or its
+ * application in navigation. A lost answer is read in the member's list once it is read again.
  *
  * @module data/operations/hqTakeOver
  */
-import type { HqTakeOverReplaced } from "@t3tools/shared/hqTakeOver";
+import type { HqTakeOverStarted } from "@t3tools/shared/hqTakeOver";
 import type { OperationKind } from "./kind.ts";
 
 declare module "../model.ts" {
@@ -14,12 +15,15 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly userId: string;
       readonly tokenId: string;
+      /** The operation HQ starts as, for a token in use. */
+      readonly id: string;
       /** Who gets a Mate's key; absent: its owner. */
       readonly ownerUserId?: string;
     };
   }
   interface OperationResults {
-    readonly "take-over-token": HqTakeOverReplaced;
+    /** `started`: the operation replacing a token in use; `null`: the token was only deleted. */
+    readonly "take-over-token": { readonly started: HqTakeOverStarted | null };
   }
 }
 

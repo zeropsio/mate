@@ -683,19 +683,12 @@ export function makeHqExecutor(ports: {
           }),
           answered(requestId, intent.id),
         );
-      case "hand-over-mate":
-        // Each of its `409`s is HQ's refusal (`owner_not_member`, `handover_unfinished` at a
-        // phase), never a write that may have landed elsewhere: its words are the person's, its
-        // code HQ's own, so a stop part way says that something was written.
+      case "start-mate-handover":
         return Effect.as(
           Effect.tryPromise({
-            try: () => api.handOver(intent.projectId, intent.ownerUserId),
-            catch: (cause) => {
-              const fault = faultOf(cause);
-              return cause instanceof HqError && fault.outcome === "definitive-refusal"
-                ? { ...fault, code: cause.code }
-                : fault;
-            },
+            try: () =>
+              api.handOver(intent.projectId, { id: intent.id, ownerUserId: intent.ownerUserId }),
+            catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.projectId),
         );

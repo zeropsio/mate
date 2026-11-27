@@ -103,7 +103,7 @@ it("ZV99: HQ's door, creating or deleting a birth, a Mate's hand-over, a Continu
           userRoles: [],
         },
       }),
-    (hq: HqApi) => hq.handOver("p1", "user-bob"),
+    (hq: HqApi) => hq.handOver("p1", { id: "op-hand", ownerUserId: "user-bob" }),
     (hq: HqApi) => hq.deleteBirth("b1", { id: "op-delete" }),
     (hq: HqApi) => hq.continueOperation("op-2"),
     (hq: HqApi) =>
@@ -412,16 +412,20 @@ function sentTo(token = "person-token") {
   return { api, sent };
 }
 
-// witness: packages/client-runtime/src/zerops/hq/client.ts | await withAccess(ownerUserId === undefined ? {} : { ownerUserId }), → ownerUserId === undefined ? {} : { ownerUserId },
-it("ZV168: A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted", async () => {
+// witness: packages/client-runtime/src/zerops/hq/client.ts | { method: "POST", body: JSON.stringify(await withAccess(start, true)) }, → { method: "POST", body: JSON.stringify(await withAccess(start)) },
+it("ZV168: A take-over replace carries its operation id and the person's Zerops access token with its expiry beside HQ's session; breaks: HQ cannot start the operation that replaces the member's token", async () => {
   const { api, sent } = sentTo();
-  await api.takeOver("u2", "t1", "user-bob").catch(() => undefined);
-  expect(
-    sent.map(({ call, bearer, body }) => [call, bearer, body.includes("person-token")]),
-  ).toEqual([
-    ["POST /api/door", null, true],
-    ["POST /api/members/u2/take-over/t1", "Bearer session-1", true],
+  await api.takeOver("u2", "t1", { id: "op-take", ownerUserId: "user-bob" }).catch(() => undefined);
+  expect(sent.map(({ call, bearer }) => [call, bearer])).toEqual([
+    ["POST /api/door", null],
+    ["POST /api/members/u2/take-over/t1", "Bearer session-1"],
   ]);
+  expect(JSON.parse(sent[1]?.body ?? "{}")).toEqual({
+    id: "op-take",
+    ownerUserId: "user-bob",
+    accessToken: "person-token",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  });
 });
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | const body = JSON.stringify(await withAccess({ list })); → const body = JSON.stringify({ list });

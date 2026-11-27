@@ -185,6 +185,7 @@ export {
 } from "./projections/mateDeletion.ts";
 export { projectMoveOf, type ProjectMove } from "./projections/projectMove.ts";
 export { mateRestartOf } from "./projections/mateRestart.ts";
+export { mateHandOverOf, type MateHandOver } from "./projections/mateHandOver.ts";
 export {
   PROPOSAL_EFFECT,
   proposalEffectMoved,

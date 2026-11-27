@@ -22,6 +22,7 @@ import {
   mateGoing,
   projectMoveOf,
   mateRestartOf,
+  mateHandOverOf,
   type AgentAdmissionAttention,
 } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
@@ -3740,6 +3741,7 @@ function useMateRowState<T extends RosterCandidate>({
     deletion,
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
+    handOver: mateHandOverOf(candidate.project),
     restarting: restartSaid,
     stop: mateStopStanding(candidate),
     outsideHq,
@@ -4445,6 +4447,7 @@ function MateSecondLine({
     case "moving":
     case "moved":
     case "restarting":
+    case "handing-over":
     case "stop":
       return (
         <span
@@ -4456,6 +4459,7 @@ function MateSecondLine({
       );
     case "move-failed":
     case "restart-failed":
+    case "handover-failed":
       return (
         <span
           className="block text-body leading-5.5 truncate text-status-failed-text"

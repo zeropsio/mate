@@ -63,6 +63,11 @@ export function operationEndWords(
         title: `End restarting ${name}?`,
         description: `${unable} Ending it frees ${name} for new work and deletes nothing.`,
       };
+    case "mate_handover":
+      return {
+        title: `End handing over ${name}?`,
+        description: `${unable} Ending it frees ${name} for new work and deletes nothing: its new owner stays, and HQ keeps refusing the keys it replaced.`,
+      };
     case "project_move":
       return {
         title: `End moving ${name}?`,

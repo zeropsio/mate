@@ -1,11 +1,11 @@
 /**
  * Handing a Mate to a person: a Mate made *for* a colleague, a leaver's, one being reassigned, or
  * one whose key Zerops refused needs somebody to say whose it is now. Whoever HQ says may hand it
- * over picks; HQ moves its project's `OWNER` override and gives it a new key.
+ * over picks; HQ records its new owner and gives it a new key, as an operation its row follows.
  *
  * One list, one verb. The list is the organization's active members as Zerops answers the person's
  * own read (`mateHandOver.logic.ts`), and nobody is picked until the person picks. The dialog stays
- * while HQ answers, and says its refusal or where it stopped; Hand it over asks again.
+ * while HQ answers the start, and says its refusal; Hand it over asks again.
  */
 import { Failure } from "~/components/ui/failure";
 import { useId, useState } from "react";

@@ -72,8 +72,9 @@ adds the person's Zerops access token and its expiry at send. An HQ operation ru
 after the request ends, and Zerops revokes it when any page of the session renews the session, up to
 30 minutes before its expiry; so the press hands an operation a token with at least an hour left,
 renewing the session first when it has less, as after a 401 (a refused renewal ends the session, an
-unreachable one fails the press, and nothing reaches HQ). Hand-over, take-over and HQ's door finish
-within the request and carry the current token as is. Every birth is HQ's `operation`: its progress, its failure and who may
+unreachable one fails the press, and nothing reaches HQ). A Mate's hand-over and a take-over replace
+of a token in use are HQ operations too; the take-over list and HQ's door finish within the request
+and carry the current token as is. Every birth is HQ's `operation`: its progress, its failure and who may
 continue it, which every surface reads through navigation from any device; after the intent the
 client only reads it, and a birth without one reads as unknown and cannot be continued. A token
 Zerops revokes anyway (a sign-out, a rotation elsewhere, a lapse) stops the operation with

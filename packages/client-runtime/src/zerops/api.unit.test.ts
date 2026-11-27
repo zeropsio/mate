@@ -366,7 +366,7 @@ it("ZV162: A press that hands HQ an operation's token renews a session with less
     ["POST", "/auth/refresh"],
   ]);
 
-  // Hand-over, take-over and the door ask for no operation's token: one minute left is handed.
+  // The take-over list and the door ask for no operation's token: one minute left is handed.
   client.restoreSession({ ...session, expiresAt: "2026-11-20T12:01:00Z" });
   expect(await client.accessToken()).toEqual({
     token: "access-1",

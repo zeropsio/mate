@@ -109,9 +109,9 @@ export const activeMember = <M extends MembershipFacts>(member: M | undefined): 
 export const mayBearHq = (member: MembershipFacts | undefined): boolean => orgAdmin(member);
 
 /**
- * Whether a member hands Mates over: an active owner or admin of the organization, who moves a
- * project's OWNER override and mints its new key. HQ's hand-over route decides it again on the
- * person's fresh read.
+ * Whether a member hands Mates over: an active owner or admin of the organization, on whose token
+ * HQ records the Mate's new owner and replaces its key. HQ's hand-over start decides it again on
+ * the person's fresh read.
  */
 export const handsOverMates = (member: MembershipFacts | undefined): boolean => orgAdmin(member);
 

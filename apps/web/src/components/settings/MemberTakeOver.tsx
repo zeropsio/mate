@@ -1,10 +1,11 @@
 /**
  * Settings → Team → one person → *Before removing*: the Mate keys and deploy tokens the member
- * minted, which keep Zerops refusing their removal. Each is replaced with one the viewer mints and
- * then deleted; one HQ no longer uses is only deleted. A Mate whose owner is the member, or no
- * active member, needs the viewer to pick who gets it.
+ * minted, which keep Zerops refusing their removal. One HQ no longer uses is only deleted; one in use
+ * is replaced by the operation HQ starts on the viewer's sign-in (the Mate's hand-over, the
+ * environment's deploy key), which goes on without this page and leaves the list once done. A Mate
+ * whose owner is the member, or no active member, needs the viewer to pick who gets it.
  */
-import type { HqTakeOverItem } from "@t3tools/shared/hqTakeOver";
+import type { HqTakeOverItem, HqTakeOverStarted } from "@t3tools/shared/hqTakeOver";
 import type { MemberTakeOverRead } from "@t3tools/client-runtime/data";
 import { useState } from "react";
 
@@ -34,30 +35,43 @@ function keyGoesTo(
 
 const kindWords = { "mate-key": "Mate key", "deploy-token": "Deploy token" } as const;
 
+/** What a row says while the operation HQ started replaces its token. */
+const replacingWords: Readonly<Record<HqTakeOverStarted["kind"], string>> = {
+  mate_handover:
+    "HQ is handing the Mate over with a new key; its row in the menu shows how it goes.",
+  deploy_key: "HQ is giving the environment a new deploy key; its project shows how it goes.",
+};
+
 function TakeOverRow({
   item,
   member,
   people,
   busy,
+  replacing,
   onReplace,
 }: {
   readonly item: HqTakeOverItem;
   readonly member: string;
   readonly people: ReadonlyArray<TakeOverPerson>;
   readonly busy: boolean;
+  /** The operation this viewer's replace of it started, while the list still holds it. */
+  readonly replacing: HqTakeOverStarted["kind"] | undefined;
   readonly onReplace: (ownerUserId?: string) => void;
 }) {
   const owner = keyGoesTo(item, member, people);
   const picks = item.kind === "mate-key" && item.inUse && owner === null;
   const [picked, setPicked] = useState<string | null>(null);
   const candidates = people.filter(({ userId }) => userId !== member);
-  const line = !item.inUse
-    ? "HQ no longer uses it: it is only deleted."
-    : item.kind === "deploy-token"
-      ? "Replaced by one you mint; the environment deploys with yours."
-      : owner !== null
-        ? `Replaced by one you mint; the Mate stays with ${owner.name}.`
-        : "Its owner is leaving: pick who gets the Mate.";
+  const line =
+    replacing !== undefined
+      ? replacingWords[replacing]
+      : !item.inUse
+        ? "HQ no longer uses it: it is only deleted."
+        : item.kind === "deploy-token"
+          ? "Replaced by one you mint; the environment deploys with yours."
+          : owner !== null
+            ? `Replaced by one you mint; the Mate stays with ${owner.name}.`
+            : "Its owner is leaving: pick who gets the Mate.";
   return (
     <Row
       control={
@@ -84,7 +98,7 @@ function TakeOverRow({
           ) : null}
           <Button
             aria-busy={busy || undefined}
-            disabled={busy || (picks && picked === null)}
+            disabled={busy || replacing !== undefined || (picks && picked === null)}
             onClick={() => onReplace(picks && picked !== null ? picked : undefined)}
             size="sm"
             variant="secondary"
@@ -143,6 +157,9 @@ export function MemberTakeOverView({
                   member={member}
                   onReplace={(ownerUserId) => onReplace(item.tokenId, ownerUserId)}
                   people={people}
+                  replacing={
+                    last?.tokenId === item.tokenId ? last.answer?.started?.kind : undefined
+                  }
                 />
               ))}
             </ul>
@@ -173,12 +190,6 @@ export function MemberTakeOverView({
       )}
       {action.kind === "failed" || action.kind === "unresolved" ? (
         <Failure cause={action.words} role="alert" size="line" />
-      ) : last?.answer?.replaced === true && !last.answer.oldDeleted ? (
-        <Failure
-          cause={`Replaced, but Zerops kept the old token (${last.answer.reason ?? "refused"}): it stays listed to delete.`}
-          role="status"
-          size="line"
-        />
       ) : null}
     </section>
   );

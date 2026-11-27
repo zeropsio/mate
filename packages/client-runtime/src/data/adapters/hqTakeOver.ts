@@ -48,7 +48,10 @@ export function makeTakeOver(options: {
     again: (key: TakeOverKey) => {
       if (!closed) reads.again(listRead(key));
     },
-    /** Replaces one token; a Mate's key goes to `ownerUserId` when given, else to its owner. */
+    /**
+     * Takes one token over, the request's id the operation's that replaces it; a Mate's key goes to
+     * `ownerUserId` when given, else to its owner.
+     */
     replace: async (key: TakeOverKey, tokenId: string, ownerUserId?: string): Promise<string> => {
       const requestId = options.makeId();
       if (!closed)
@@ -63,6 +66,7 @@ export function makeTakeOver(options: {
               kind: "take-over-token",
               ...key,
               tokenId,
+              id: requestId,
               ...(ownerUserId === undefined ? {} : { ownerUserId }),
             },
             requestId,

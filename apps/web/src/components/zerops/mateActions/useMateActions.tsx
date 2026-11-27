@@ -5,6 +5,7 @@ import {
   hqOperationOf,
   mateDeletionOfProject,
   mateRestartOf,
+  mateHandOverOf,
   mateGoing,
   NO_FACE_ACTION,
   operationFailureDetails,
@@ -132,7 +133,6 @@ import {
 } from "@t3tools/client-runtime/data";
 import { HAND_OVER_VERB, handOverCandidates } from "~/zerops/mateHandOver.logic";
 import { hqNavigationAtom } from "~/state/zerops";
-import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { useProjectDialog } from "~/zerops/inventoryContext";
 import { captureAccountLifetime, currentAccountEpoch } from "~/zerops/accountLifetime";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -148,7 +148,6 @@ import { useProjection } from "~/zerops/ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { startMate, stopMate, submitZeropsWrite, writeTrouble } from "~/zerops/zeropsWrite";
-import { HQ_HANDOVER_UNFINISHED } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import {
   projectServicesAtom,
@@ -371,6 +370,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const writing = useRef(new Set<string>());
   // A move's start id by its project and body, until HQ answered it.
   const moveAttempts = useRef(new Map<string, MoveAttempt>());
+  const handOverAttempts = useRef(new Map<string, MoveAttempt>());
   const deletionRequests = useRef(new Map<string, NonNullable<ReturnType<typeof deletionStart>>>());
   const choiceRead = useRef({ orgId: activeOrganization?.id, attempt: 0 });
   useEffect(() => {
@@ -623,12 +623,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   );
 
   /**
-   * Hands a Mate over, as the account's `hand-over-mate` operation: one HQ call with the person's
-   * own token, which moves its project's `OWNER` override to the person picked and replaces its key.
-   * The dialog stays open until HQ answers: a refusal, or the phase a stop part way names, is said
-   * there, and Hand it over asks again (HQ finishes what it started). Wherever something may have
-   * been written, the access grant reads every project's grants again at once (`grants-written`),
-   * so the person who handed the Mate over sees what the platform holds now (F11).
+   * Hands a Mate over: one start at HQ (`start-mate-handover`) on the person's access token, which
+   * records the person picked as its owner and replaces its key, with or without this tab; its row
+   * says how that stands on every device (`mateHandOverOf`). No Zerops role is written. The dialog
+   * stays open until HQ answers the start: a refusal is said there. A press again after an answer
+   * that did not come sends the same id with the same body, which HQ answers again.
    */
   const assign = useCallback(
     (candidate: ZeropsCandidatePresentation, ownerUserId: string) => {
@@ -639,24 +638,30 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       writing.current.add(candidate.key);
       setBusyKey(candidate.key);
       setPress({ pending: true, error: null });
+      const projectId = candidate.project.id;
+      const attempt = moveAttemptFor(
+        handOverAttempts.current.get(projectId),
+        ownerUserId,
+        randomUUID,
+      );
+      handOverAttempts.current.set(projectId, attempt);
       void operations
         .submit({
-          kind: "hand-over-mate",
+          kind: "start-mate-handover",
           orgId: activeOrganization.id,
-          projectId: candidate.project.id,
+          projectId,
+          id: attempt.id,
           ownerUserId,
         })
         .then(
           ({ progress, evidence }) => {
+            if (
+              progress.stage !== "uncertain" &&
+              handOverAttempts.current.get(projectId) === attempt
+            )
+              handOverAttempts.current.delete(projectId);
             if (!isCurrent()) return;
             const trouble = writeTrouble(progress, evidence);
-            if (
-              progress.stage === "done" ||
-              progress.stage === "unresolved" ||
-              progress.stage === "uncertain" ||
-              (progress.stage === "refused" && progress.code === HQ_HANDOVER_UNFINISHED)
-            )
-              invalidateZerops({ topic: "access", change: "grants-written" });
             if (trouble !== null) setPress({ pending: false, error: trouble });
             else replyToDialog(null);
           },
@@ -1198,12 +1203,14 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         };
       }
       const busy = busyKey === candidate.key;
-      // HQ's move or restart of it, running or waiting for its maker's fresh token: no second one
-      // meanwhile, and its maker's Continue gives it the token.
+      // HQ's move, restart or hand-over of it, running or waiting for a fresh token: no second one
+      // meanwhile, and the Continue HQ offers the reader gives it theirs.
       const moving = projectMoveOf(candidate.project);
       const moveRuns = moving.kind === "going" || moving.kind === "waiting";
       const restarting = mateRestartOf(candidate.project);
       const restartRuns = restarting.kind === "going" || restarting.kind === "waiting";
+      const handingOver = mateHandOverOf(candidate.project);
+      const handOverRuns = handingOver.kind === "going" || handingOver.kind === "waiting";
       const orgId = activeOrganization?.id;
       const continueOn = (id: string, standing: typeof restarting) =>
         standing.kind === "waiting" && standing.yours && orgId !== undefined
@@ -1228,6 +1235,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const continueMove =
         moving.kind === "renamed-since" ? undefined : continueOn("continue-move", moving);
       const continueRestart = continueOn("continue-restart", restarting);
+      const continueHandOver = continueOn("continue-handover", handingOver);
       const deleteAction = verbs.delete
         ? {
             id: "delete",
@@ -1307,7 +1315,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               {
                 id: "assign",
                 label: HAND_OVER_VERB,
-                disabled: busy,
+                disabled: busy || handOverRuns,
                 onSelect: () => {
                   setPress(UNPRESSED);
                   setDialog({ kind: "assign", candidate });
@@ -1332,6 +1340,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         ...endOn("end-move", "project_move", moving),
         ...(continueRestart === undefined ? [] : [continueRestart]),
         ...endOn("end-restart", "mate_restart", restarting),
+        ...(continueHandOver === undefined ? [] : [continueHandOver]),
+        ...endOn("end-handover", "mate_handover", handingOver),
         ...(verbs.move !== "no"
           ? [
               {

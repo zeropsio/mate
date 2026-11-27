@@ -151,10 +151,11 @@ declare module "../model.ts" {
       readonly id: string;
       readonly settlement: Settlement;
     };
-    /** A Mate handed over to `ownerUserId` (a person's id), by HQ with the person's token. */
-    readonly "hand-over-mate": {
+    /** A Mate's hand-over to `ownerUserId` (a person's id), which HQ runs as its operation `id` on the person's token. */
+    readonly "start-mate-handover": {
       readonly orgId: string;
       readonly projectId: string;
+      readonly id: string;
       readonly ownerUserId: string;
     };
   }
@@ -460,29 +461,19 @@ const updateMateFace = shown(
 );
 
 /**
- * HQ's `204` is its end: the Mate's owner and key are replaced. Its navigation shows it as the
- * person picked named its owner and its key no longer refused — what adopts a lost answer, never
- * what ends an answered one (a person who handed their own Mate away may no longer read it).
+ * HQ's answer is its end: its operation runs on without the tab. Navigation showing this
+ * hand-over (`id`) on the project, or the project no longer placed, adopts a lost answer; a press
+ * again sends the same id, which HQ answers again.
  */
-const handedOver = (read: ProjectionReads, intent: IntentOf<"hand-over-mate">) => {
-  const placement = placementOf(read, intent.projectId);
-  return (
-    placement?.person?.ownerUserId === intent.ownerUserId && placement.mate?.keyRefused !== true
-  );
-};
-const handOverMate: OperationKind<"hand-over-mate"> = {
-  kind: "hand-over-mate",
-  executor: "hq",
-  reflected: (read, intent) => handedOver(read, intent),
-  // Ends an adopted lost answer; an answered one HQ's receipt ended already.
-  settledBy: (read, intent) => (handedOver(read, intent) ? { kind: "succeeded" } : null),
-  effectHandles: (read, intent) =>
-    placementOf(read, intent.projectId) === undefined
-      ? null
-      : handedOver(read, intent)
-        ? [intent.projectId]
-        : [],
-};
+const startMateHandover = shown(
+  "start-mate-handover",
+  (intent) => intent.projectId,
+  (read, intent) => {
+    const placement = read.fact("placement", intent.projectId);
+    if (removedForViewer(placement)) return true;
+    return placement.kind === "known" && placement.value.operation?.id === intent.id;
+  },
+);
 
 /** Each HQ write's kind. */
 const setAutoUpdatePolicy: OperationKind<"set-auto-update-policy"> = {
@@ -517,7 +508,7 @@ export const HQ_WRITE_KINDS = [
   startAppRename,
   deleteBirth,
   acknowledgeBirthDeletion,
-  handOverMate,
+  startMateHandover,
 ] as const;
 
 export type HqWriteIntent = Extract<

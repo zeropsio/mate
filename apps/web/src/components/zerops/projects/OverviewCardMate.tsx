@@ -43,6 +43,7 @@ import {
   mateGoing,
   projectMoveOf,
   mateRestartOf,
+  mateHandOverOf,
   type AgentAdmissionAttention,
   type MateComing,
 } from "@t3tools/client-runtime/data";
@@ -304,6 +305,7 @@ export function OverviewCardMate({
     deletion,
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
+    handOver: mateHandOverOf(candidate.project),
     restarting: restartSaid,
     stop: mateStopStanding(candidate),
     outsideHq,

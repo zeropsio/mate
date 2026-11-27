@@ -34,6 +34,9 @@ const ZEROPS_NOT_ANSWERING = "zerops_not_answering";
 
 const ZEROPS_NOT_ANSWERING_WORDS = "Zerops has not been answering, so HQ stopped asking.";
 
+/** Zerops let the operation's token delete no token of an Owner's (only an Owner deletes one). */
+const TOKEN_DELETE_REFUSED = "token_delete_refused";
+
 /** The word on the button of HQ's one Continue offer: what the press does for this reason. */
 export type WaitingPress = "Continue" | "Try again";
 
@@ -74,6 +77,15 @@ const WAITING = new Map<string, WaitingWords>([
       press: "Try again",
       why: "Zerops had an internal error",
       line: `${platformErrorWords("")} Try again when you are ready.`,
+    },
+  ],
+  [
+    // Only a hand-over waits on it (an Admin may not revoke an Owner's key); any Owner continues it.
+    TOKEN_DELETE_REFUSED,
+    {
+      press: "Continue",
+      why: "only an organization owner can revoke its old key",
+      line: "Zerops lets only an organization owner revoke the key it replaced. An owner's Continue finishes it.",
     },
   ],
   [
@@ -126,8 +138,6 @@ export function accessLostLine(failure: HqOperationFailure, continues: boolean):
 /** HQ's code for a check of an operation Zerops refused: it is not Zerops' own, so never shown. */
 const OBSERVATION_REFUSED = "operation_observation_refused";
 
-const TOKEN_DELETE_REFUSED = "token_delete_refused";
-
 /** HQ's deploy-token stops and what happened before a person can start again. */
 const DEPLOY_TOKEN_STOPPED = new Map<string, string>([
   [TOKEN_DELETE_REFUSED, "Only an organization owner can delete this environment's deploy token."],
@@ -168,6 +178,7 @@ const HQ_STOPPED = new Map<string, string>([
     "Several Zerops projects carry this Mate's tag, so HQ cannot tell which one is its own.",
   ],
   ["several_containers", "The project holds several Mate services."],
+  ["mate_service_unknown", "HQ could not find this Mate's service to give it a new key."],
   ["another_persons_chief", "The project is registered as another person's Chief."],
   ["chief_already_registered", "You already have a Chief."],
   [

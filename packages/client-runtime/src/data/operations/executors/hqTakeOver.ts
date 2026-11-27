@@ -1,6 +1,6 @@
 /**
- * HQ as the owner of a member's take-over. HQ keeps no request id for it: a lost answer is read in
- * the member's list once it is read again.
+ * HQ as the owner of a member's take-over: a lost answer is read in the member's list once it is
+ * read again.
  */
 import * as Effect from "effect/Effect";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
@@ -22,8 +22,12 @@ export function makeTakeOverExecutor(options: {
         if (intent.kind !== "take-over-token")
           return yield* Effect.fail(refused("This action is unavailable."));
         const { takeOver } = options.api;
-        const result = yield* Effect.tryPromise({
-          try: () => takeOver(intent.userId, intent.tokenId, intent.ownerUserId),
+        const started = yield* Effect.tryPromise({
+          try: () =>
+            takeOver(intent.userId, intent.tokenId, {
+              id: intent.id,
+              ...(intent.ownerUserId === undefined ? {} : { ownerUserId: intent.ownerUserId }),
+            }),
           catch: (cause) =>
             cause instanceof HqError && cause.kind === "refused"
               ? refused(cause.message)
@@ -43,7 +47,7 @@ export function makeTakeOverExecutor(options: {
           executor: "hq",
           handles: [intent.tokenId],
           affected: [],
-          acceptance: { kind: "accepted", result },
+          acceptance: { kind: "accepted", result: { started } },
           outcome: { kind: "succeeded", evidence: "HQ answered this change." },
         };
       }),

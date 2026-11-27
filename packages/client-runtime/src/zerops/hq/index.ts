@@ -63,7 +63,6 @@ export {
   deployKeyTrouble,
   type DeployKeyTrouble,
   enrollmentRefusalWords,
-  HQ_HANDOVER_UNFINISHED,
   HQ_NOT_OPEN,
   hqMergeOfferWords,
   hqOfferWords,

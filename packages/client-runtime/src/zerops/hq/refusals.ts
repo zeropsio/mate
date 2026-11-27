@@ -24,7 +24,6 @@ import { HQ_MERGERS_MAX } from "@t3tools/shared/hqMergers";
 import { fileSize } from "../gitBrowse/blob.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
-import type { HqRefusal } from "@t3tools/shared/hqProblems";
 import type { HqZeropsAnswer } from "@t3tools/shared/hqOperationFailure";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
 
@@ -200,7 +199,6 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   not_owner_or_admin:
     "Only an owner or admin of the organization, or this Mate's owner, can hand it over.",
   owner_not_member: "That person is not an active member of this organization.",
-  mate_service_unknown: "HQ could not find this Mate's service to give it a new key.",
   key_unverified: "HQ has not verified this Mate's key yet. Try again in a few minutes.",
   // A person's access change (`POST /api/access-changes`, `DELETE /api/access-changes/:id`).
   admin_required: "Only an owner or admin of the organization changes who is on the team.",
@@ -411,36 +409,6 @@ const isGitEnvironmentRefusal = Schema.is(HqGitEnvironmentRefusalReason);
 const isGitRequestRefusal = Schema.is(HqGitRequestRefusalReason);
 
 /** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
-/** HQ's code for a hand-over that stopped part way: something was written, asking again finishes it. */
-export const HQ_HANDOVER_UNFINISHED = "handover_unfinished";
-
-/** Where a hand-over stopped (`409 handover_unfinished`'s `phase`), as what it was doing. */
-const HANDOVER_PHASE_WORDS: Readonly<Record<string, string>> = {
-  owner: "moving its owner",
-  mint: "making its new key",
-  secret: "writing its new key to its container",
-  install: "installing its new key",
-  revoke: "revoking the key it replaced",
-};
-
-/** A hand-over HQ stopped part way: where, Zerops' own code for why, and who finishes it (HQ's `finishRole`). */
-function handoverUnfinishedWords(
-  phase: string | undefined,
-  reason: string | undefined,
-  finishRole: HqRefusal["finishRole"],
-): string {
-  const doing = phase === undefined ? undefined : HANDOVER_PHASE_WORDS[phase];
-  const where =
-    doing === undefined
-      ? `The hand-over stopped part way${phase === undefined ? "" : ` (${phase})`}`
-      : `The hand-over stopped while ${doing}`;
-  const finish =
-    finishRole === "OWNER"
-      ? "An owner of the organization must hand it over again to finish."
-      : "Hand it over again to finish.";
-  return `${where}${reason === undefined ? "" : ` (${reason})`}. ${finish}`;
-}
-
 /**
  * The one sentence for an answer HQ gave in a shape this Mate does not decode: a version mismatch
  * about `what` ("the Slack app"), and either side may be the older one.
@@ -465,10 +433,6 @@ export const couldntRead = (what: string, reason?: string | null): string => {
 export function hqRefusalWords(refusal: {
   readonly code: string;
   readonly reason: string | undefined;
-  /** A hand-over's phase, where HQ named one. */
-  readonly phase?: string | undefined;
-  /** Who finishes a stopped hand-over, where HQ named it. */
-  readonly finishRole?: HqRefusal["finishRole"];
   readonly remote?: HqRemoteRefusal;
   readonly gitSetup?: boolean;
   /** Zerops' answer, where HQ carried one (`zerops_refused`). */
@@ -477,8 +441,6 @@ export function hqRefusalWords(refusal: {
   const { reason } = refusal;
   if (refusal.zerops !== undefined)
     return zeropsRefusedWords(reason ?? refusal.code, refusal.zerops.words);
-  if (refusal.code === HQ_HANDOVER_UNFINISHED)
-    return handoverUnfinishedWords(refusal.phase, reason, refusal.finishRole);
   if (refusal.code === "remote_refused") {
     return isRemoteRefusal(reason)
       ? remoteRefusalWords(refusal.remote ?? { reason })

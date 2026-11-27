@@ -43,6 +43,7 @@ import {
   type MateComing,
   type MateDeletion,
   type HqOperationStanding,
+  type MateHandOver,
   type ProjectMove,
 } from "@t3tools/client-runtime/data";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
@@ -1023,6 +1024,10 @@ export type MateRowSecond =
   | { readonly kind: "restarting"; readonly text: string }
   /** HQ's restart of it failed: why, until the next restart. */
   | { readonly kind: "restart-failed"; readonly text: string }
+  /** HQ hands it over, or its hand-over waits for an Owner's or Admin's Continue (`mateHandOverLine`). */
+  | { readonly kind: "handing-over"; readonly text: string }
+  /** HQ's hand-over of it failed: why, until the next hand-over. */
+  | { readonly kind: "handover-failed"; readonly text: string }
   /** Zerops stops its computer, holds it stopped or starts it again (`mateStopLine`). */
   | { readonly kind: "stop"; readonly text: string }
   | { readonly kind: "outside" }
@@ -1460,6 +1465,36 @@ export function mateRestartLine(
   }
 }
 
+/**
+ * What a Mate's row and card say of HQ's hand-over of it (`mateHandOverOf`), where they say
+ * anything: handing over, waiting for a Continue — the reader's, an Owner's or Admin's, or an
+ * Owner's alone — or why it failed.
+ */
+export function mateHandOverLine(handOver: MateHandOver | undefined): MateRowSecond | undefined {
+  switch (handOver?.kind) {
+    case undefined:
+    case "none":
+    case "needs":
+      return undefined;
+    case "going":
+      return { kind: "handing-over", text: "Handing over…" };
+    case "waiting":
+      return {
+        kind: "handing-over",
+        text: handOver.yours
+          ? `Handing over stopped: ${handOver.why}`
+          : handOver.ownerOnly === true
+            ? "Handing over stopped: waiting for an organization owner"
+            : "Handing over stopped: waiting for an organization owner or admin",
+      };
+    case "failed":
+      return {
+        kind: "handover-failed",
+        text: `Hand-over failed · ${operationFailureWords(handOver.failure)}`,
+      };
+  }
+}
+
 /** What a Mate's row, card and projects-screen line say of its computer's stop and start. */
 export const MATE_STOP_WORDS: Readonly<Record<MateStopStanding, string>> = {
   stopping: "Stopping…",
@@ -1481,6 +1516,8 @@ export function mateRowSecond(input: {
   readonly move?: { readonly standing: ProjectMove; readonly name: string } | undefined;
   /** How HQ's restart of it stands (`mateRestartOf`); absent: none. */
   readonly restart?: HqOperationStanding | undefined;
+  /** How HQ's hand-over of it stands (`mateHandOverOf`); absent: none. */
+  readonly handOver?: MateHandOver | undefined;
   /** Its container is restarting (`mateRestartSaid`), whoever restarted it. */
   readonly restarting?: boolean | undefined;
   /** Where its computer stands in a stop and a start (`mateStopStanding`); absent: it runs. */
@@ -1525,13 +1562,16 @@ export function mateRowSecond(input: {
   if (view.coming !== undefined) return { kind: "coming" };
   const deletionLine = mateDeletionLine(input.deletion);
   if (deletionLine !== undefined) return deletionLine;
-  // A project shows one HQ operation at a time: its restart or its move.
+  // A project shows one HQ operation at a time: its hand-over, its restart or its move.
   const moveLine =
-    mateRestartLine(input.restart) ?? mateMoveLine(input.move?.standing, input.move?.name ?? "");
+    mateHandOverLine(input.handOver) ??
+    mateRestartLine(input.restart) ??
+    mateMoveLine(input.move?.standing, input.move?.name ?? "");
   const moveEnded =
     moveLine?.kind === "moved" ||
     moveLine?.kind === "move-failed" ||
-    moveLine?.kind === "restart-failed";
+    moveLine?.kind === "restart-failed" ||
+    moveLine?.kind === "handover-failed";
   if (moveLine !== undefined && !moveEnded) return moveLine;
   if (input.restarting === true) return { kind: "restarting", text: "Restarting…" };
   // Stopped, nothing it last said stands for it now: its computer's state is its line.
@@ -1623,6 +1663,8 @@ const SHARED_VERBS: Readonly<Record<string, string | null>> = {
   "end-restart": null,
   "continue-move": null,
   "end-move": null,
+  "continue-handover": null,
+  "end-handover": null,
   start: null,
   stop: null,
   restart: null,

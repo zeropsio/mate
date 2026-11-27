@@ -2,9 +2,9 @@
  * A member's take-over as their page reads it: the tokens the member minted, as HQ last listed them,
  * and where this account's last replace of one stands, with HQ's answer to it.
  */
-import type { HqTakeOverList, HqTakeOverReplaced } from "@t3tools/shared/hqTakeOver";
+import type { HqTakeOverList } from "@t3tools/shared/hqTakeOver";
 import { takeOverId, takeOverScope, type TakeOverKey } from "../families/hqTakeOver.ts";
-import { operationResult } from "../model.ts";
+import { operationResult, type OperationResults } from "../model.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { actionOf, type AutomationAction } from "./hqAutomation.ts";
@@ -23,7 +23,7 @@ export interface MemberTakeOverRead {
   /** The token this account's last replace was for, and HQ's answer once given. */
   readonly last: {
     readonly tokenId: string;
-    readonly answer: HqTakeOverReplaced | undefined;
+    readonly answer: OperationResults["take-over-token"] | undefined;
   } | null;
 }
 

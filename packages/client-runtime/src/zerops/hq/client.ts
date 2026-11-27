@@ -108,7 +108,7 @@ import {
   type HqSlackConnectRequest,
   type HqWebhookRequest,
 } from "@t3tools/shared/hqIntake";
-import { HqTakeOverList, HqTakeOverReplaced } from "@t3tools/shared/hqTakeOver";
+import { HqTakeOverList, HqTakeOverStarted } from "@t3tools/shared/hqTakeOver";
 import { HqChatLink } from "@t3tools/shared/hqChatLinks";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
@@ -894,11 +894,14 @@ export interface HqApi {
   /** Acknowledges the maker's ended birth-deletion outcome. */
   readonly acknowledgeBirthDeletion: (id: string) => Promise<void>;
   /**
-   * Hands a Mate over to `ownerUserId` (`POST /api/mates/:projectId/hand-over`): HQ moves its
-   * project's `OWNER` override and replaces its key, with the person's own access token. A stop part
-   * way is HQ's `409 handover_unfinished`, its words naming the phase; asking again finishes it.
+   * Starts a Mate's hand-over to `ownerUserId` with the person's access token (`POST
+   * /api/mates/:projectId/hand-over`): HQ records its new owner and replaces its key, as its
+   * `mate_handover` operation. `id` as `startMateDeletion`'s.
    */
-  readonly handOver: (projectId: string, ownerUserId: string) => Promise<void>;
+  readonly handOver: (
+    projectId: string,
+    start: { readonly id: string; readonly ownerUserId: string },
+  ) => Promise<void>;
   /**
    * "Run again": the environment's newest deploy of `service`, at `sha`, ended, asked again as the
    * person (`POST /api/apps/:appId/environments/:name/redeploy`): where HQ's submission of it
@@ -944,14 +947,15 @@ export interface HqApi {
     list: ReadonlyArray<ZeropsIntegrationToken>,
   ) => Promise<HqTakeOverList>;
   /**
-   * Replaces one of them with a token minted with the person's own access token, then deletes it
-   * (`POST /api/members/:userId/take-over/:tokenId`); a Mate's key goes to `ownerUserId` when given.
+   * Takes one of them over with the person's access token (`POST
+   * /api/members/:userId/take-over/:tokenId`): `null` once HQ deleted one it no longer uses, else
+   * the operation `id` HQ started to replace it; a Mate's key goes to `ownerUserId` when given.
    */
   readonly takeOver: (
     userId: string,
     tokenId: string,
-    ownerUserId: string | undefined,
-  ) => Promise<HqTakeOverReplaced>;
+    start: { readonly id: string; readonly ownerUserId?: string },
+  ) => Promise<HqTakeOverStarted | null>;
   /**
    * Takes a chat account link HQ said to the person's Slack or Discord account: that account is
    * theirs in the organization from now on (`POST /api/chat-links`).
@@ -1362,8 +1366,6 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
       hqRefusalWords({
         code,
         reason,
-        ...(refusal?.phase !== undefined ? { phase: refusal.phase } : {}),
-        ...(refusal?.finishRole !== undefined ? { finishRole: refusal.finishRole } : {}),
         gitSetup,
         ...(isRemoteRefusal(body) ? { remote: body } : {}),
         ...(refusal?.zerops !== undefined ? { zerops: refusal.zerops } : {}),
@@ -1469,7 +1471,7 @@ const readAiKeys = decoded(Schema.Array(HqAiKeyView), "the organization's AI key
 const readActivity = decoded(HqActivityPage, "the organization's activity");
 const readAiKey = decoded(HqAiKeyView, "an AI key");
 const readTakeOverList = decoded(HqTakeOverList, "a member's tokens to take over");
-const readTakeOverReplaced = decoded(HqTakeOverReplaced, "a token's take-over");
+const readTakeOverStarted = decoded(HqTakeOverStarted, "a token's take-over");
 const readChatLink = decoded(HqChatLink, "a chat account link");
 const readSlack = decoded(HqSlackView, "the Slack app");
 const readSlackChannels = decoded(HqSlackChannels, "the Slack app's channels");
@@ -1924,9 +1926,10 @@ export function makeHqApi(input: {
   };
 
   /**
-   * Create, Continue, an access change's start and a deletion, removal, move or rename start need a token that
-   * outlives the session's next renewal, and its expiry: the operation runs on it after the request
-   * ends. Hand-over and take-over finish within the request and carry just the current token.
+   * Create, Continue, an access change's start, a hand-over, a take-over replace and a deletion,
+   * removal, move or rename start need a token that outlives the session's next renewal, and its
+   * expiry: the operation runs on it after the request ends. The take-over list and the door finish
+   * within the request and carry just the current token.
    */
   const withAccess = async <T extends object>(body: T, needsExpiry = false) => {
     const access = await input.accessToken(needsExpiry ? { operationAtMs: now() } : undefined);
@@ -2195,13 +2198,12 @@ export function makeHqApi(input: {
         true,
       );
     },
-    handOver: async (projectId, ownerUserId) => {
-      await authorized(
-        `/api/mates/${encodeURIComponent(projectId)}/hand-over`,
-        { method: "POST", body: JSON.stringify(await withAccess({ ownerUserId })) },
-        true,
-      );
-    },
+    handOver: (projectId, start) =>
+      startOperation(`/api/mates/${encodeURIComponent(projectId)}/hand-over`, start, {
+        signIn: "Sign in with your Zerops account to hand this Mate over.",
+        inFlight:
+          "HQ is still finishing its last change to this Mate. Hand it over once that ends.",
+      }),
     redeploy: async (appId, environment, deploy) =>
       (
         await readDeploys(
@@ -2520,19 +2522,15 @@ export function makeHqApi(input: {
         }),
       );
     },
-    takeOver: async (userId, tokenId, ownerUserId) =>
-      readTakeOverReplaced(
-        await authorized(
-          `/api/members/${encodeURIComponent(userId)}/take-over/${encodeURIComponent(tokenId)}`,
-          {
-            method: "POST",
-            body: JSON.stringify(
-              await withAccess(ownerUserId === undefined ? {} : { ownerUserId }),
-            ),
-          },
-          true,
-        ),
-      ),
+    takeOver: async (userId, tokenId, start) => {
+      const response = await authorized(
+        `/api/members/${encodeURIComponent(userId)}/take-over/${encodeURIComponent(tokenId)}`,
+        { method: "POST", body: JSON.stringify(await withAccess(start, true)) },
+        true,
+      );
+      // `204`: a token HQ no longer used, deleted; `202`: the operation that replaces one in use.
+      return response.status === 204 ? null : readTakeOverStarted(response);
+    },
     takeChatLink: async (code) => {
       try {
         return readChatLink(

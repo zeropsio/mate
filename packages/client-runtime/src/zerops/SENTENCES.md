@@ -138,7 +138,7 @@ next: ZV216
 - ZV165 — A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back
 - ZV166 — The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running
 - ZV167 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read
-- ZV168 — A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted
+- ZV168 — A take-over replace carries its operation id and the person's Zerops access token with its expiry beside HQ's session; breaks: HQ cannot start the operation that replaces the member's token
 - ZV169 — A take-over list read carries the person's Zerops list and access token under HQ's session; breaks: either HQ version cannot list the member's tokens
 - ZV170 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
 - ZV171 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice

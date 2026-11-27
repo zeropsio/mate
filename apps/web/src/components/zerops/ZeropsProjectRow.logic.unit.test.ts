@@ -396,7 +396,7 @@ it("MN30: After HQ refuses a move because the placement changed, a press waits u
     expect({ state, waits: moveAwaitsPlacement(from, now) }).toEqual({ state, waits });
 });
 
-// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | mateRestartLine(input.restart) ?? mateMoveLine → mateMoveLine
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | mateRestartLine(input.restart) ?? → undefined ??
 it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card on every device, over the Mate's own line, and one that failed is said only at rest; breaks: a second device shows the failed Mate as if nothing restarts it, or an old failed restart hides what the Mate asks", () => {
   const line = (state: "idle" | "needs", restart: Parameters<typeof mateRowSecond>[0]["restart"]) =>
     mateRowSecond({
