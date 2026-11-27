@@ -37,6 +37,7 @@ import {
   ChevronRightIcon,
   HashIcon,
   MessagesSquareIcon,
+  PlusIcon,
   WebhookIcon,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -251,7 +252,7 @@ export function ProjectAutomationRowView({
 }) {
   if (pool.length === 0)
     return (
-      <SetupRow empty label="Automation" surface="project-automation-row">
+      <SetupRow empty label="Automated mates" surface="project-automation-row">
         <p>{AUTOMATION_IS_FOR}</p>
         {onAdd === undefined ? null : (
           <Button
@@ -261,15 +262,26 @@ export function ProjectAutomationRowView({
             size="sm"
             variant="secondary"
           >
-            Add one
+            <PlusIcon aria-hidden="true" />
+            Add automated mate
           </Button>
         )}
       </SetupRow>
     );
   return (
     <SetupRow
-      action={<SectionAction onClick={onManage}>Manage</SectionAction>}
-      label="Automation"
+      action={
+        <Button
+          onClick={(event) => {
+            onManage(event.currentTarget);
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          Manage
+        </Button>
+      }
+      label="Automated mates"
       surface="project-automation-row"
     >
       <div className="flex min-w-0 items-center gap-2">

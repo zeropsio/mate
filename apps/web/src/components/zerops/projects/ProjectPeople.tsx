@@ -103,12 +103,11 @@ import {
   PlaceAccessSummary,
   ProjectAccessTable,
 } from "./ProjectAccessTable";
-import { InlineButton } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { SetupRow } from "../project/SetupCard";
 import { peopleSummary } from "../project/projectSetup.logic";
 import { PersonAvatarStack } from "../primitives";
-import { SectionAction } from "../system";
 import { Text } from "~/components/ui/text";
 
 /** Outside an account nothing is read: every project's grants are still to come. */
@@ -670,9 +669,15 @@ export function ProjectPeopleRowView({
       action={
         // Whoever cannot change it reads it, as Merging's row offers: *View*, never a *Manage*
         // that opens on a table they may not touch.
-        <SectionAction onClick={onManage}>
-          {view.kind === "table" && !view.editable ? "View" : "Manage"}
-        </SectionAction>
+        <Button
+          onClick={(event) => {
+            onManage(event.currentTarget);
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          {view.kind === "table" && !view.editable ? "View access" : "Manage access"}
+        </Button>
       }
       busy={view.kind === "reading"}
       label="Who has access"

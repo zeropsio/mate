@@ -25,7 +25,6 @@ import { Label } from "../../ui/label";
 import { Radio, RadioGroup } from "../../ui/radio-group";
 import { Skeleton } from "../../ui/skeleton";
 import { SetupRow } from "../project/SetupCard";
-import { SectionAction } from "../system";
 import {
   draftPicked,
   draftSends,
@@ -72,7 +71,15 @@ export function ProjectMergingRow({
       action={
         // Where nothing is limited the line is all a reader's section would say.
         people === undefined || (editable === false && people === null) ? undefined : (
-          <SectionAction onClick={onManage}>{editable === false ? "View" : "Manage"}</SectionAction>
+          <Button
+            onClick={(event) => {
+              onManage(event.currentTarget);
+            }}
+            size="sm"
+            variant="secondary"
+          >
+            {editable === false ? "View merging" : "Manage merging"}
+          </Button>
         )
       }
       busy={people === undefined}
