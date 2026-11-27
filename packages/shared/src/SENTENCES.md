@@ -1,4 +1,4 @@
-next: SH23
+next: SH24
 
 - SH1 — A link frame from a newer HQ or Mate is read by the keys this build knows, a frame of an unknown type is passed by, and a known type whose body does not decode is refused
 - SH2 — Projects may be created by Zerops' own flag on the account or by an owner's or admin's role, and by no other role
@@ -21,4 +21,4 @@ next: SH23
 - SH20 — Take of a task put on the Board directly is offered only into a person's own Mate whose server reads such a task, while a task put from a conversation is offered into any of theirs that takes the Board; breaks: a Take sends a New task to an older Mate that drops it, or every Mate not yet updated loses Take
 - SH21 — The person who put a task on the Board directly may stop it and answer it while a pool Mate holds it, as one who put it from a conversation may; breaks: a New task's putter can neither stop nor answer their own task
 - SH22 — A New task on the Board names one request per draft, the same on every send of it, and no other draft or card shares it; breaks: a second New task is answered with the first one's task, or a draft sent again after a lost answer makes a second task
-- SH+1 — A held task's need is dropped by the person who put it or by an owner or admin, by no other member and on no task that is not held; breaks: a putter cannot free their own task from a need that broke, or any member drops what another's task waits for
+- SH23 — A held task's need is dropped by the person who put it or by an owner or admin, by no other member and on no task that is not held; breaks: a putter cannot free their own task from a need that broke, or any member drops what another's task waits for

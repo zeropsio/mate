@@ -36,7 +36,16 @@ import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { boardOf } from "../projectAutomation/taskBoard.logic";
 import { BoardAskCardView } from "./BoardAskCard";
-import { boardAnswerState, boardAskFromKey, boardAskKey, boardAskState } from "./boardAsk.logic";
+import { BoardPlanCardView } from "./BoardPlanCard";
+import {
+  boardAnswerState,
+  boardAskSelector,
+  boardAskState,
+  boardPlanState,
+  planNeedsWords,
+} from "./boardAsk.logic";
+
+type BoardAskPayload = NonNullable<ReturnType<ReturnType<typeof boardAskSelector>>>;
 
 export function BoardAskCardContainer({
   requestId,
@@ -47,17 +56,25 @@ export function BoardAskCardContainer({
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
 }) {
-  // As a string, so a change elsewhere in the thread draws nothing here.
-  const key = useThreadDetail(
+  // The same payload while its revision is: a change elsewhere in the thread draws nothing here.
+  const ask = useThreadDetail(
     threadRef,
-    useMemo(
-      () => (detail: { readonly activities?: unknown } | null) =>
-        boardAskKey(detail?.activities as Parameters<typeof boardAskKey>[0], requestId),
-      [requestId],
-    ),
+    useMemo(() => {
+      const select = boardAskSelector(requestId);
+      return (detail: { readonly activities?: unknown } | null) =>
+        select(detail?.activities as Parameters<typeof select>[0]);
+    }, [requestId]),
   );
-  const ask = useMemo(() => boardAskFromKey(key), [key]);
   if (ask === null || environmentId === null || threadRef === null) return null;
+  // A plan proposed in one go is one card; older records carry no plan (`plan` absent).
+  if (ask.plan != null && ask.plan.length > 0)
+    return (
+      <BoardPlan
+        ask={{ ...ask, plan: ask.plan }}
+        environmentId={environmentId}
+        threadRef={threadRef}
+      />
+    );
   return <BoardAsk ask={ask} environmentId={environmentId} threadRef={threadRef} />;
 }
 
@@ -66,7 +83,7 @@ function BoardAsk({
   environmentId,
   threadRef,
 }: {
-  readonly ask: NonNullable<ReturnType<typeof boardAskFromKey>>;
+  readonly ask: BoardAskPayload;
   readonly environmentId: EnvironmentId;
   readonly threadRef: ScopedThreadRef;
 }) {
@@ -143,6 +160,191 @@ function BoardAsk({
       title={title.trim() === "" ? ask.title : title}
     />
   );
+}
+
+/**
+ * A plan proposed for the Board, as one card: its tasks' titles and briefs editable while it waits,
+ * with **Put on board** — the person's own write to HQ of the whole plan, all or nothing
+ * (`useBoardTaskWrites`'s `plan`), after which the engine hears its tasks' ids — and Not now. Once
+ * put, the card follows each task the engine recorded (or this tab's put before it said so).
+ */
+function BoardPlan({
+  ask,
+  environmentId,
+  threadRef,
+}: {
+  readonly ask: BoardAskPayload & { readonly plan: NonNullable<BoardAskPayload["plan"]> };
+  readonly environmentId: EnvironmentId;
+  readonly threadRef: ScopedThreadRef;
+}) {
+  const { requestId, plan } = ask;
+  const mate = useKnownMate(environmentId);
+  const location = useMateOfEnvironment(environmentId);
+  const mateProjectId = location?.projectId ?? mate?.projectId;
+  const app = useApplicationOfProject(mateProjectId);
+  const appId = app?.id ?? null;
+  const writes = useBoardTaskWrites(appId);
+  const put = useAppTaskPut(appId, requestId);
+  const answerBoardAsk = useAtomCommand(threadEnvironment.answerBoardAsk, {
+    reportFailure: false,
+  });
+  const [titles, setTitles] = useState(() => plan.map((task) => task.title));
+  const [briefs, setBriefs] = useState(() => plan.map((task) => task.brief));
+  const [refusal, setRefusal] = useState<string | null>(null);
+  // The tasks this card put, until the engine took them: a Try again tells the engine, never puts again.
+  const [putTaskIds, setPutTaskIds] = useState<ReadonlyArray<string> | null>(null);
+  const taskIds = ask.taskIds ?? putTaskIds;
+  const followed = useFollowedTasks(appId, taskIds);
+
+  const tell = async (
+    said: { outcome: "put"; taskIds: ReadonlyArray<string> } | { outcome: "declined" },
+  ) => {
+    setRefusal(null);
+    const result = await answerBoardAsk({
+      environmentId,
+      input: { threadId: threadRef.threadId, requestId, ...said },
+    });
+    if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+    const error = squashAtomCommandFailure(result);
+    setRefusal(error instanceof Error ? error.message : "The Mate did not take the answer.");
+  };
+  const putOnBoard = async () => {
+    if (putTaskIds !== null) return tell({ outcome: "put", taskIds: putTaskIds });
+    if (writes === null || mateProjectId === undefined) return;
+    const made = await writes.plan(requestId, {
+      from: { mateProjectId, conversationId: threadRef.threadId },
+      tasks: plan.map((task, at) => ({
+        key: task.key,
+        title: (titles[at] ?? task.title).trim(),
+        brief: (briefs[at] ?? task.brief).trim(),
+        ...(task.needs.length === 0 ? {} : { needs: task.needs }),
+      })),
+    });
+    if (made === null) return;
+    const ids = made.map((task) => task.id);
+    setPutTaskIds(ids);
+    await tell({ outcome: "put", taskIds: ids });
+  };
+
+  const rows = (taskIds ?? []).map((id) => followed.get(id) ?? null);
+  const state = boardPlanState({
+    state: ask.state,
+    put,
+    refusal,
+    by: null,
+    at: null,
+    tasks: taskIds === null ? [] : rows.map((row) => row?.row ?? null),
+  });
+  const written = (values: ReadonlyArray<string>) => values.every((value) => value.trim() !== "");
+  const keys = plan.map((task) => task.key);
+  return (
+    <BoardPlanCardView
+      appName={app?.name ?? null}
+      editable={
+        putTaskIds === null &&
+        ask.taskIds === null &&
+        (state.kind === "waiting" || state.kind === "failed" || state.kind === "working")
+      }
+      mateName={mate?.name ?? "Your Mate"}
+      onBrief={(at, brief) => {
+        setBriefs((now) => now.map((each, index) => (index === at ? brief : each)));
+      }}
+      onNotNow={() => void tell({ outcome: "declined" })}
+      onPut={() => void putOnBoard()}
+      put={taskIds !== null}
+      onTitle={(at, title) => {
+        setTitles((now) => now.map((each, index) => (index === at ? title : each)));
+      }}
+      ready={writes !== null && mateProjectId !== undefined && written(titles) && written(briefs)}
+      requestId={requestId}
+      state={state}
+      tasks={plan.map((task, at) => ({
+        key: task.key,
+        title: titles[at] ?? task.title,
+        brief: briefs[at] ?? task.brief,
+        after: planNeedsWords(task.needs, keys),
+        task: rows[at] ?? null,
+      }))}
+    />
+  );
+}
+
+/**
+ * The tasks a plan's card put, as the Board reads them, each in its row's words (who has it, its
+ * change, what it waits for), by id; a task the Board has not answered is not in it.
+ */
+const NO_IDS: ReadonlyArray<string> = [];
+
+function useFollowedTasks(appId: string | null, taskIds: ReadonlyArray<string> | null) {
+  const board = useAppTaskSource("hqAppTasks", taskIds === null ? null : appId);
+  const setting = board.read.setting;
+  const session = useZeropsSessionOptional();
+  const personName = useHqPersonNames(session?.activeOrganization?.id);
+  const faces = useMateFaces();
+  const nowMs = useNowMs(setting.state === "known");
+  const navigate = useNavigate();
+  const offers = useBoardOffers(appId);
+  const writes = useBoardTaskWrites(appId);
+  const asked = useAppTaskStops(appId, taskIds ?? NO_IDS);
+  const placements = useAtomValue(hqPlacementsAtom);
+  return useMemo(() => {
+    const followed = new Map<
+      string,
+      Parameters<typeof BoardPlanCardView>[0]["tasks"][number]["task"] & {}
+    >();
+    if (taskIds === null || setting.state !== "known") return followed;
+    const wanted = new Set(taskIds);
+    // What navigation says of each now, while a pool Mate is on it: its question, its stop.
+    const live = new Map<string, HqNavigationMateTask>();
+    if (placements !== null)
+      for (const placement of placements.values()) {
+        const task = placement.mate?.task;
+        if (task != null && wanted.has(task.id)) live.set(task.id, task);
+      }
+    // The whole read, so each task's needs are named by the tasks they wait for.
+    const { lanes } = boardOf(setting.held, nowMs, {
+      ...(appId === null ? {} : { appId }),
+      live,
+      viewerId: session?.user?.id,
+      personName,
+      mateName: (projectId) => faces.get(projectId)?.name,
+    });
+    for (const row of Object.values(lanes).flat()) {
+      if (!wanted.has(row.id)) continue;
+      // A pool Mate's question on it, with the field its putter answers it in (the one rule).
+      const record = setting.held.find((each) => each.id === row.id);
+      followed.set(row.id, {
+        row,
+        face: row.holder === null ? undefined : faces.get(row.holder.projectId),
+        question:
+          row.lane === "waiting" && row.broken.length === 0 ? (record?.detail ?? null) : null,
+        answer:
+          offers?.tasks?.[row.id]?.answer === true && writes !== null
+            ? {
+                state: boardAnswerState(asked.stops[row.id]),
+                onSend: (text: string) => writes.answer(row.id, text),
+              }
+            : undefined,
+        onOpenChange: (href: string) => {
+          void navigate({ href });
+        },
+      });
+    }
+    return followed;
+  }, [
+    appId,
+    asked.stops,
+    faces,
+    navigate,
+    nowMs,
+    offers,
+    personName,
+    placements,
+    session?.user?.id,
+    setting,
+    taskIds,
+    writes,
+  ]);
 }
 
 /**

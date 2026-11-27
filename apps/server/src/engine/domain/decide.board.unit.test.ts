@@ -57,7 +57,7 @@ it("ED146: A zcp call proposes work for the Board only from `zerops_board_propos
 });
 
 // witness: apps/server/src/engine/pump/boardAsk.ts | typeof need === "string" && need.trim() !== "" && need.trim() !== key → typeof need === "string" && need.trim() !== ""
-it("ED+1: A plan zcp proposes for the Board opens one plan ask with its tasks in its order, each keeping its key and needing only others, each once; a plan of one task is a single task's ask, and one with two tasks under one key, or more tasks than HQ takes, asks nothing; breaks: a plan's task names itself among its needs and HQ refuses the whole plan as a cycle, or a plan HQ refuses reaches the person's card", () => {
+it("ED150: A plan zcp proposes for the Board opens one plan ask with its tasks in its order, each keeping its key and needing only others, each once; a plan of one task is a single task's ask, and one with two tasks under one key, or more tasks than HQ takes, asks nothing; breaks: a plan's task names itself among its needs and HQ refuses the whole plan as a cycle, or a plan HQ refuses reaches the person's card", () => {
   const plan = (tasks: ReadonlyArray<unknown>) =>
     zcpCall({ proposed: { board: { plan: tasks } }, nextActions: "Say it in one sentence." });
   const task = (key: string, needs?: ReadonlyArray<string>) => ({

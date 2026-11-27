@@ -1,4 +1,4 @@
-next: MN136
+next: MN137
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -122,7 +122,7 @@ next: MN136
 - MN127 — A task the viewer put on the Board that a colleague's automated Mate holds waits on the viewer while it asks, and on nobody else who did not put it; breaks: the person who put the task never hears its question
 - MN128 — What the viewer set aside stays out of Needs you while its revision is the one set aside, and comes back once it changes; breaks: a new question on a set-aside task stays hidden, or a snooze hides nothing
 - MN129 — A task a person took stands In progress under their name and their Mate, Up for review once their Mate linked a change, and never with the organization's cost; one put from a chat names who put it, and leads back to that chat only for a reader whose list holds its Mate; breaks: a person's own work is billed to the organization on the Board, or a reader is sent into a Mate they cannot open
-- MN+1 — A task that waits for others stands in Queued after the tasks the queue hands out, saying what it waits for; one whose need broke stands in Waiting for you on the person who put it; one whose needs were met is queued like any other; and a task others wait for says how many; breaks: a task stuck on a failed need sits quietly in the queue forever, or a held task looks next in line
+- MN136 — A task that waits for others stands in Queued after the tasks the queue hands out, saying what it waits for; one whose need broke stands in Waiting for you on the person who put it; one whose needs were met is queued like any other; and a task others wait for says how many; breaks: a task stuck on a failed need sits quietly in the queue forever, or a held task looks next in line
 - MN130 — A failed Put it live keeps the project HQ says it could not place, and names none when HQ omits it; breaks: its production row cannot identify the project involved.
 - MN131 — The crew's work in the Mate's code is marked not shipped only where the Mate read it as not shipped: the pieces it did not deliver, and none while they are not what it read or some is still unread; breaks: the Crew tab says work that went out hasn't shipped
 - MN133 — A place's address that names no place of its project says so once HQ told the project's environments and the inventory is read, and waits until both are; breaks: a removed place's link, or an address this version has no page for, stands in with a skeleton forever

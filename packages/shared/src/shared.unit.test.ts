@@ -862,7 +862,7 @@ it("SH22: A New task on the Board names one request per draft, the same on every
 });
 
 // witness: packages/shared/src/zeropsPermissions.ts | if (!writer(member) && !puts(member, task)) return refuse("not_need_dropper"); → if (!writer(member)) return refuse("not_need_dropper");
-it("SH+1: A held task's need is dropped by the person who put it or by an owner or admin, by no other member and on no task that is not held; breaks: a putter cannot free their own task from a need that broke, or any member drops what another's task waits for", () => {
+it("SH23: A held task's need is dropped by the person who put it or by an owner or admin, by no other member and on no task that is not held; breaks: a putter cannot free their own task from a need that broke, or any member drops what another's task waits for", () => {
   const task = (state: string): BoardTask => ({
     stored: state,
     putBy: "ana",

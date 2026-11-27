@@ -21,8 +21,13 @@ import { ComposerPrimaryActions } from "~/components/chat/ComposerPrimaryActions
 import { ComposerPutOnBoardButton } from "~/components/chat/ComposerPutOnBoardButton";
 import { MateTaskCardView, MateTaskStatusView } from "~/components/zerops/MateTaskCard";
 import { BoardAskCardView } from "~/components/zerops/board/BoardAskCard";
+import { BoardPlanCardView } from "~/components/zerops/board/BoardPlanCard";
 import type { BoardAnswerState } from "~/components/zerops/board/BoardTaskRow";
-import { boardAskState } from "~/components/zerops/board/boardAsk.logic";
+import {
+  boardAskState,
+  boardPlanState,
+  planNeedsWords,
+} from "~/components/zerops/board/boardAsk.logic";
 import { boardOf, type BoardRow } from "~/components/zerops/projectAutomation/taskBoard.logic";
 import type { TaskSession } from "~/zerops/taskSession.logic";
 import type { BoardFace } from "~/zerops/useBoardTasks";
@@ -254,6 +259,208 @@ function Card({ card }: { readonly card: CardState }) {
   );
 }
 
+/** Lark's plan for gift cards: modelled first, then sold, then emailed after both. */
+const PLAN = [
+  {
+    key: "model",
+    title: "Model gift cards in the database",
+    brief:
+      "Add a gift card with a code, an amount, a balance and who it is for. Codes are unique and hard to guess.",
+    needs: [],
+  },
+  {
+    key: "sell",
+    title: "Sell gift cards at checkout",
+    brief: "Offer gift cards of €25, €50 and €100 as products, and issue the card on payment.",
+    needs: ["model"],
+  },
+  {
+    key: "email",
+    title: "Email each gift card to its recipient",
+    brief:
+      "Send the card's code and amount to the recipient the buyer named, on the day they chose.",
+    needs: ["model", "sell"],
+  },
+];
+const PLAN_KEYS = PLAN.map((task) => task.key);
+const planTask = (id: string, at: number, patch: Partial<HqAppTask>): HqAppTask =>
+  task({
+    id,
+    title: PLAN[at]?.title ?? "",
+    brief: PLAN[at]?.brief ?? "",
+    source: { ...SOURCE, title: PLAN[at]?.title ?? "" },
+    ...patch,
+  });
+/** On the board: the first at work by the pool's Wren, the others held on what comes before. */
+const PLAN_ON_BOARD = [
+  planTask("70", 0, {
+    state: "working",
+    mate: WREN,
+    taker: POOL,
+    startedAt: ago(9),
+    workedMs: 8 * 60_000,
+  }),
+  planTask("71", 1, {
+    state: "held",
+
+    needs: [{ taskId: "70", state: "waiting" }],
+  }),
+  planTask("72", 2, {
+    state: "held",
+
+    needs: [
+      { taskId: "70", state: "waiting" },
+      { taskId: "71", state: "waiting" },
+    ],
+  }),
+];
+/** Later: the first merged, the second taken by Rhea, the third still held on the second. */
+const PLAN_LATER = [
+  planTask("70", 0, {
+    state: "merged",
+    mate: WREN,
+    taker: POOL,
+    endedAt: ago(50),
+    change: { repo: "shop", number: 51 },
+    pullRequest: { number: 51, url: "https://github.com/fernhill/plant-shop/pull/51" },
+  }),
+  planTask("71", 1, {
+    state: "taken",
+
+    taker: { kind: "person", userId: "u-rhea", mateProjectId: "p-moss" },
+    takenAt: ago(30),
+    needs: [{ taskId: "70", state: "met" }],
+  }),
+  planTask("72", 2, {
+    state: "held",
+
+    needs: [
+      { taskId: "70", state: "met" },
+      { taskId: "71", state: "waiting" },
+    ],
+  }),
+];
+
+/** The plan's tasks as the card follows them, read from the whole Board as the card reads it. */
+function planRows(records: ReadonlyArray<HqAppTask>): ReadonlyArray<BoardRow> {
+  const lanes = boardOf(records, NOW, {
+    viewerId: ME,
+    personName: (userId) => PEOPLE[userId],
+    mateName: (projectId) => FACES[projectId]?.name,
+  }).lanes;
+  const all = Object.values(lanes).flat();
+  return records.flatMap((record) => all.filter((row) => row.id === record.id));
+}
+
+function PlanCard({
+  id,
+  state,
+  records,
+  reading = false,
+}: {
+  readonly id: string;
+  readonly state: AskState;
+  /** Put: its tasks on the Board; absent while it waits. */
+  readonly records?: ReadonlyArray<HqAppTask>;
+  /** Put, its tasks not read yet (a reload): each stands as its row's shape. */
+  readonly reading?: boolean;
+}) {
+  const rows = records === undefined ? null : planRows(records);
+  return (
+    <BoardPlanCardView
+      appName="Plant Shop"
+      editable={rows === null && !reading}
+      mateName="Lark"
+      onBrief={nothing}
+      onNotNow={nothing}
+      onPut={nothing}
+      onTitle={nothing}
+      put={records !== undefined || reading}
+      ready
+      requestId={`plan-${id}`}
+      state={state}
+      tasks={PLAN.map((task, at) => {
+        const row = rows?.[at];
+        return {
+          key: task.key,
+          title: task.title,
+          brief: task.brief,
+          after: planNeedsWords(task.needs, PLAN_KEYS),
+          task:
+            row === undefined
+              ? null
+              : {
+                  row,
+                  face: row.holder === null ? undefined : FACES[row.holder.projectId],
+                  question: null,
+                  onOpenChange: nothing,
+                },
+        };
+      })}
+    />
+  );
+}
+
+const planPut = (records: ReadonlyArray<HqAppTask>): AskState =>
+  boardPlanState({ ...OPEN, state: "put", tasks: planRows(records) });
+
+const PLAN_STATES = [
+  {
+    id: "plan-waiting",
+    title: "A plan proposed: three tasks in order, each title and brief to read and change",
+    view: <PlanCard id="waiting" state={boardPlanState({ ...OPEN, tasks: [] })} />,
+  },
+  {
+    id: "plan-putting",
+    title: "The plan's Put on board pressed: all of it or none",
+    view: (
+      <PlanCard
+        id="putting"
+        state={boardPlanState({ ...OPEN, put: { kind: "working", verb: "task-plan" }, tasks: [] })}
+      />
+    ),
+  },
+  {
+    id: "plan-refused",
+    title: "HQ refused the plan",
+    view: (
+      <PlanCard
+        id="refused"
+        state={boardPlanState({
+          ...OPEN,
+          put: {
+            kind: "failed",
+            words:
+              "Tasks of this plan wait for each other, so it cannot go on the Board. Ask the Mate to propose it again.",
+          },
+          tasks: [],
+        })}
+      />
+    ),
+  },
+  {
+    id: "plan-reading",
+    title: "On the board after a reload, its tasks not read yet: each stands as its row's shape",
+    view: (
+      <PlanCard
+        id="reading"
+        reading
+        state={boardPlanState({ ...OPEN, state: "put", tasks: [null, null, null] })}
+      />
+    ),
+  },
+  {
+    id: "plan-on-board",
+    title: "On the board: the first at work, the others held on what comes before",
+    view: <PlanCard id="on-board" records={PLAN_ON_BOARD} state={planPut(PLAN_ON_BOARD)} />,
+  },
+  {
+    id: "plan-later",
+    title: "Later: the first merged, the second taken by Rhea, the third held on it",
+    view: <PlanCard id="later" records={PLAN_LATER} state={planPut(PLAN_LATER)} />,
+  },
+];
+
 /** A taken task's chat: its header's pill with Done and Release, and its card at the top. */
 const TAKEN_SESSION: TaskSession = {
   status: "taken",
@@ -312,6 +519,7 @@ const STATES: ReadonlyArray<{
     title: `Card: ${card.title}`,
     view: <Card card={card} />,
   })),
+  ...PLAN_STATES,
   {
     id: "taken",
     title: "A taken task's chat: Done and Release, and where it came from",

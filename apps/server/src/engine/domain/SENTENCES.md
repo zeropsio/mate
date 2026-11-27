@@ -1,4 +1,4 @@
-next: ED150
+next: ED151
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -138,7 +138,7 @@ next: ED150
 - ED144 — A run whose session did not open resuming the agent's own thread ends failed saying its resume failed; one whose fresh session did not open does not say so; breaks: a crewmate whose agent lost its thread fails every turn until a person clears its conversation
 - ED145 — A fresh session's seed, from an agent whose session start does not tell it, goes before the next message until a run starts with it, and the record keeps it once, from the rotation; breaks: a crewmate's new session on any agent but Claude starts without its packet
 - ED146 — A zcp call proposes work for the Board only from `zerops_board_propose` answering a title and a brief, both trimmed and cut to what HQ takes; an answer missing either, or any other tool's, asks nothing
-- ED+1 — A plan zcp proposes for the Board opens one plan ask with its tasks in its order, each keeping its key and needing only others, each once; a plan of one task is a single task's ask, and one with two tasks under one key, or more tasks than HQ takes, asks nothing; breaks: a plan's task names itself among its needs and HQ refuses the whole plan as a cycle, or a plan HQ refuses reaches the person's card
+- ED150 — A plan zcp proposes for the Board opens one plan ask with its tasks in its order, each keeping its key and needing only others, each once; a plan of one task is a single task's ask, and one with two tasks under one key, or more tasks than HQ takes, asks nothing; breaks: a plan's task names itself among its needs and HQ refuses the whole plan as a cycle, or a plan HQ refuses reaches the person's card
 - ED147 — A conversation opened with a task the person took from the Board links each change it opens to that task, and a conversation no task was taken for links none; a taken task's brief into a conversation under way is refused; breaks: a person's taken task never ends when its change merges, or another conversation's change is attached to it
 - ED148 — A change the agent opened is read off zcp's `open-change` answer as the repository its address names and the number it answers, only where both agree; any other answer or tool names no change
 - ED149 — Only the agent's `open-change` call links a change to a taken task: its `describe-change`, a call without its action, or any other action naming the same change in the same fields links nothing; breaks: describing or closing a change links it to the task again, or a closed change is linked as if opened
