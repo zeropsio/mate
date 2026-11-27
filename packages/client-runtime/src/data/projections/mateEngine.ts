@@ -1059,10 +1059,20 @@ const shellThreadOf = (read: ProjectionReads, key: EngineConversationKey) => {
 
 /** A held conversation's runs, oldest first, with the card each draws on. */
 function cardsOf(read: ProjectionReads, conversationKey: string, header?: ConversationHeader) {
-  const runs = valuesOf(read, "mateEngineRun", "engineRunsIn", conversationKey).sort(
+  const every = valuesOf(read, "mateEngineRun", "engineRunsIn", conversationKey).sort(
     (left, right) => left.ordinal - right.ordinal,
   );
-  const byId = new Map(runs.map((run) => [run.id as string, run]));
+  const byId = new Map(every.map((run) => [run.id as string, run]));
+  // The engine compacts a long context itself once a turn ended (`/compact` as a maintenance run
+  // joining it): its housekeeping, never a turn of the Mate's. It draws no card, its marker stands
+  // in the card it joins, and the conversation is not working on it: an empty "Abel worked 36s"
+  // stood under the finishing message (production look 3).
+  const hidden = (run: RunRecord): boolean =>
+    run.maintenance &&
+    run.joins !== null &&
+    run.trigger.kind === "wake" &&
+    run.trigger.cause === "compaction";
+  const runs = every.filter((run) => !hidden(run));
   // The run whose card each run draws on, oldest first: the first of the runs it continues. A run
   // that goes on with a card's work — a turn the agent opened itself as a background job ended, a
   // note of work lost, a restart's or a usage limit's continuation — draws its own card once a run
@@ -1077,7 +1087,12 @@ function cardsOf(read: ProjectionReads, conversationKey: string, header?: Conver
   // for every agent and every message).
   const roots = new Map<string, RunRecord>();
   const answered = new Set<string>();
-  for (const run of runs) {
+  for (const run of every) {
+    if (hidden(run)) {
+      const joined = run.joins === null ? undefined : roots.get(run.joins);
+      roots.set(run.id, joined ?? run);
+      continue;
+    }
     const behind =
       run.joins === null && run.trigger.kind === "person" ? queuedBehind(runs, run) : undefined;
     const joined = run.joins === null ? undefined : roots.get(run.joins);
@@ -1098,15 +1113,27 @@ function cardsOf(read: ProjectionReads, conversationKey: string, header?: Conver
   };
   // The turn is the live run; a queued run is a message waiting its turn (behind a working run, or
   // held by a usage-limit pause), never the work Stop ends.
-  const active = header?.activeRunId == null ? null : (byId.get(header.activeRunId) ?? null);
-  const latest = header?.latestRunId == null ? null : (byId.get(header.latestRunId) ?? null);
+  const activeRun = header?.activeRunId == null ? null : (byId.get(header.activeRunId) ?? null);
+  const latestRun = header?.latestRunId == null ? null : (byId.get(header.latestRunId) ?? null);
+  const compacting = activeRun !== null && hidden(activeRun);
+  const active = compacting ? null : activeRun;
+  // The turn the compaction joined stays the latest one, over as it ended.
+  const latest =
+    latestRun !== null && hidden(latestRun) ? (byId.get(latestRun.joins ?? "") ?? null) : latestRun;
   const turn: HeldTurn = {
     latestTurn: latest === null ? null : latestTurnOf(latest, rootOf(latest)),
     status: header?.runStatus === "unknown" ? "stopped" : (header?.runStatus ?? "stopped"),
     activeTurnId: active === null ? null : rootOf(active).id,
     runtimeMode: known(header?.runtimeMode) ?? null,
   };
-  return { runs, rootOf, cardOf, latest, turn };
+  // Nothing of the person's is at work while the engine compacts.
+  return {
+    runs,
+    rootOf,
+    cardOf,
+    latest,
+    turn: compacting ? { ...turn, status: "ready" as const } : turn,
+  };
 }
 
 /**
