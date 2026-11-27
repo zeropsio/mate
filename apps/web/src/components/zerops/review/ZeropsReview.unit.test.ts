@@ -1,4 +1,7 @@
 import { expect, it } from "vite-plus/test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ReviewTry } from "./ZeropsReviewSurface.tsx";
 import { keyRenewFailureWords, keyRenewOffer } from "../../../zerops/renewDeployKey.logic.ts";
 import { operationFailureWords, type HqOperationStanding } from "@t3tools/client-runtime/data";
 import {
@@ -13,6 +16,21 @@ import {
   releaseChangeRows,
   whySaid,
 } from "./ZeropsReview.logic.ts";
+
+// witness: apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx | draft.kind === "openable" ? ( → draft.kind !== "openable" ? (
+it("RV+1: A review offers Open draft only when the change's copy is openable, and says when availability is still being read.", () => {
+  const copy = { kind: "service", hostname: "webdev", branch: "feature" } as const;
+  const openable = renderToStaticMarkup(
+    createElement(ReviewTry, { draft: { kind: "openable", copy }, onOpenDraft: () => {} }),
+  );
+  expect(openable).toContain("Open draft");
+  expect(openable).not.toContain("<a ");
+  const reading = renderToStaticMarkup(
+    createElement(ReviewTry, { draft: { kind: "reading" }, onOpenDraft: () => {} }),
+  );
+  expect(reading).not.toContain("Open draft");
+  expect(reading).toContain("Draft availability is not known yet.");
+});
 
 // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | branch: pull.branch, → branch: undefined,
 it("RV1: A change that conflicts with main asks its branch's conversation to resolve it, about the change at its head", () => {

@@ -83,6 +83,7 @@ export type RightPanelSurface =
       repository: string;
       number: number;
     }
+  | { id: `draft:${string}`; kind: "draft"; groupId: string; repository: string; number: number }
   | { id: `data:${string}`; kind: "data"; service: string };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
@@ -118,6 +119,11 @@ interface RightPanelStoreState {
   openService: (ref: ScopedThreadRef, service: string, url: string) => void;
   /** One Data tab per service, opened from the service's card or the picker; the singleton `data` picker is replaced when it is the one open. */
   openData: (ref: ScopedThreadRef, service: string) => void;
+  /** One draft tab per change, focused when it is already open. */
+  openDraft: (
+    ref: ScopedThreadRef,
+    change: { readonly groupId: string; readonly repository: string; readonly number: number },
+  ) => void;
   /** One change's own tab, focused when it is already open. */
   openChange: (
     ref: ScopedThreadRef,
@@ -451,6 +457,16 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           }),
         }));
       },
+      openDraft: (ref, change) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, {
+              id: `draft:${change.groupId}:${change.repository}:${String(change.number)}`,
+              kind: "draft",
+              ...change,
+            }),
+          ),
+        })),
       openChange: (ref, change) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {

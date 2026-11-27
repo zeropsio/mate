@@ -1,3 +1,4 @@
+import { useDraftChange } from "./zerops/review/reviewReads";
 import type { ContextMenuItem, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
@@ -530,6 +531,8 @@ function surfaceTitle(
       return "Overview";
     case "change":
       return `${surface.repository} #${String(surface.number)}`;
+    case "draft":
+      return "Draft";
   }
 }
 
@@ -574,7 +577,21 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <LayersIcon className="size-3 shrink-0" />;
     case "change":
       return <GitPullRequestArrow className="size-3 shrink-0" />;
+    case "draft":
+      return <Globe className="size-3 shrink-0" />;
   }
+}
+
+function DraftTabFace(props: {
+  readonly surface: Extract<RightPanelSurface, { kind: "draft" }>;
+  readonly active: boolean;
+  readonly icon: ReactNode;
+  readonly pending: boolean;
+  readonly onActivate: () => void;
+  readonly onClose: () => void;
+}) {
+  const pull = useDraftChange(props.surface);
+  return <SurfaceTabFace {...props} title={pull?.title ?? "Draft"} />;
 }
 
 /**
@@ -866,14 +883,25 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 onMouseDown={handleTabMouseDown}
                 tabId={surface.id}
               >
-                <SurfaceTabFace
-                  active={active}
-                  icon={<SurfaceIcon surface={surface} theme={resolvedTheme} />}
-                  onActivate={() => props.onActivate(surface)}
-                  onClose={() => props.onCloseSurface(surface)}
-                  pending={pending}
-                  title={title}
-                />
+                {surface.kind === "draft" ? (
+                  <DraftTabFace
+                    surface={surface}
+                    active={active}
+                    icon={<SurfaceIcon surface={surface} theme={resolvedTheme} />}
+                    onActivate={() => props.onActivate(surface)}
+                    onClose={() => props.onCloseSurface(surface)}
+                    pending={pending}
+                  />
+                ) : (
+                  <SurfaceTabFace
+                    active={active}
+                    icon={<SurfaceIcon surface={surface} theme={resolvedTheme} />}
+                    onActivate={() => props.onActivate(surface)}
+                    onClose={() => props.onCloseSurface(surface)}
+                    pending={pending}
+                    title={title}
+                  />
+                )}
               </Tab>
             );
           })}
