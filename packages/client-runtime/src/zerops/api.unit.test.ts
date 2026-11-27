@@ -138,7 +138,7 @@ it("ZV15: A throttled Zerops answer tells its caller to wait as long as its Retr
       expiresIn: 432_000,
       userId: "user-1",
     });
-    const result = await client.listClientProjects("org-1").catch((error: unknown) => error);
+    const result = await client.integrationTokens("org-1").catch((error: unknown) => error);
     expect(result).toBeInstanceOf(ZeropsApiError);
     expect(result).toMatchObject({ retryAfterMs });
   }
@@ -263,7 +263,7 @@ it("ZV105: The Zerops token is sent only to the configured API base", async () =
   client.restoreSession(session);
 
   await client.fetchUser();
-  await client.listClientProjects("org-1");
+  await client.integrationTokens("org-1");
 
   expect(platform.received.map((request) => [request.origin, request.authorization])).toEqual([
     ["https://api.app-fra1.zerops.io", "Bearer access-1"],
@@ -373,47 +373,6 @@ it("ZV162: A press that hands HQ an operation's token renews a session with less
     expiresAt: "2026-11-20T12:01:00Z",
   });
   expect(platform.received).toHaveLength(1);
-});
-
-// witness: packages/client-runtime/src/zerops/api.ts | if (seen.has(project.id)) throw incomplete(); → if (seen.has(project.id)) continue;
-it("ZV109: An inventory is published only after every page; a short or repeated page is a failure", async () => {
-  const project = (id: string) => ({ id, name: id, status: "ACTIVE", clientId: "org-1" });
-  function inventory(
-    pages: ReadonlyArray<{ readonly ids: ReadonlyArray<string>; readonly total: number }>,
-  ) {
-    let page = 0;
-    const platform = zeropsPlatform(() => {
-      const next = pages[page] ?? { ids: [], total: pages[0]?.total ?? 0 };
-      page += 1;
-      return reply(200, { list: next.ids.map(project), total: next.total });
-    });
-    return signedIn(platform.respond).listClientProjects("org-1", { limit: 1 });
-  }
-
-  const whole = await inventory([
-    { ids: ["p1"], total: 2 },
-    { ids: ["p2"], total: 2 },
-  ]);
-  expect(whole.map((entry) => entry.id)).toEqual(["p1", "p2"]);
-
-  expect(
-    await failureOf(
-      inventory([
-        { ids: ["p1"], total: 3 },
-        { ids: ["p2"], total: 3 },
-        { ids: [], total: 3 },
-      ]),
-    ),
-  ).toBeInstanceOf(ZeropsApiError);
-  expect(
-    await failureOf(
-      inventory([
-        { ids: ["p1"], total: 2 },
-        { ids: ["p1"], total: 2 },
-        { ids: ["p2"], total: 2 },
-      ]),
-    ),
-  ).toBeInstanceOf(ZeropsApiError);
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | if (this.#refreshPromise) return this.#refreshPromise; →

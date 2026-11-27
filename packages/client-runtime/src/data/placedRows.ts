@@ -4,11 +4,11 @@
  * it — a placement, an environment's project, an open birth's project or a press.
  *
  * - A project navigation names that the roster does not name: a Mate just placed, a birth's
- *   project just made, drawn with its facts once read (`projections/menuTree.ts`). Zerops' search trails a project just made and the
- *   grants given to it (`zerops/api.ts`, `readAccessibleClientProjects`), while HQ sends a Mate to
- *   the people who may read it as soon as it is placed: its own row is Zerops' word that this
- *   viewer reads it, and the roster lists it from that row (`projections/projects.ts`) until the
- *   search names it too.
+ *   project just made, drawn with its facts once read (`projections/menuTree.ts`). The roster's
+ *   `/project/search` read (`families/project.ts`, `adapters/zerops.ts`) trails a project just
+ *   made and the grants given to it, while HQ sends a Mate to the people who may read it as soon
+ *   as it is placed: its own row is Zerops' word that this viewer reads it, and the roster lists
+ *   it from that row (`projections/projects.ts`) until the search names it too.
  * - A placed Mate whose listing does not decide a No-access viewer's access: its listing row names
  *   no grant of theirs, so only its own row says whether they read or open it
  *   (`projections/projects.ts`, `ownRowWanted`).

@@ -85,7 +85,6 @@ next: ZV213
 - ZV105 — The Zerops token is sent only to the configured API base
 - ZV107 — A login answer or read arriving after a local sign-out never signs in or signs out the next account
 - ZV108 — A lost answer to a project write is uncertain and never resent, and a write given up during a token renewal is never sent
-- ZV109 — An inventory is published only after every page; a short or repeated page is a failure
 - ZV110 — Parallel requests refused for an expired token share one refresh
 - ZV111 — Writing a project sends its name and the fields a write would reset, never people's roles
 - ZV115 — A kept session goes only to the target it was kept for, and one ending within the load is not presented
