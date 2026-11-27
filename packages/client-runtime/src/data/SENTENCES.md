@@ -1,4 +1,4 @@
-next: ST84
+next: ST85
 
 - ST83 — A run's open call takes its live row ahead of a streaming thought, but a closed call does not
 - ST1 — Input that a superseded attempt delivers late is ignored
@@ -78,3 +78,4 @@ next: ST84
 - ST80 — No reading of the person's access is taken while one of its reads is under way (their membership, the project roster read whole, a listed project's absence verified), so one change is told once in whichever order those reads land
 - ST81 — A No-access person's Mate whose listing names no grant of theirs has its own row read once, by the account, and one Zerops is verifying gone is not read a second time; breaks: a person with a project grant sees no Read-only or Open, or a demotion reads each Mate twice
 - ST82 — The person's membership counts from its first answer: a demotion that lands while the project roster is first read is told once that read is whole; breaks: HQ is never asked again, so a person demoted while the page loads keeps every Mate in the menu
+- ST84 — A message the person queued while the run works goes to the Mate at once as the conversation's next run, never steered into the working run; breaks: the queued message lives only in the tab that queued it and is lost when that tab reloads or closes

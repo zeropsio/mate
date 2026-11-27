@@ -287,6 +287,8 @@ export function ProjectPageBody<T>({
               aria-label="Automation"
               className={PAGE_GROUP}
               data-zerops-project-automation=""
+              // What a schedule made from a conversation links to (`ScheduleAsk`).
+              id="automation"
             >
               <SectionHeader title="Automation" />
               <Card>{setup.automation}</Card>

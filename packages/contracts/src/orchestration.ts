@@ -1176,6 +1176,11 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
   /** A press on a page sent it for the person (an ask a side panel wrote): never the chat's subject. */
   fromPanel: Schema.optional(Schema.Literal(true)),
+  /**
+   * The person queued it while a turn works: the Mate's conversation holds it as its next run,
+   * never steered into the working one.
+   */
+  queued: Schema.optional(Schema.Literal(true)),
   /** What a page wrote it about (`MessageAbout`): its Mate's row works on it while its run is on. */
   about: Schema.optional(MessageAbout),
   createdAt: IsoDateTime,

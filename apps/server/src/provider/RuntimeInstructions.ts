@@ -3,13 +3,14 @@ import { CREW_ASK_INSTRUCTIONS } from "../crewAskInstructions.ts";
 import { MAC_HOST_INSTRUCTIONS } from "../macHostInstructions.ts";
 import { MATE_PLACES_INSTRUCTIONS } from "../matePlacesInstructions.ts";
 import { PICTURE_ASK_INSTRUCTIONS } from "../pictureAskInstructions.ts";
+import { SCHEDULE_ASK_INSTRUCTIONS } from "../scheduleAskInstructions.ts";
 
 /**
  * Shared runtime context; omit model and effort when the harness manages them dynamically.
  * `modelName` is the display name users see in the model picker; `model` is the slug.
  * The Mate's content contract follows it, then, for a model that takes no image
  * input, how to verify without seeing, then where the person does things in Mate and how to ask
- * them for a picture or propose a crew (unless `places` is false: Codex takes each as an entry of
+ * them for a picture or propose a crew or a schedule (unless `places` is false: Codex takes each as an entry of
  * its own), then how to work on a paired Mac.
  */
 export function buildRuntimeInstructions(runtime: {
@@ -29,7 +30,7 @@ export function buildRuntimeInstructions(runtime: {
     modelName && modelName !== model ? `${modelName} (model slug: ${model})` : model;
   const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${modelLabel}` : "";
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
-  return `<runtime_info>In case you're asked: you are running in Zerops Mate through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths. Embed a picture's full-size file, never a smaller copy: the conversation fits it to its room, and the person opens, edits and reuses the file you embedded. Put independent reads and searches in one call or in parallel calls.</runtime_info>\n${CONTENT_CONTRACT}\n${runtime.imageInput === false ? `${TEXT_ONLY_INSTRUCTIONS}\n` : ""}${runtime.places === false ? "" : `${MATE_PLACES_INSTRUCTIONS}\n${PICTURE_ASK_INSTRUCTIONS}\n${CREW_ASK_INSTRUCTIONS}\n`}${MAC_HOST_INSTRUCTIONS}`;
+  return `<runtime_info>In case you're asked: you are running in Zerops Mate through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths. Embed a picture's full-size file, never a smaller copy: the conversation fits it to its room, and the person opens, edits and reuses the file you embedded. Put independent reads and searches in one call or in parallel calls.</runtime_info>\n${CONTENT_CONTRACT}\n${runtime.imageInput === false ? `${TEXT_ONLY_INSTRUCTIONS}\n` : ""}${runtime.places === false ? "" : `${MATE_PLACES_INSTRUCTIONS}\n${PICTURE_ASK_INSTRUCTIONS}\n${CREW_ASK_INSTRUCTIONS}\n${SCHEDULE_ASK_INSTRUCTIONS}\n`}${MAC_HOST_INSTRUCTIONS}`;
 }
 
 /**

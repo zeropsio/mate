@@ -4,6 +4,7 @@ import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { renderBareChangeNumbers } from "./zerops/BareChangeNumber";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
 import { CrewAskFence } from "./ask/CrewAsk";
+import { ScheduleAskFence } from "./ask/ScheduleAsk";
 import { PictureAskFence } from "./ask/PictureAsk";
 import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
 import { useAtomValue } from "@effect/atom-react";
@@ -180,6 +181,8 @@ interface ChatMarkdownProps {
       output, anything around the answers — keeps the smaller muted body.
       Headings, lists, tables and code scale with whichever body they sit in. */
   variant?: ChatMarkdownVariant | undefined;
+  /** The Mate's own prose in a log can link changes just like its answer. */
+  linkChangeNumbers?: boolean | undefined;
   /** Opens a picture in the image viewer, the text's other pictures beside it. */
   onOpenImage?: ((preview: ExpandedImagePreview) => void) | undefined;
 }
@@ -2380,6 +2383,7 @@ function useChatMarkdownState({
 
 /** Who wrote the markdown: a person's message draws a Mate's fences as the code they are. */
 const ChatMarkdownVariantContext = React.createContext<ChatMarkdownVariant>("log");
+const ChatMarkdownChangeNumbersContext = React.createContext(false);
 
 const ChatMarkdownRendererContext = React.createContext<
   ReturnType<typeof useChatMarkdownState>["componentState"]
@@ -2393,16 +2397,31 @@ function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
   const Tag = `h${level}` as const;
   return function MarkdownHeading({
     node: _node,
+    children,
     ...props
   }: ComponentProps<typeof Tag> & ReactMarkdownExtraProps) {
     const { headingLevelOffset } = use(ChatMarkdownRendererContext);
+    const linkChangeNumbers = use(ChatMarkdownChangeNumbersContext);
     return (
       <Tag
         {...props}
         data-md-heading=""
         aria-level={headingLevelOffset > 0 ? Math.min(level + headingLevelOffset, 6) : undefined}
-      />
+      >
+        {renderBareChangeNumbers(children, linkChangeNumbers)}
+      </Tag>
     );
+  };
+}
+
+function markdownTableCellRenderer(Tag: "th" | "td") {
+  return function MarkdownTableCell({
+    node: _node,
+    children,
+    ...props
+  }: ComponentProps<typeof Tag> & ReactMarkdownExtraProps) {
+    const linkChangeNumbers = use(ChatMarkdownChangeNumbersContext);
+    return <Tag {...props}>{renderBareChangeNumbers(children, linkChangeNumbers)}</Tag>;
   };
 }
 
@@ -2415,10 +2434,14 @@ const CHAT_MARKDOWN_COMPONENTS = {
   h5: markdownHeadingRenderer(5),
   h6: markdownHeadingRenderer(6),
   p: function MarkdownParagraph({ node: _node, children, ...props }) {
-    const { skills, threadRef } = use(ChatMarkdownRendererContext);
+    const { skills } = use(ChatMarkdownRendererContext);
+    const linkChangeNumbers = use(ChatMarkdownChangeNumbersContext);
     return (
       <p {...props}>
-        {renderSkillInlineMarkdownChildren(renderBareChangeNumbers(children, threadRef), skills)}
+        {renderSkillInlineMarkdownChildren(
+          renderBareChangeNumbers(children, linkChangeNumbers, skills),
+          skills,
+        )}
       </p>
     );
   },
@@ -2457,14 +2480,18 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   li: function MarkdownListItem({ node, children, ...props }) {
-    const { text, skills, threadRef } = use(ChatMarkdownRendererContext);
+    const { text, skills } = use(ChatMarkdownRendererContext);
+    const linkChangeNumbers = use(ChatMarkdownChangeNumbersContext);
     const listItemStart = node?.position?.start.offset;
     const markerOffset =
       typeof listItemStart === "number" ? findTaskListMarkerOffset(text, listItemStart) : null;
     return (
       // `data-md-li` is what the stylesheet's "item after an item" rules key on (index.css).
       <li {...props} data-md-li="" data-task-marker-offset={markerOffset ?? undefined}>
-        {renderSkillInlineMarkdownChildren(renderBareChangeNumbers(children, threadRef), skills)}
+        {renderSkillInlineMarkdownChildren(
+          renderBareChangeNumbers(children, linkChangeNumbers, skills),
+          skills,
+        )}
       </li>
     );
   },
@@ -2676,6 +2703,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
   table: function MarkdownTableRenderer({ node: _node, ...props }) {
     return <MarkdownTable {...props} />;
   },
+  th: markdownTableCellRenderer("th"),
+  td: markdownTableCellRenderer("td"),
   details: function MarkdownDetailsRenderer({ node: _node, children, open: detailsOpen }) {
     return <MarkdownDetails open={detailsOpen}>{children}</MarkdownDetails>;
   },
@@ -2741,6 +2770,22 @@ const CHAT_MARKDOWN_COMPONENTS = {
             {highlightedCode}
           </MarkdownCodeBlock>
         </CrewAskFence>
+      );
+    }
+    // A schedule the Mate proposed for the project's automated Mates (`ScheduleAsk`).
+    if (language === "schedule-ask" && variant !== "person") {
+      return (
+        <ScheduleAskFence code={codeBlock.code} isStreaming={isStreaming} threadRef={threadRef}>
+          <MarkdownCodeBlock
+            code={codeBlock.code}
+            language={language}
+            fenceTitle={fenceTitle}
+            theme={resolvedTheme}
+            isStreaming={isStreaming}
+          >
+            {highlightedCode}
+          </MarkdownCodeBlock>
+        </ScheduleAskFence>
       );
     }
     if (language === "mermaid") {
@@ -2815,6 +2860,7 @@ function ChatMarkdown({
   lineBreaks = false,
   parseRawHtml = true,
   variant = "log",
+  linkChangeNumbers = false,
   onOpenImage,
   ...props
 }: ChatMarkdownProps) {
@@ -2883,9 +2929,11 @@ function ChatMarkdown({
     >
       <ChatMarkdownRendererContext value={componentState}>
         <ChatMarkdownVariantContext value={variant}>
-          <MarkdownImageOpenerContext value={onOpenImage ?? null}>
-            {rendered}
-          </MarkdownImageOpenerContext>
+          <ChatMarkdownChangeNumbersContext value={variant === "answer" || linkChangeNumbers}>
+            <MarkdownImageOpenerContext value={onOpenImage ?? null}>
+              {rendered}
+            </MarkdownImageOpenerContext>
+          </ChatMarkdownChangeNumbersContext>
         </ChatMarkdownVariantContext>
       </ChatMarkdownRendererContext>
     </div>

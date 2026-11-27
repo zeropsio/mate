@@ -44,6 +44,17 @@ export function readCallPage(payload: unknown): CallResultPage | undefined {
   return pagesRead.get(raw);
 }
 
+/**
+ * The pages one run published, as its person sees them, from its calls in the order they ran: a
+ * page is named by its title (`zerops_publish_page` takes one), so a later publish under the same
+ * title is that page updated, and only the newest stands, where it was published.
+ */
+export function newestPages<T>(published: ReadonlyArray<T>, titleOf: (call: T) => string): T[] {
+  const newest = new Map<string, number>();
+  published.forEach((call, index) => newest.set(titleOf(call), index));
+  return published.filter((call, index) => newest.get(titleOf(call)) === index);
+}
+
 /** Everything the page may load: what it carries inline, nothing from anywhere. */
 export const PAGE_POLICY = [
   "default-src 'none'",

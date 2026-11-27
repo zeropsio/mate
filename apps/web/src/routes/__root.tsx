@@ -43,7 +43,6 @@ import { CommandPalette } from "../components/CommandPalette";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdatePrimaryNotification";
 import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
-import { QueuedMessageSender } from "../components/QueuedMessageSender";
 import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
@@ -385,7 +384,6 @@ function SignedInRootRouteView() {
         <FontAppearanceSync />
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         <ThreadNotificationCoordinator />
-        <QueuedMessageSender />
         <ReopenClosedViewShortcut />
         <ConfirmDialogHost />
         <SlowRpcRequestToastCoordinator />

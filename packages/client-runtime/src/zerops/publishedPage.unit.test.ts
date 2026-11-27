@@ -1,6 +1,12 @@
 import { expect, it } from "vite-plus/test";
 
-import { innerDocumentOf, pageDocument, themeMessage, type PageTheme } from "./publishedPage.ts";
+import {
+  innerDocumentOf,
+  newestPages,
+  pageDocument,
+  themeMessage,
+  type PageTheme,
+} from "./publishedPage.ts";
 
 const theme: PageTheme = {
   scheme: "dark",
@@ -56,4 +62,17 @@ it("ZV127: No theme value or bridge token can close the published page's style o
       host: { kind: "native", token: 'abcdefghijklmnop"</script><script>x()' },
     }),
   ).toThrow();
+});
+
+// witness: packages/client-runtime/src/zerops/publishedPage.ts | return published.filter((call, index) => newest.get(titleOf(call)) === index); → return published.filter((call, index) => newest.get(titleOf(call)) !== undefined);
+it("ZV210: A page a run publishes again under its title shows once, as its newest publish, where that publish stands; breaks: a corrected page shows twice, or its first draft stands in place of the correction", () => {
+  const published = [
+    { call: "call-1", title: "A board for Mate" },
+    { call: "call-2", title: "Release notes" },
+    { call: "call-3", title: "A board for Mate" },
+  ];
+  expect(newestPages(published, (call) => call.title).map((call) => call.call)).toEqual([
+    "call-2",
+    "call-3",
+  ]);
 });
