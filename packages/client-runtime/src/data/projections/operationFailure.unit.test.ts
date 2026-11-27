@@ -49,8 +49,52 @@ it("PJ128: A stopped operation reads by who stopped it: Zerops' refusal as Zerop
 });
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.tokenIds !== undefined && failure.tokenIds.length > 0) return failure.tokenIds; → if (failure.tokenIds !== undefined && failure.tokenIds.length > 0) return failure.tokenIds.slice(0, 1);
-it("PJ164: An HQ stop over a deploy token names the token ids HQ sent and what the person does next; breaks: a person is told a token was refused without the id to delete, or reads HQ's code", () => {
+it("PJ164: An HQ stop names the deploy token ids HQ sent and what the person does next, whatever its code; breaks: a person is not told which token to delete, or reads a known HQ code", () => {
   const cases: ReadonlyArray<readonly [HqOperationFailure, string]> = [
+    [
+      {
+        step: "key",
+        code: "ended",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenId: "T9",
+      },
+      "It was ended while it waited. Anything it made stays and can be deleted, and a request already at Zerops may still finish. Delete token T9 in Zerops.",
+    ],
+    [
+      {
+        step: "key",
+        code: "deploy_token_mint_failed",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenId: "T9",
+      },
+      "HQ lost Zerops' answer about the new deploy token, and Zerops lists none. Delete token T9 in Zerops, then start it again.",
+    ],
+    [
+      {
+        step: "key",
+        code: "token_delete_refused",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenIds: ["T9", "T10"],
+      },
+      "Only an organization owner can delete this environment's deploy token. Delete tokens T9, T10 in Zerops.",
+    ],
+    [
+      { step: "key", code: "ended", at: "2026-11-27T15:00:00.000Z", origin: "hq" },
+      "It was ended while it waited. Anything it made stays and can be deleted, and a request already at Zerops may still finish.",
+    ],
+    [
+      {
+        step: "key",
+        code: "future_code",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "zerops",
+        tokenId: "T9",
+      },
+      "Zerops refused: future_code",
+    ],
     [
       { step: "key", code: "token_delete_refused", at: "2026-11-27T15:00:00.000Z", origin: "hq" },
       "Only an organization owner can delete this environment's deploy token.",
@@ -143,7 +187,7 @@ it("PJ164: An HQ stop over a deploy token names the token ids HQ sent and what t
         origin: "hq",
         tokenId: "T1",
       },
-      "Zerops still lists the project after its deletion ended.",
+      "Zerops still lists the project after its deletion ended. Delete token T1 in Zerops.",
     ],
     [
       {
@@ -158,6 +202,16 @@ it("PJ164: An HQ stop over a deploy token names the token ids HQ sent and what t
     [
       { step: "key", code: "future_code", at: "2026-11-27T15:00:00.000Z", origin: "hq" },
       "HQ stopped it: future_code",
+    ],
+    [
+      {
+        step: "key",
+        code: "future_code",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenIds: ["T9", "T10"],
+      },
+      "HQ stopped it: future_code Delete tokens T9, T10 in Zerops.",
     ],
   ];
   for (const [input, words] of cases) expect(operationFailureWords(input)).toBe(words);

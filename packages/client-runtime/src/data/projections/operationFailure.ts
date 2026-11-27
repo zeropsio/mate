@@ -197,21 +197,19 @@ export function operationFailureWords(failure: HqOperationFailure): string {
   if (failure.origin === "zerops_process")
     return PROCESS_FAILED.get(failure.code) ?? `Zerops could not finish it: ${failure.code}`;
   if (failure.origin === "hq") {
-    const words = DEPLOY_TOKEN_STOPPED.get(failure.code);
-    if (words !== undefined) {
-      const ids = deployTokenIds(failure);
-      if (ids.length > 0) {
-        const token = ids.length === 1 ? "token" : "tokens";
-        const next = failure.code === TOKEN_DELETE_REFUSED ? "." : ", then start it again.";
-        return `${words} Delete ${token} ${ids.join(", ")} in Zerops${next}`;
-      }
-      return failure.code === TOKEN_DELETE_REFUSED ? words : `${words} Start it again.`;
+    const deployTokenWords = DEPLOY_TOKEN_STOPPED.get(failure.code);
+    const words =
+      deployTokenWords ?? HQ_STOPPED.get(failure.code) ?? `HQ stopped it: ${failure.code}`;
+    const restart = deployTokenWords !== undefined && failure.code !== TOKEN_DELETE_REFUSED;
+    const ids = deployTokenIds(failure);
+    if (ids.length > 0) {
+      const token = ids.length === 1 ? "token" : "tokens";
+      const next = restart ? ", then start it again." : ".";
+      return `${words} Delete ${token} ${ids.join(", ")} in Zerops${next}`;
     }
+    return restart ? `${words} Start it again.` : words;
   }
-  return (
-    (failure.origin === "hq" ? HQ_STOPPED.get(failure.code) : undefined) ??
-    `HQ stopped it: ${failure.code}`
-  );
+  return `HQ stopped it: ${failure.code}`;
 }
 
 /**

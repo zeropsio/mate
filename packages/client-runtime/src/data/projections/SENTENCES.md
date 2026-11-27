@@ -1,6 +1,6 @@
 next: PJ165
 
-- PJ164 — An HQ stop over a deploy token names the token ids HQ sent and what the person does next; breaks: a person is told a token was refused without the id to delete, or reads HQ's code
+- PJ164 — An HQ stop names the deploy token ids HQ sent and what the person does next, whatever its code; breaks: a person is not told which token to delete, or reads a known HQ code
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
 - PJ3 — A balance that lasts under three days runs short, unless an automatic top-up refills it
