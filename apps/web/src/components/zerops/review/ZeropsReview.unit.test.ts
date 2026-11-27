@@ -193,7 +193,7 @@ it("RV11: A ready, current change says its Review build result once, and stays q
 });
 
 // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | (verdict.state === "github-checks-failed" && verdict.showWhy !== true) → verdict.state === "github-checks-failed"
-it("RV+1: A GitHub failure handed to a person shows its given-up reason in the review; breaks: the reason reaches the verdict but the review hides it.", () => {
+it("RV12: A GitHub failure handed to a person shows its given-up reason in the review; breaks: the reason reaches the verdict but the review hides it.", () => {
   const pull: ChangeReviewInput["pull"] = {
     number: 7,
     kind: "code",

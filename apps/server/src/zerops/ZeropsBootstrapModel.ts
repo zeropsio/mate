@@ -109,9 +109,9 @@ const selectionOnAgent = (
 };
 
 /**
- * The model a conversation runs on when it runs on a ready agent Mate signs nobody in to: the
- * conversation's own when it is on that instance, else the project's default there, else the
- * model a new conversation would open on it (`resolveBootstrapModelSlug`).
+ * The model a conversation runs on for a ready instance: the conversation's own when it is on
+ * that instance, else the project's default there, else the model a new conversation would open
+ * on it (`resolveBootstrapModelSlug`).
  */
 const selectionOnInstance = (
   provider: ServerProvider,
@@ -171,8 +171,8 @@ const mateAgentOn = (
 
 /**
  * The agent the Mate's main conversation is given for a person, whether or not it exists yet: the
- * first agent they may run (`standUpAgents`, in its order), else `ready`, a ready agent
- * Mate signs nobody in to; on the conversation's own model where it is on that agent, else the
+ * first agent they may run (`standUpAgents`, in its order), else `ready`, a ready instance; on
+ * the conversation's own model where it is on that agent, else the
  * project's default there, else the agent's default — an automated Mate's on its organization's
  * model. A conversation that has run nothing starts on Extra High unless its model names an effort
  * (D10). None where the person has no agent to run.
@@ -182,7 +182,7 @@ export const mainConversationAgent = (input: {
   readonly conversation: ConversationFacts | undefined;
   /** The agents the person may run, the one to choose first (`standUpAgents`). */
   readonly agents: ReadonlyArray<ZeropsAgentId>;
-  /** A ready agent Mate signs nobody in to (`pickReadyAgentWithoutSignIn`), where one stands in. */
+  /** A ready instance, either one that stands in for sign-in or a message's admitted login. */
   readonly ready: ServerProvider | undefined;
   /** The project's default model, where a V1 project still holds one. */
   readonly projectDefault: ModelSelection | null;

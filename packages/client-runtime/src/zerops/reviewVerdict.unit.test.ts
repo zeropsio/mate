@@ -242,7 +242,7 @@ it("ZV195: The review leaves Merge available and plain while a Review build awai
 });
 
 // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | return "No agent can work on this Mate: sign one in, then ask it to fix the check."; → return "Checks still fail after 3 tries; over to a person.";
-it("ZV+1: A change handed to a person for failed checks says whether its Mate ran out of tries, has no usable agent or reached a usage limit, on the Review build and GitHub verdicts; breaks: the person cannot tell what to do next", () => {
+it("ZV205: A change handed to a person for failed checks says whether its Mate ran out of tries, has no usable agent or reached a usage limit, on the Review build and GitHub verdicts; breaks: the person cannot tell what to do next", () => {
   const rows = [
     ["tries", "Checks still fail after 3 tries; over to a person."],
     ["no-agent", "No agent can work on this Mate: sign one in, then ask it to fix the check."],

@@ -2,7 +2,7 @@ import { expect, it } from "vite-plus/test";
 import { checkNoticeAfterLimit, checkNoticeLogin, checkNoticeVerdict } from "./checkNotice.ts";
 
 // witness: apps/server/src/zerops/admission/checkNotice.ts | if (input.current === "unavailable") return { kind: "end", reason: "no-agent" }; → if (input.current === "unavailable") return { kind: "wait" };
-it("TA+1: A check notice runs on its conversation's admitted owner login, or selects a ready owner login when none is selected; an unknown login or admission waits, a definitely unavailable login ends no-agent, and a known selected login at its usage limit ends usage-limit even with a wake or another login; a limited run with no known selected login and no wake can finish; breaks: a failed check waits forever or an unresolved sign-in is handed to a person too soon", () => {
+it("TA13: A check notice runs on its conversation's admitted owner login, or selects a ready owner login when none is selected; an unknown login or admission waits, a definitely unavailable login ends no-agent, and a known selected login at its usage limit ends usage-limit even with a wake or another login; a limited run with no known selected login and no wake can finish; breaks: a failed check waits forever or an unresolved sign-in is handed to a person too soon", () => {
   const rows = [
     ["authorized", "admit", "ready"],
     ["not-authorized", "refuse", "unavailable"],

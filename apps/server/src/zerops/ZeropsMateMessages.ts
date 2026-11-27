@@ -59,10 +59,8 @@ import {
   agentIdForProviderInstance,
   type Principal,
   type RunEnd,
-  type ZeropsAgentId,
   ZeropsUserId,
   defaultInstanceIdForAgent,
-  driverKindForAgent,
   mateMessageItemOf,
   mateMessageNamesOf,
   mateMessageSenderName,
@@ -107,7 +105,6 @@ import { ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { type TurnRefused, ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
-import { standUpAgents } from "./zeropsSetupSteps.ts";
 
 /** What the Mate says of messages up the link. */
 export type MessageUp = Extract<KeyLinkUp, { readonly type: "message-taken" | "message-ended" }>;
@@ -247,7 +244,9 @@ export const make = Effect.gen(function* () {
   // Each message whose end waits on its run's background work: looked at again at its deadline.
   const deadlines = yield* FiberMap.make<string>();
   // What each waiting message's wait was logged as: each wait said once.
-  const waitSaid = new Map<string, "sign-in" | "stand-up">();
+  const waitSaid = new Map<string, "sign-in" | "stand-up" | "provider">();
+  // A selected login's provider snapshot can arrive after its sign-in is admitted.
+  const providerWait = new Map<string, string>();
 
   const principalOf = (id: string, ownerUserId: string): Principal => ({
     kind: "mate",
@@ -270,6 +269,12 @@ export const make = Effect.gen(function* () {
         ...(words === undefined ? {} : { words }),
       }))
       .pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            waitSaid.delete(id);
+            providerWait.delete(id);
+          }),
+        ),
         Effect.tap((entry) => {
           const up = endedUp(id, entry);
           return up === undefined ? Effect.void : PubSub.publish(ends, up);
@@ -437,24 +442,8 @@ export const make = Effect.gen(function* () {
    * The agent a message gives the main conversation that has none, or the one it opens
    * (`mateMessageAgent`): its owner's, on an agent they signed in here that admits it.
    */
-  const agentFor = (
-    main: ConversationView | undefined,
-    ownerUserId: string,
-    admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<TurnRefused | undefined>,
-  ) =>
+  const agentFor = (main: ConversationView | undefined, mayRun: ReadonlyArray<string>) =>
     Effect.gen(function* () {
-      const owner = ZeropsUserId.make(ownerUserId);
-      const candidates = standUpAgents(
-        (yield* agentAuth.latest).agents,
-        yield* signers.signers,
-        owner,
-      );
-      const mayRun = yield* Effect.filter(candidates, (agentId) =>
-        Effect.map(
-          admitted(defaultInstanceIdForAgent(agentId), ownerUserId),
-          (refused) => refused === undefined,
-        ),
-      );
       return mateMessageAgent({
         main,
         standUpSettled: yield* standUp.settled,
@@ -465,7 +454,7 @@ export const make = Effect.gen(function* () {
     });
 
   /** Reads each possible owner login through the same admission that starts its run. */
-  const noticeLogins = (
+  const messageLogins = (
     ownerUserId: string,
     admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<TurnRefused | undefined>,
   ) =>
@@ -477,13 +466,11 @@ export const make = Effect.gen(function* () {
         ...snapshot.agents.map((agent) => ({
           id: defaultInstanceIdForAgent(agent.agentId),
           loginKey: agent.agentId,
-          agent: agent.agentId,
           state: classifyZeropsAgentAuth(agent).kind,
         })),
         ...(yield* logins.latest).map((login) => ({
           id: login.id,
           loginKey: login.id,
-          agent: login.agent,
           state: login.state,
         })),
       ];
@@ -504,7 +491,7 @@ export const make = Effect.gen(function* () {
             admission:
               refusal === undefined ? "admit" : refusal.undetermined ? "unknown" : "refuse",
           });
-          return { id: row.id, agent: row.agent, status };
+          return { id: row.id, status };
         }),
       );
     });
@@ -535,7 +522,7 @@ export const make = Effect.gen(function* () {
   );
 
   /** Logs a message's wait once for what it waits on. */
-  const sayWait = (id: string, on: "sign-in" | "stand-up", reason: string) =>
+  const sayWait = (id: string, on: "sign-in" | "stand-up" | "provider", reason: string) =>
     waitSaid.get(id) === on
       ? Effect.void
       : Effect.andThen(
@@ -543,7 +530,9 @@ export const make = Effect.gen(function* () {
           Effect.logInfo(
             on === "sign-in"
               ? "zerops mate messages: a message waits for its owner's sign-in"
-              : "zerops mate messages: a message waits for the stand-up",
+              : on === "stand-up"
+                ? "zerops mate messages: a message waits for the stand-up"
+                : "zerops mate messages: a message waits for its provider snapshot",
             { reason },
           ),
         );
@@ -557,6 +546,7 @@ export const make = Effect.gen(function* () {
     admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<TurnRefused | undefined>,
   ) =>
     Effect.gen(function* () {
+      providerWait.delete(id);
       if (message.kind !== "notice" && (yield* waitedOut(entry)))
         return yield* settle(id, "declined");
       const found = yield* placeOf(id, entry, message);
@@ -575,12 +565,11 @@ export const make = Effect.gen(function* () {
       let noticeCandidates:
         | ReadonlyArray<{
             readonly id: string;
-            readonly agent: ZeropsAgentId;
             readonly status: NoticeLogin;
           }>
         | undefined;
       if (message.kind === "notice") {
-        noticeCandidates = yield* noticeLogins(ownerUserId, admitted);
+        noticeCandidates = yield* messageLogins(ownerUserId, admitted);
         if (noticeCandidates === undefined) return;
         const current =
           view?.agent == null
@@ -603,20 +592,21 @@ export const make = Effect.gen(function* () {
       // A conversation with no agent, or none at all: given its owner's first.
       let given: ConversationAgent | undefined;
       if (view?.agent == null) {
-        const chosen = yield* agentFor(view, ownerUserId, admitted);
+        const candidates = noticeCandidates ?? (yield* messageLogins(ownerUserId, admitted));
+        if (candidates === undefined) return;
+        const mayRun = candidates
+          .filter((login) => login.status === "ready")
+          .map((login) => login.id);
+        if (mayRun[0] !== undefined) providerWait.set(id, mayRun[0]);
+        const chosen = yield* agentFor(view, mayRun);
+        if (chosen.kind !== "wait-provider") providerWait.delete(id);
         if (chosen.kind === "wait-stand-up")
           return yield* sayWait(id, "stand-up", "the stand-up may open the conversation yet");
-        if (chosen.kind === "wait-sign-in") {
-          const extra = noticeCandidates?.find((login) => login.status === "ready");
-          if (extra === undefined)
-            return yield* sayWait(id, "sign-in", "no agent its owner signed in here admits it");
-          given = {
-            instanceId: extra.id,
-            driver: driverKindForAgent(extra.agent),
-            model: null,
-            profile: { kind: "mate" },
-          };
-        } else given = chosen.agent;
+        if (chosen.kind === "wait-sign-in")
+          return yield* sayWait(id, "sign-in", "no agent its owner signed in here admits it");
+        if (chosen.kind === "wait-provider")
+          return yield* sayWait(id, "provider", "the admitted login's snapshot has not arrived");
+        given = chosen.agent;
       }
       const instanceId = given?.instanceId ?? view?.agent?.instanceId;
       if (instanceId === undefined) return;
@@ -717,7 +707,7 @@ export const make = Effect.gen(function* () {
             run.message.reached === false &&
             (run.end.admission !== undefined || run.end.forNow === true)))
       ) {
-        const candidates = yield* noticeLogins(ownerUserId, admitted);
+        const candidates = yield* messageLogins(ownerUserId, admitted);
         const current =
           view.agent == null || candidates === undefined
             ? undefined
@@ -949,6 +939,21 @@ export const make = Effect.gen(function* () {
           }),
           Queue.offer(wake, undefined),
         ),
+    ),
+  );
+  // Only waiting selections need a wake when their instance's snapshot appears.
+  yield* Effect.forkScoped(
+    Stream.runForEach(instances.snapshots, (providers) =>
+      [...providerWait.values()].some((id) =>
+        providers.some((provider) => provider.instanceId === id),
+      )
+        ? Effect.andThen(
+            Effect.sync(() => {
+              admissionMoved = true;
+            }),
+            Queue.offer(wake, undefined),
+          )
+        : Effect.void,
     ),
   );
   // Another owner reaches a message waiting to be sent and one sent whose run is still queued.

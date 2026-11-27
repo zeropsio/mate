@@ -8,12 +8,7 @@
  *
  * @module mateMessageAgent
  */
-import type {
-  ConversationAgent,
-  ModelSelection,
-  ServerProvider,
-  ZeropsAgentId,
-} from "@t3tools/contracts";
+import type { ConversationAgent, ModelSelection, ServerProvider } from "@t3tools/contracts";
 
 import { type ConversationFacts, mainConversationAgent } from "../ZeropsBootstrapModel.ts";
 
@@ -23,24 +18,29 @@ export type MateMessageAgent =
   /** The stand-up's wait has not ended: it may open the conversation yet. */
   | { readonly kind: "wait-stand-up" }
   /** No agent its owner signed in here admits it. */
-  | { readonly kind: "wait-sign-in" };
+  | { readonly kind: "wait-sign-in" }
+  /** The admitted login's provider snapshot has not arrived yet. */
+  | { readonly kind: "wait-provider" };
 
 export const mateMessageAgent = (input: {
   /** The main conversation, where the Mate has one. */
   readonly main: ConversationFacts | undefined;
   /** Whether the setup's wait for the stand-up ended (`ZeropsStandUpReceipt`). */
   readonly standUpSettled: boolean;
-  /** The agents its owner may run that admit the message, the one to choose first. */
-  readonly mayRun: ReadonlyArray<ZeropsAgentId>;
+  /** The instances its owner may run that admit the message, the one to choose first. */
+  readonly mayRun: ReadonlyArray<string>;
   /** The project's default model, where a V1 project still holds one. */
   readonly projectDefault: ModelSelection | null;
   readonly providers: ReadonlyArray<ServerProvider>;
 }): MateMessageAgent => {
   if (!input.standUpSettled) return { kind: "wait-stand-up" };
+  if (input.mayRun.length === 0) return { kind: "wait-sign-in" };
+  const ready = input.providers.find((provider) => provider.instanceId === input.mayRun[0]);
+  if (ready === undefined) return { kind: "wait-provider" };
   const agent = mainConversationAgent({
     conversation: input.main,
-    agents: input.mayRun,
-    ready: undefined,
+    agents: [],
+    ready,
     projectDefault: input.projectDefault,
     automatedModel: undefined,
     providers: input.providers,
