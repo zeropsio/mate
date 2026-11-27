@@ -2,10 +2,11 @@
  * Mate Asks: every verb on the board ("Mate Asks", 2026-11-04) in every state, built from the ask
  * kit — approve on production, provide (the vault ask itself, and one for the Mate's own vault,
  * which only the Mate reads), connect as steps with the paste
- * fallback, reveal, an organization's proposal with "Only Juno", and a crew to set up — in the conversation's
+ * fallback, reveal, an organization's proposal with "Only Juno", a crew to set up, and a schedule for
+ * the project's automated Mates — in the conversation's
  * column at the owner's size (1786 wide, the left menu at 435, `?menu=` for another). `Full` draws
  * each as the conversation does; `Compact` as above the composer while the Mate is stopped on it.
- * `?theme=dark`, `?density=compact`.
+ * `?theme=dark`, `?density=compact`, `?schedule=` for the schedule card's state.
  *
  * Served by the dev server at `/design-asks.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
@@ -42,6 +43,10 @@ import {
 import { AskRevealed } from "~/components/ask/AskSecret";
 import { CrewAskCardView } from "~/components/ask/CrewAsk";
 import { type CrewAskAvailability, parseCrewAsk } from "~/components/ask/crewAsk.logic";
+import { ScheduleAskCardView, type SchedulePress } from "~/components/ask/ScheduleAsk";
+import { parseScheduleAsk, scheduleAskRequest } from "~/components/ask/scheduleAsk.logic";
+import { SourceDialog } from "~/components/zerops/projectAutomation/ProjectAutomation";
+import { AppSchedulesView } from "~/components/zerops/projectAutomation/sourceForms";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
@@ -1256,6 +1261,102 @@ function CrewSetUp({ density }: { readonly density: AskDensity }) {
   );
 }
 
+const SCHEDULE_ASK = parseScheduleAsk(
+  JSON.stringify({
+    title: "Update the dependencies every night",
+    why: "You've asked me to do this three Mondays running; a schedule does it while nobody is here.",
+    name: "Nightly dependency update",
+    brief:
+      "Update the dependencies to their latest compatible versions, run the tests and the build, and open a change when both pass. Leave major versions alone and say which ones are waiting.",
+    every: "day",
+    at: "03:00",
+  }),
+)!;
+const SCHEDULE_REQUEST = scheduleAskRequest(SCHEDULE_ASK, "Europe/Prague");
+
+type ScheduleAskState = "ready" | "none" | "working" | "made" | "refused" | "member" | "notNow";
+const SCHEDULE_ASK_STATES: ReadonlyArray<readonly [ScheduleAskState, string]> = [
+  ["ready", "Waiting"],
+  ["none", "No automated Mates"],
+  ["working", "Creating"],
+  ["made", "Created"],
+  ["refused", "Refused"],
+  ["member", "Not an Admin"],
+  ["notNow", "Not now"],
+];
+const SCHEDULE_PRESS: Partial<Record<ScheduleAskState, SchedulePress>> = {
+  working: { kind: "working" },
+  refused: {
+    kind: "refused",
+    words: "A project holds at most 20 of these. Delete one first.",
+  },
+};
+
+/** The schedule card: drawn in the conversation only, so one density. */
+function ScheduleSetUp({ density }: { readonly density: AskDensity }) {
+  const [state, setState] = useState<ScheduleAskState>(
+    () => SCHEDULE_ASK_STATES.find(([id]) => id === params.get("schedule"))?.[0] ?? "ready",
+  );
+  const [editing, setEditing] = useState(params.get("schedule") === "edit");
+  if (density === "compact") return null;
+  return (
+    <Specimen
+      chips={
+        <States
+          label="Schedule ask"
+          onChange={setState}
+          states={SCHEDULE_ASK_STATES}
+          value={state}
+        />
+      }
+      density={density}
+      name="Schedule recurring work"
+    >
+      <ScheduleAskCardView
+        admin={state !== "member"}
+        ask={SCHEDULE_ASK}
+        automatedMates={state === "none" ? 0 : 2}
+        made={state === "made" ? { rule: SCHEDULE_REQUEST.rule } : undefined}
+        mate={MATE}
+        onAddAutomatedMates={() => undefined}
+        onCreate={() => undefined}
+        onEdit={() => {
+          setEditing(true);
+        }}
+        onNotNow={() => undefined}
+        onOpenAutomation={() => undefined}
+        press={SCHEDULE_PRESS[state] ?? { kind: "idle" }}
+        project="Acme store"
+        request={SCHEDULE_REQUEST}
+        setAside={state === "notNow"}
+      />
+      {/* Edit…: the Automation section's own schedule form, filled in with the ask. */}
+      {editing ? (
+        <SourceDialog
+          kind="schedule"
+          onClose={() => {
+            setEditing(false);
+          }}
+        >
+          <AppSchedulesView
+            controls={{
+              read: {
+                setting: { state: "known", held: [], stale: false },
+                action: { kind: "idle" },
+                revealed: null,
+              },
+              write: () => undefined,
+              again: () => undefined,
+            }}
+            initial={SCHEDULE_REQUEST}
+            name="Acme store"
+          />
+        </SourceDialog>
+      ) : null}
+    </Specimen>
+  );
+}
+
 function Harness() {
   const [density, setDensity] = useState<AskDensity>(
     params.get("density") === "compact" ? "compact" : "full",
@@ -1291,6 +1392,7 @@ function Harness() {
           <Mirror density={density} />
           <OrganizationScope density={density} />
           <CrewSetUp density={density} />
+          <ScheduleSetUp density={density} />
         </div>
       </div>
     </div>
