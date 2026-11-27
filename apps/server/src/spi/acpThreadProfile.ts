@@ -383,6 +383,8 @@ export interface AcpThreadSetup {
    * working folder is among them: every other read reaches the gate.
    */
   readonly readOnly: boolean;
+  /** `ThreadToolProfile.projectRoot`: the code a crew writer's lane lies in. */
+  readonly projectRoot?: string;
 }
 
 /** The text a profiled thread's prompts carry after the runtime instructions. */
@@ -425,6 +427,7 @@ export const acpThreadSetup = (
           `client-read:${path}`,
         ),
       readOnly: profile.readOnly === true,
+      ...(profile.projectRoot === undefined ? {} : { projectRoot: profile.projectRoot }),
     };
   });
 
