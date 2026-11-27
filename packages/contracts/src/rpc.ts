@@ -195,6 +195,9 @@ import {
   ZeropsGitRemoteProbeResult,
   ZeropsLifecycle,
   ZeropsMateCopies,
+  ZeropsDraftCopy,
+  ZeropsDraftPreview,
+  ZeropsDraftPreviewError,
   ZeropsLifecycleGetInput,
   StandUpVerdictReading,
   ZeropsMateUpdateError,
@@ -360,6 +363,7 @@ export const WS_METHODS = {
   zeropsLoginRemove: "zerops.login.remove",
   zeropsMacInput: "zerops.mac.input",
   zeropsMacForget: "zerops.mac.forget",
+  zeropsDraftPreview: "zerops.draft.preview",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
   zeropsExtendGrant: "zerops.grant.extend",
@@ -1093,6 +1097,12 @@ const WsZeropsMacForgetRpc = Rpc.make(WS_METHODS.zeropsMacForget, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsZeropsDraftPreviewRpc = Rpc.make(WS_METHODS.zeropsDraftPreview, {
+  payload: ZeropsDraftCopy,
+  success: ZeropsDraftPreview,
+  error: Schema.Union([ZeropsDraftPreviewError, EnvironmentAuthorizationError]),
+});
+
 /**
  * Runs `zcp mate update --json` (spec-mate.md §2.9 MU-2): offered only
  * inside a Zerops project with `zcp` on PATH, gated by `exec:operate`. A
@@ -1459,6 +1469,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeZeropsMacStreamRpc,
   WsZeropsMacInputRpc,
   WsZeropsMacForgetRpc,
+  WsZeropsDraftPreviewRpc,
   WsZeropsMateUpdateRpc,
   WsZeropsMateCheckUpdateRpc,
   WsZeropsExtendGrantRpc,

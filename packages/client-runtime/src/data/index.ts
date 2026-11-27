@@ -691,3 +691,5 @@ export {
   offersObserveAuthorize,
 } from "./projections/observeAuthorization.ts";
 export { projectOperator } from "./projections/permissionFacts.ts";
+
+export { makeDraftPreviewWire } from "./adapters/draftPreview.ts";

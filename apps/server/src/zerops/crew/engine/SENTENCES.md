@@ -1,4 +1,4 @@
-next: CD85
+next: CD87
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -89,3 +89,5 @@ next: CD85
 - CD+4 — A conversation hands a writer a task that is the conversation's, marked in the conversation for its card to follow: with no run going a run starts of up to 2 hours that stops at 80% of the plan's usage, and the writer starts it at once; a hand-off to a reader or the lead is refused and makes nothing
 - CD+5 — A conversation that handed a task off hears once when the task comes to rest, as the principal that handed it off, and not while the crew is still on it: its check failing, the lead reviewing it or sending it back
 - CD+6 — A handed-off task a message sends back to work after it was ready is heard of again when it is ready again
+- CD85 — A reader's task the lead plans names what it reviews: one that names nothing is refused and nothing is planned, and one that says "none" is planned reviewing no task; breaks: a review left untied to the work, whose reader opens no app and holds no verdict
+- CD86 — A reader opens only the app of the writer whose task its own task reviews, on that writer's service and crew port; another writer's app, and any app before its task reviews one, is refused; breaks: a reviewer opening another crewmate's app, or none at all

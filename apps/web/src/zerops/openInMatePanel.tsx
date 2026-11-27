@@ -47,3 +47,22 @@ export function OpenInMatePanelProvider({ children }: { readonly children: React
   );
   return <OpenInMatePanelContext value={open}>{children}</OpenInMatePanelContext>;
 }
+
+/** Open a change's draft beside its Mate's conversation, by change identity alone. */
+export function useOpenDraft() {
+  const openRef = useParams({ strict: false, select: (params) => resolveThreadRouteRef(params) });
+  const openProjectId = useEnvironmentProjectRef(openRef?.environmentId ?? null)?.projectId;
+  const openMate = useOpenMate();
+  return useCallback(
+    (
+      projectId: string,
+      change: { readonly groupId: string; readonly repository: string; readonly number: number },
+    ) => {
+      const show = (conversation: ScopedThreadRef) =>
+        useRightPanelStore.getState().openDraft(conversation, change);
+      if (openRef !== null && openProjectId === projectId) show(openRef);
+      else openMate({ projectId }, show);
+    },
+    [openMate, openProjectId, openRef],
+  );
+}

@@ -140,6 +140,8 @@ import {
 import { ReviewCommits } from "./ReviewCommits";
 import { mainStagesOf, useGroupName, useMatePreviews } from "./reviewReads";
 import type { ReviewTryTargets } from "@t3tools/client-runtime/zerops/tryItTargets";
+import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
+import { useOpenDraft } from "~/zerops/openInMatePanel";
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import { useReviewHold } from "./ZeropsReviewDialog";
@@ -646,9 +648,18 @@ function ChangeReviewData({
     flow?.mateTier,
     pull.repository,
     pull.repositoryUrl,
-    pull.state !== "closed" && !pull.merged,
+    pull.merged
+      ? "merged"
+      : pull.state === "closed"
+        ? "closed"
+        : pull.state === "adding"
+          ? "adding"
+          : pull.state === "merging"
+            ? "merging"
+            : "open",
     pull.branch,
   );
+  const openDraft = useOpenDraft();
   // Reviewed together: a queued change that settled elsewhere leaves, by the open changes the flow
   // holds; a change done here moves the queue on, after a beat that says so.
   const openPulls = flow?.pullRequests;
@@ -707,8 +718,15 @@ function ChangeReviewData({
       back={back}
       onOpenPage={onOpenPage}
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
-      previews={tryIt.previews}
-      previewState={tryIt.previewState}
+      draft={tryIt.draft}
+      onOpenDraft={() => {
+        onClose();
+        openDraft(pull.mateProjectId, {
+          groupId: target.groupId,
+          repository: target.repository,
+          number: target.number,
+        });
+      }}
       reviewBuilds={tryIt.builds}
       project={project}
       appId={target.groupId}
@@ -965,8 +983,8 @@ export interface ChangeReviewViewProps {
    */
   readonly productionOutside?: boolean | undefined;
   /** The change's workspace and its app's routed addresses. */
-  readonly previews?: ReviewTryTargets["previews"] | undefined;
-  readonly previewState?: ReviewTryTargets["previewState"] | undefined;
+  readonly draft?: DraftLook | undefined;
+  readonly onOpenDraft?: (() => void) | undefined;
   readonly reviewBuilds?: ReviewTryTargets["builds"] | undefined;
   readonly now: number;
   readonly titleId?: string | undefined;
@@ -1652,10 +1670,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         pictures={props.pictures}
         reading={pull.description === undefined && readout.kind === "reading"}
       />
-      {props.previews === undefined ? null : (
+      {props.draft === undefined ? null : (
         <ReviewTry
-          previews={props.previews}
-          previewState={props.previewState}
+          draft={props.draft}
+          onOpenDraft={props.onOpenDraft}
           builds={props.reviewBuilds}
         />
       )}

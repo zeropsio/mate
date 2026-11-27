@@ -1,3 +1,4 @@
+import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
 import { isField } from "./ZeropsReview.logic";
 /**
  * The review, drawn: every read already done and handed in, so a harness and a test can show
@@ -920,12 +921,12 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
 
 /** "Try it": the app's stage and, while the change is open, its draft. */
 export function ReviewTry({
-  previews,
-  previewState,
+  draft,
+  onOpenDraft,
   builds = [],
 }: {
-  readonly previews: ReadonlyArray<{ readonly service: string; readonly url: string }>;
-  readonly previewState?: "reading" | "not-running" | "available" | "ended" | undefined;
+  readonly draft: DraftLook;
+  readonly onOpenDraft: (() => void) | undefined;
   readonly builds?:
     | ReadonlyArray<{
         readonly service: string;
@@ -950,30 +951,18 @@ export function ReviewTry({
             <ArrowUpRightIcon aria-hidden="true" />
           </Button>
         ))}
-        {previews.map((preview) => (
-          <Button
-            className="max-w-full"
-            key={preview.service}
-            render={<a href={preview.url} rel="noreferrer" target="_blank" />}
-            size="sm"
-            variant="secondary"
-          >
+        {draft.kind === "openable" ? (
+          <Button size="sm" variant="secondary" onClick={onOpenDraft}>
             <GlobeIcon aria-hidden="true" />
-            <span className="flex-none font-medium">Draft</span>
-            <ArrowUpRightIcon aria-hidden="true" />
+            Open draft
           </Button>
-        ))}
+        ) : null}
       </div>
       {builds.length === 0 ? (
         <Text className="mt-1.5" render={<p />} variant="description">
           App address not available yet.
         </Text>
       ) : null}
-      {previews.length > 0 || previewState === "ended" ? null : (
-        <Text className="mt-1.5" render={<p />} variant="description">
-          Draft is not available yet.
-        </Text>
-      )}
     </ReviewSection>
   );
 }

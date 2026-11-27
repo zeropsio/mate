@@ -205,6 +205,7 @@ import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { conversationPanelWidth } from "./chat/conversationPanelStandIn.logic";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
+import { DraftPanels } from "./zerops/DraftPanel";
 import { useMateAddresses } from "../zerops/useMateAddresses";
 import { useCrewValue } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
@@ -7028,7 +7029,10 @@ function ConversationView(props: ChatViewProps) {
   };
   // A site's tab is the site alone, drawn by `ServiceBrowserPanels`: no page and no head over it.
   const rightPanelPageBody =
-    activeThreadRef && activeRightPanelSurface && !isRightPanelSite(activeRightPanelSurface) ? (
+    activeThreadRef &&
+    activeRightPanelSurface &&
+    activeRightPanelSurface.kind !== "draft" &&
+    !isRightPanelSite(activeRightPanelSurface) ? (
       <Suspense fallback={<Loading label="The panel" shape="room" />}>
         {(() => {
           switch (activeRightPanelSurface.kind) {
@@ -7231,7 +7235,9 @@ function ConversationView(props: ChatViewProps) {
     ) : null;
   // Every page opens the same way, its head painted before the page itself has read anything.
   const rightPanelContent =
-    rightPanelPageBody === null || activeRightPanelSurface === null ? null : (
+    rightPanelPageBody === null ||
+    activeRightPanelSurface === null ||
+    activeRightPanelSurface.kind === "draft" ? null : (
       <RightPanelPage kind={activeRightPanelSurface.kind} mate={pageMateName}>
         {rightPanelPageBody}
       </RightPanelPage>
@@ -7857,6 +7863,11 @@ function ConversationView(props: ChatViewProps) {
           getShortcutContext={getShortcutContext}
         >
           {rightPanelContent}
+          <DraftPanels
+            surfaces={rightPanelState.surfaces}
+            activeSurfaceId={activeRightPanelSurface?.id ?? null}
+            environmentId={activeThreadRef.environmentId}
+          />
           <ServiceBrowserPanels
             key={activeThreadKey}
             surfaces={rightPanelState.surfaces}
@@ -7912,6 +7923,11 @@ function ConversationView(props: ChatViewProps) {
             getShortcutContext={getShortcutContext}
           >
             {rightPanelContent}
+            <DraftPanels
+              surfaces={rightPanelState.surfaces}
+              activeSurfaceId={activeRightPanelSurface?.id ?? null}
+              environmentId={activeThreadRef.environmentId}
+            />
             <ServiceBrowserPanels
               key={activeThreadKey}
               surfaces={rightPanelState.surfaces}

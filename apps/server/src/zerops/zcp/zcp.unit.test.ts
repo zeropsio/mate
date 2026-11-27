@@ -465,6 +465,77 @@ it.effect(
     }),
 );
 
+// witness: apps/server/src/zerops/ZeropsCli.ts | return answer === undefined → return result.code !== 0 || answer === undefined
+it.effect(
+  "ZC25: zcp's preview answer reaches the pane with its running address or failure reason even when zcp exits 1; breaks: a failed draft loses zcp's reason.",
+  () =>
+    Effect.gen(function* () {
+      const answerOf = (
+        cli: ZeropsCli.ZeropsCli["Service"],
+        copy: Parameters<ZeropsCli.ZeropsCli["Service"]["draftPreview"]>[0],
+      ) =>
+        Effect.match(cli.draftPreview(copy), {
+          onFailure: (error) => error._tag,
+          onSuccess: (answer) => answer,
+        });
+      const copy = { kind: "service", hostname: "webdev", branch: "feature" } as const;
+      for (const { stdout, code, expected } of [
+        {
+          stdout: '{"status":"running","url":"https://draft.example"}',
+          code: 0,
+          expected: { status: "running", url: "https://draft.example" },
+        },
+        {
+          stdout: '{"status":"failed","reason":"the draft container is stopped"}',
+          code: 1,
+          expected: { status: "failed", reason: "the draft container is stopped" },
+        },
+        {
+          stdout: '{"status":"failed","reason":"draft ended"}',
+          code: 1,
+          expected: { status: "failed", reason: "draft ended" },
+        },
+        {
+          stdout: 'a notice\n{"status":"failed","reason":"preview did not start"}\n',
+          code: 1,
+          expected: { status: "failed", reason: "preview did not start" },
+        },
+      ] as const) {
+        const zcp = zcpAnswering({ stdout, code });
+        expect(yield* answerOf(yield* zcp.cli, copy)).toEqual(expected);
+        expect(zcp.calls[0]?.args).toEqual([
+          "preview",
+          "--service",
+          "webdev",
+          "--branch",
+          "feature",
+          "--json",
+        ]);
+      }
+      const lease = zcpAnswering({ stdout: '{"status":"failed","reason":"draft ended"}', code: 1 });
+      expect(
+        yield* answerOf(yield* lease.cli, {
+          kind: "lease",
+          alias: "webpool-1",
+          acquiredAt: "2026-11-26T12:00:00Z",
+          branch: "feature",
+        }),
+      ).toEqual({ status: "failed", reason: "draft ended" });
+      expect(lease.calls[0]?.args).toEqual([
+        "preview",
+        "--lease",
+        "webpool-1",
+        "--acquired-at",
+        "2026-11-26T12:00:00Z",
+        "--branch",
+        "feature",
+        "--json",
+      ]);
+      const unreadable = yield* zcpAnswering({ stdout: "not json", code: 1 }).cli;
+      expect(yield* answerOf(unreadable, copy)).toBe("ZeropsCliFailed");
+    }),
+);
+
 // witness: apps/server/src/zerops/ZeropsCli.ts | args: [...baseArgs, "lease", "release", ...args, "--json"], → args: [...baseArgs, "lease", "release", ...args, "--force", "--json"],
 it.effect(
   "ZC11: zcp is asked to release a branch's leases as `lease release --branch` with the repository when one is named and `--json`, its stdin closed, never forced",

@@ -515,6 +515,7 @@ const zeropsCliFixtureLayer = () =>
       mateUpdate: () => {
         throw new Error("ZeropsCli fixture: mateUpdate is unreachable");
       },
+      draftPreview: () => Effect.succeed({ status: "failed", reason: "There is no draft here." }),
       // Fixture scenes have no live pool.
       where: () => Effect.succeed(null),
       leaseAcquire: () =>

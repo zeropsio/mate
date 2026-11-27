@@ -35,6 +35,7 @@ import {
   ZeropsAgentLoginError,
   ZeropsGrantExtensionError,
   ZeropsMateUpdateError,
+  ZeropsDraftPreviewError,
   type ZeropsUserId,
   zeropsUserIdOf,
 } from "@t3tools/contracts";
@@ -66,6 +67,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.subscribeZeropsMacStream
   | typeof WS_METHODS.zeropsMacInput
   | typeof WS_METHODS.zeropsMacForget
+  | typeof WS_METHODS.zeropsDraftPreview
   | typeof WS_METHODS.zeropsMateUpdate
   | typeof WS_METHODS.zeropsMateCheckUpdate
   | typeof WS_METHODS.zeropsExtendGrant
@@ -529,6 +531,17 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.zeropsMacInput]: (input) =>
       admit(WS_METHODS.zeropsMacInput, zeropsMacStream.sendInput(input)),
     [WS_METHODS.zeropsMacForget]: () => admit(WS_METHODS.zeropsMacForget, zeropsMacStream.forget),
+    [WS_METHODS.zeropsDraftPreview]: (input) =>
+      admit(
+        WS_METHODS.zeropsDraftPreview,
+        deps.zeropsCli
+          .draftPreview(input)
+          .pipe(
+            Effect.mapError(
+              () => new ZeropsDraftPreviewError({ message: "The draft could not be opened." }),
+            ),
+          ),
+      ),
     [WS_METHODS.zeropsMateUpdate]: (_input) =>
       admit(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps)),
     [WS_METHODS.zeropsMateCheckUpdate]: (_input) => runZeropsMateCheckUpdate(deps),

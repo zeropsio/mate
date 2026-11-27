@@ -1,4 +1,4 @@
-next: ZV212
+next: ZV213
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -167,8 +167,9 @@ next: ZV212
 - ZV196 — A change read from navigation alone carries its addition result and given-up decision into its row; breaks: a failed addition without a GitHub pull request reads as running
 - ZV197 — The Git tab shows the same addition state as the change, including an expired take and a stopped draft; breaks: Git says ready while the addition needs attention.
 - ZV198 — A project's flow reads an addition's take at its caller's clock; breaks: an expired take keeps looking active without a new event
-- ZV200 — A change's Preview opens only a running workspace on its branch and repository, and an unread workspace is not claimed stopped; breaks: a review opens another change's workspace.
-- ZV202 — Only an open change offers its own live workspace; a merged or closed change never does, even while a lease remains visible; breaks: a person opens a workspace after its change ended.
+- ZV200 — A change offers Open draft only for a held copy of its branch and repository, regardless of its last server observation; breaks: a review opens another change's copy.
+- ZV212 — A held copy remains openable when parked, unmounted or unverified; breaks: a person cannot ask zcp to open a held copy that needs its answer.
+- ZV202 — Only an open or adding change offers its draft; merged and discarded changes say where it ended even while a copy remains visible; breaks: a person opens a draft after its change ended.
 - ZV203 — A routed app stage is offered only for the change's repository, including after its build report leaves; breaks: a merged change loses its app address or opens another repository's app.
 - ZV205 — An addition handed to a person says whether its Mate ran out of tries, has no usable agent or reached a usage limit; breaks: the person cannot tell what to do next.
 - ZV206 — A draft stays visible and says it is being added while HQ builds or merges it; breaks: the change vanishes or reads ready to add again.

@@ -415,6 +415,34 @@ export const ZeropsMateCopies = Schema.Struct({
 });
 export type ZeropsMateCopies = typeof ZeropsMateCopies.Type;
 
+/** The copy identity zcp verifies before opening a change's draft. */
+export const ZeropsDraftCopy = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("lease"),
+    alias: LeaseAlias,
+    acquiredAt: Schema.NonEmptyString,
+    branch: Schema.NonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("service"),
+    hostname: Schema.NonEmptyString,
+    branch: Schema.NonEmptyString,
+  }),
+]);
+export type ZeropsDraftCopy = typeof ZeropsDraftCopy.Type;
+
+/** zcp preview's on-demand answer; its address is never a persisted copy observation. */
+export const ZeropsDraftPreview = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("running"), url: Schema.NonEmptyString }),
+  Schema.Struct({ status: Schema.Literal("failed"), reason: Schema.NonEmptyString }),
+]);
+export type ZeropsDraftPreview = typeof ZeropsDraftPreview.Type;
+
+export class ZeropsDraftPreviewError extends Schema.TaggedError<ZeropsDraftPreviewError>()(
+  "ZeropsDraftPreviewError",
+  { message: Schema.String },
+) {}
+
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
