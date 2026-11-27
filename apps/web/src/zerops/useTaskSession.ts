@@ -4,7 +4,8 @@
  * else the one its Mate is on): HQ's navigation for its Mate's
  * latest task, its activity for whether it works now, its application's board (`hqAppTasks`,
  * read again as navigation says its tasks moved) for the task's own record — and the person's
- * stop of it, the same write and the same record the board's Stop has (`appTaskWrites`).
+ * stop of it, offered by the Board's one Stop rule (`boardOffers`), the same write and the same
+ * record the Board's Stop has (`appTaskWrites`).
  */
 import type { EnvironmentId, MateTaskSource } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -14,7 +15,7 @@ import { toastManager } from "~/lib/toasts";
 
 import { hqPlacementsAtom } from "../state/zerops";
 import { recordOf, sessionTaskId, taskSession, type TaskSession } from "./taskSession.logic";
-import { useOrgOffers } from "./useHqOffers";
+import { useBoardOffers } from "./useBoardTasks";
 import { useAppTaskSource, useAppTaskStops } from "./useTaskSourceSettings";
 import { useProjectMateActivity } from "./useZeropsAgentActivity";
 import { useKnownMate } from "./useZeropsMates";
@@ -36,7 +37,6 @@ export function useTaskSession(
 ): TaskSessionView {
   const projectId = useKnownMate(environmentId)?.projectId;
   const placements = useAtomValue(hqPlacementsAtom);
-  const canStop = useOrgOffers()("stop_task").kind === "allowed";
   const working = useProjectMateActivity(projectId ?? "")?.kind === "working";
   const placement = projectId === undefined ? undefined : placements?.get(projectId);
   // Not known while the Mate, HQ's placements or its record's task (an older HQ) are not read.
@@ -45,6 +45,8 @@ export function useTaskSession(
   const taskId = sessionTaskId({ brief, conversationId, current });
   const appId = placement?.appId ?? null;
   const board = useAppTaskSource("hqAppTasks", appId);
+  // The one Stop rule (`stopTaskPermission`): an owner or admin, its putter, or its taker.
+  const offers = useBoardOffers(appId);
   const setting = board.read.setting;
   const record = recordOf(taskId, setting.state === "known" ? setting.held : null);
   const stops = useAppTaskStops(appId, taskId === null ? [] : [taskId]);
@@ -55,7 +57,7 @@ export function useTaskSession(
     current,
     working,
     record,
-    canStop: canStop && appId !== null,
+    canStop: taskId !== null && offers?.tasks[taskId]?.stop === true,
     stop,
   });
   // HQ's refusal of this stop, said once as it lands: one that stood before this view is not news.

@@ -360,9 +360,9 @@ it("SH6: Every verb the rule decides answers each organization role, project ove
   }
 });
 
-// witness: packages/shared/src/zeropsOffers.ts | stop_task: structure, → stop_task: createAppPermission(facts),
-it("SH8: Setting the automated Mates' key, stopping a task and making the GitHub app for a repository's origin are offered to an active owner or admin, refused to any other role, one who may create projects included, or to a member not active, and neither while the membership is not read", () => {
-  const verbs = ["add_automated_mate", "stop_task", "origin_remote"];
+// witness: packages/shared/src/zeropsOffers.ts | origin_remote: structure, → origin_remote: createAppPermission(facts),
+it("SH8: Setting the automated Mates' key and making the GitHub app for a repository's origin are offered to an active owner or admin, refused to any other role, one who may create projects included, or to a member not active, and neither while the membership is not read", () => {
+  const verbs = ["add_automated_mate", "origin_remote"];
   // role, status, its answer once the membership is read; a row without a role is no member row.
   const table = [
     ["OWNER", "ACTIVE", "allowed"],

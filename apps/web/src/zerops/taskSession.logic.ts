@@ -28,7 +28,7 @@ export interface TaskSessionInput {
   readonly working: boolean;
   /** The task's own record on its application's board, by its id (`recordOf`), when read. */
   readonly record: HqAppTask | undefined;
-  /** The person may stop it: an Owner or Admin, as HQ's `keep_intake` asks. */
+  /** The person may stop it: an Owner or Admin, its putter or its taker (`stopTaskPermission`). */
   readonly canStop: boolean;
   /** Where this account's stop of it stands (`appTaskWrites`); absent: none asked. */
   readonly stop?: TaskWriteAction | undefined;

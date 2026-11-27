@@ -31,8 +31,9 @@ import { isMateKind } from "./zeropsRoles.ts";
 
 /**
  * The organization's verbs: making an application, and its structure — renaming, deleting one,
- * setting the key automated Mates run on (`add_automated_mate`), stopping a task
- * (`stop_task`), making its GitHub app for a repository's origin (`origin_remote`).
+ * setting the key automated Mates run on (`add_automated_mate`), making its GitHub app for a
+ * repository's origin (`origin_remote`). Stopping a task is the task's own rule
+ * (`stopTaskPermission`), never the organization's.
  */
 export function organizationOffers(facts: PermissionFacts): HqOffers {
   const structure = structurePermission(facts);
@@ -42,7 +43,6 @@ export function organizationOffers(facts: PermissionFacts): HqOffers {
     rename_app: structure,
     delete_app: structure,
     add_automated_mate: structure,
-    stop_task: structure,
     origin_remote: structure,
   };
 }
