@@ -97,14 +97,14 @@ const NOW = Date.now();
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const noop = () => {};
 
-/** The review and the pane's three opening outcomes, together at the reference viewport. */
+/** The review and the pane's opening and ended states, together at the reference viewport. */
 export function DraftLookStage() {
   const copy = { kind: "service", hostname: "appdev", branch: "feature" } as const;
   const look = { kind: "openable", copy } as const;
   const title = "Clearer copy on the admin sign-in";
   const frame = new URL("/draft-frame-fixture.html", window.location.href).href;
   return (
-    <div className="grid h-screen grid-cols-4 gap-3 bg-muted p-3">
+    <div className="grid h-screen grid-cols-3 grid-rows-2 gap-3 bg-muted p-3">
       <div className="overflow-auto border bg-background p-4">
         <h1 className="mb-6 font-semibold">{title}</h1>
         <ReviewTry draft={look} onOpenDraft={noop} />
@@ -132,6 +132,24 @@ export function DraftLookStage() {
           title={title}
           look={look}
           state={{ kind: "failed", copy, reason: "The draft's container is stopped." }}
+          onReload={noop}
+          onRetry={noop}
+        />
+      </div>
+      <div className="overflow-hidden border">
+        <DraftPaneView
+          title={title}
+          look={{ kind: "added" }}
+          state={{ kind: "showing", copy, url: frame }}
+          onReload={noop}
+          onRetry={noop}
+        />
+      </div>
+      <div className="overflow-hidden border">
+        <DraftPaneView
+          title={title}
+          look={{ kind: "discarded" }}
+          state={{ kind: "showing", copy, url: frame }}
           onReload={noop}
           onRetry={noop}
         />

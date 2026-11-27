@@ -18,7 +18,7 @@ import {
 } from "./ZeropsReview.logic.ts";
 
 // witness: apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx | draft.kind === "openable" ? ( → draft.kind !== "openable" ? (
-it("RV+1: A review offers Open draft only when the change's copy is openable, and says when availability is still being read.", () => {
+it("RV+1: A review offers Open draft only when the change's copy is openable, and says when availability is still being read; breaks: a review offers a draft it cannot open or calls an unread copy unavailable.", () => {
   const copy = { kind: "service", hostname: "webdev", branch: "feature" } as const;
   const openable = renderToStaticMarkup(
     createElement(ReviewTry, { draft: { kind: "openable", copy }, onOpenDraft: () => {} }),

@@ -90,7 +90,7 @@ it("ZV200: A change offers Open draft only for a verified copy of its branch and
 });
 
 // witness: packages/client-runtime/src/zerops/draftLook.ts | if (input.state === "merged") return { kind: "added" }; → if (false) return { kind: "added" };
-it("ZV202: Only an open or adding change offers its draft; merged and discarded changes say where it ended even while a copy remains visible.", () => {
+it("ZV202: Only an open or adding change offers its draft; merged and discarded changes say where it ended even while a copy remains visible; breaks: a person opens a draft after its change ended.", () => {
   for (const state of ["open", "adding", "merging"] as const)
     expect(draftLook({ ...base, state })).toEqual(held);
   for (const leases of [undefined, [], [lease]] as const) {

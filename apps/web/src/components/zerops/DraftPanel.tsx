@@ -56,7 +56,7 @@ export function DraftPaneView({
             ? "Draft is not available yet."
             : state.kind === "failed"
               ? state.reason
-              : state.kind === "opening"
+              : state.kind === "opening" && state.invalidated !== true
                 ? "Opening the draft…"
                 : "Draft is not available yet.";
   const sandbox =
@@ -70,8 +70,11 @@ export function DraftPaneView({
     <section className="flex h-full min-h-0 flex-col bg-background" aria-label={`Draft ${title}`}>
       <PanelBar>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-caption">Draft · {title} · not in your app yet</div>
-          <Text variant="description">Only you see this, here in Mate.</Text>
+          <div className="truncate text-caption">
+            Draft · {title}
+            {ended ? null : " · not in your app yet"}
+          </div>
+          {ended ? null : <Text variant="description">Only you see this, here in Mate.</Text>}
         </div>
         <Button
           variant="ghost"
@@ -152,24 +155,28 @@ function LoadedDraft({
         draft.kind === "unavailable" ||
         (draft.kind === "openable" && "copy" in state && !sameCopy(state.copy, draft.copy)))
     )
-      dispatch({ type: "invalidate" });
+      dispatch({ type: "invalidate", inFlight: started.current === state });
   }, [draft, state]);
   useEffect(() => {
-    if (state.kind !== "opening" || registry === undefined || started.current === state) return;
+    if (
+      state.kind !== "opening" ||
+      state.invalidated === true ||
+      draft.kind !== "openable" ||
+      !sameCopy(state.copy, draft.copy) ||
+      registry === undefined ||
+      started.current === state
+    )
+      return;
     started.current = state;
-    void makeDraftPreviewWire(registry)(environmentId, surface.id, state.copy).then(
-      ({ copy, answer }) =>
-        dispatch({
-          type: "answer",
-          answer: sameCopy(copy, state.copy) ? answer : { status: "failed", reason: "draft ended" },
-        }),
+    void makeDraftPreviewWire(registry)(environmentId, state.copy).then(
+      (answer) => dispatch({ type: "answer", answer }),
       (error: unknown) =>
         dispatch({
           type: "error",
           reason: error instanceof Error ? error.message : "The draft could not be opened.",
         }),
     );
-  }, [state, registry, environmentId, surface.id]);
+  }, [state, draft, registry, environmentId]);
   return (
     <DraftPaneView
       title={pull.title}

@@ -11,38 +11,16 @@ import * as Result from "effect/Result";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { request } from "../../rpc/client.ts";
 
-type Pending = { readonly copy: ZeropsDraftCopy; readonly answer: ZeropsDraftPreview };
-const pendingByRegistry = new WeakMap<
-  EnvironmentRegistry["Service"],
-  Map<string, Promise<Pending>>
->();
-
 export function makeDraftPreviewWire(registry: EnvironmentRegistry["Service"]) {
-  return (
-    environmentId: EnvironmentId,
-    paneId: string,
-    copy: ZeropsDraftCopy,
-  ): Promise<Pending> => {
-    let pending = pendingByRegistry.get(registry);
-    if (pending === undefined) {
-      pending = new Map();
-      pendingByRegistry.set(registry, pending);
-    }
-    const key = `${environmentId}:${paneId}`;
-    const current = pending.get(key);
-    if (current !== undefined) return current;
-    const calls = pending;
-    const call = openDraft(registry, environmentId, copy).finally(() => calls.delete(key));
-    calls.set(key, call);
-    return call;
-  };
+  return (environmentId: EnvironmentId, copy: ZeropsDraftCopy): Promise<ZeropsDraftPreview> =>
+    openDraft(registry, environmentId, copy);
 }
 
 async function openDraft(
   registry: EnvironmentRegistry["Service"],
   environmentId: EnvironmentId,
   copy: ZeropsDraftCopy,
-): Promise<Pending> {
+): Promise<ZeropsDraftPreview> {
   const result = await Effect.runPromise(
     Effect.result(
       registry.run(environmentId, request(WS_METHODS.zeropsDraftPreview, copy)).pipe(
@@ -61,5 +39,5 @@ async function openDraft(
     ),
   );
   if (Result.isFailure(result)) throw new Error(result.failure);
-  return { copy, answer: result.success };
+  return result.success;
 }
