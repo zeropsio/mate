@@ -1,7 +1,8 @@
 /**
  * The Browser tab in the right panel as the app lays it out at the owner's size: 1786 wide, the
  * left menu at 435 (`?menu=` for another), the panel at its default 540 beside the conversation.
- * `?tab=list` (the default) shows the sites list; `?tab=site` an open site's tab; `?max=1` the
+ * `?tab=list` (the default) shows the sites list; `?tab=site` an open site's tab; `?tab=app` the
+ * stage's tab, Your app, named by the application with the change it has; `?max=1` the
  * panel expanded over the conversation. `?theme=dark` for dark.
  *
  * The real `BrowserSites` and `ServiceBrowserPanels` in the real
@@ -71,10 +72,25 @@ const SITE = ADDRESSES.find((address) => address.service === "nextstore producti
 const SURFACES: RightPanelSurface[] = [
   { id: "browser", kind: "browser" },
   { id: `service:${SITE.service}`, kind: "browser", service: SITE.service, url: SITE.url },
+  {
+    id: "service:nextstorestage",
+    kind: "browser",
+    service: "nextstorestage",
+    url: url("nextstorestage-a1b2-8000"),
+  },
 ];
+const YOUR_APP = {
+  name: "nextstore",
+  has: new Map([
+    [
+      "nextstorestage",
+      { title: "Show how many people signed the guestbook", at: "2026-11-27T08:15:00Z" },
+    ],
+  ]),
+};
 
 function Harness() {
-  const active = TAB === "site" ? SURFACES[1]!.id : "browser";
+  const active = TAB === "site" ? SURFACES[1]!.id : TAB === "app" ? SURFACES[2]!.id : "browser";
   return (
     <div className="flex h-screen bg-background text-foreground">
       <div className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU }} />
@@ -106,7 +122,7 @@ function Harness() {
         terminalLabelsById={new Map()}
         widthStorageKey="mate:design-browser:panel-width"
       >
-        {TAB === "site" ? null : (
+        {TAB === "site" || TAB === "app" ? null : (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="px-4 pt-4 pb-6">
               <BrowserSites addresses={ADDRESSES} threadRef={THREAD_REF} />
@@ -118,6 +134,7 @@ function Harness() {
           addresses={ADDRESSES}
           services={SERVICES}
           surfaces={SURFACES}
+          yourApp={YOUR_APP}
         />
       </RightPanelTabs>
     </div>

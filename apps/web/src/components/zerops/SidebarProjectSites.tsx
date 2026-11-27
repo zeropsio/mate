@@ -86,6 +86,7 @@ import { AskToFix, EnvDot, OpenInZerops, type ChipMate } from "./SidebarProducti
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
 import {
   answeringSections,
+  deploysOf,
   filterSites,
   productionUrl,
   projectSitesSections,
@@ -157,20 +158,6 @@ interface SitesYourApp {
     Record<string, ReadonlyArray<Pick<ZeropsService, "name" | "activeAppVersion">> | undefined>
   >;
 }
-
-/** When each service's running deploy was made, by hostname; undefined while unread. */
-const deploysOf = (
-  services: ReadonlyArray<Pick<ZeropsService, "name" | "activeAppVersion">> | undefined,
-): ReadonlyMap<string, string | null> | undefined =>
-  services === undefined
-    ? undefined
-    : new Map(
-        services.flatMap((service) =>
-          service.activeAppVersion === undefined
-            ? []
-            : [[service.name, service.activeAppVersion?.created ?? null] as const],
-        ),
-      );
 
 /** A Mate as its section is read, with zcp's leases and pool pairs where a conversation of it read them. */
 const factsOf = (

@@ -208,6 +208,7 @@ import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { conversationPanelWidth } from "./chat/conversationPanelStandIn.logic";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
+import { useYourAppHas } from "./zerops/useYourAppHas";
 import { DraftPanels } from "./zerops/DraftPanel";
 import { useMateAddresses } from "../zerops/useMateAddresses";
 import { useCrewValue } from "../zerops/crew/useCrew";
@@ -3108,6 +3109,23 @@ function ConversationView(props: ChatViewProps) {
     activeThreadEnvironmentId === null
       ? undefined
       : zeropsMateAt(zeropsMates, activeThreadEnvironmentId);
+  // A stage's pane is Your app of the Mate's application: its header names the app.
+  const yourAppMate = chromeMate?.kind === "mate" ? chromeMate.mate : undefined;
+  const yourAppName = yourAppMate?.project;
+  const yourAppProjectId = yourAppMate?.projectId;
+  const yourAppGroupId = yourAppMate?.groupId;
+  const yourAppMateParts = useMemo(
+    () =>
+      yourAppProjectId === undefined || yourAppGroupId === undefined
+        ? undefined
+        : { projectId: yourAppProjectId, groupId: yourAppGroupId },
+    [yourAppProjectId, yourAppGroupId],
+  );
+  const yourAppHas = useYourAppHas(yourAppMateParts);
+  const yourApp = useMemo(
+    () => (yourAppMateParts === undefined ? undefined : { name: yourAppName, has: yourAppHas }),
+    [yourAppMateParts, yourAppName, yourAppHas],
+  );
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
@@ -7920,6 +7938,7 @@ function ConversationView(props: ChatViewProps) {
             services={zeropsTopology?.services}
             addresses={mateAddresses.addresses}
             addressesKnown={mateAddresses.known}
+            yourApp={yourApp}
           />
         </RightPanelTabs>
       ) : null}
@@ -7980,6 +7999,7 @@ function ConversationView(props: ChatViewProps) {
               services={zeropsTopology?.services}
               addresses={mateAddresses.addresses}
               addressesKnown={mateAddresses.known}
+              yourApp={yourApp}
             />
           </RightPanelTabs>
         </RightPanelSheet>

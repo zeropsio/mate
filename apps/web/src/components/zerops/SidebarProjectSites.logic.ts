@@ -24,6 +24,7 @@ import {
   isPlatformSubdomain,
   placeAddresses,
   type ZeropsPublicRoute,
+  type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
 import {
   mateParts,
@@ -308,6 +309,20 @@ export interface SitesMateFacts {
    */
   readonly deployedAt?: ReadonlyMap<string, string | null> | undefined;
 }
+
+/** When each service's running deploy was made, by hostname; undefined while unread. */
+export const deploysOf = (
+  services: ReadonlyArray<Pick<ZeropsService, "name" | "activeAppVersion">> | undefined,
+): ReadonlyMap<string, string | null> | undefined =>
+  services === undefined
+    ? undefined
+    : new Map(
+        services.flatMap((service) =>
+          service.activeAppVersion === undefined
+            ? []
+            : [[service.name, service.activeAppVersion?.created ?? null] as const],
+        ),
+      );
 
 /**
  * Whether a Sites list reads a Mate's lifecycle: only a dev pool's workspaces come from its leases,

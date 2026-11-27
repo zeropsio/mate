@@ -1,12 +1,70 @@
 import { isBrowsableUrl } from "@t3tools/client-runtime/zerops/mateParts";
 import { serviceForPreview } from "@t3tools/client-runtime/zerops/serviceBrowserPolicy";
+import { isStageHostname } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import { useState } from "react";
-import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
 import type { RightPanelSurface } from "../rightPanelStore";
 import { PanelBar } from "./ui/panel-bar";
 import { Button, InlineButton } from "./ui/button";
 import { Text } from "~/components/ui/text";
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { formatDayAwareTimestamp } from "~/timestampFormat";
+import type { YourAppHas } from "@t3tools/client-runtime/zerops/yourAppHas";
+
+/** The conversation's application, whose stage's pane is Your app. */
+export interface YourAppOf {
+  /** The application's name, as HQ names it; absent unread. */
+  readonly name: string | undefined;
+  /** What each stage has, by its hostname (`useYourAppHas`); a stage missing here says nothing. */
+  readonly has: ReadonlyMap<string, YourAppHas>;
+}
+
+/**
+ * Your app's header, in the chat script's words: "guestbook · Add a guestbook page · added
+ * 08:15", never its host or its container. The title gives way, never the app or the time.
+ */
+function YourAppWords({
+  name,
+  has,
+}: {
+  readonly name: string | undefined;
+  readonly has: YourAppHas | undefined;
+}) {
+  return (
+    <Text className="flex min-w-0 flex-1" data-your-app-header="" render={<span />} variant="note">
+      <span className="flex-none text-foreground">{name ?? "Your app"}</span>
+      {has === undefined ? null : (
+        <>
+          <span className="min-w-0 truncate">&nbsp;· {has.title}</span>
+          <span className="flex-none whitespace-pre">
+            {" · added "}
+            {formatDayAwareTimestamp(has.at, "locale")}
+          </span>
+        </>
+      )}
+    </Text>
+  );
+}
+
+/**
+ * Your app's link, copied whole: the address its person sends. Its mark alone, as Sites' copy is,
+ * so the header keeps room for what the app has.
+ */
+function CopyLink({ url }: { readonly url: string }) {
+  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "link" });
+  return (
+    <Button
+      aria-label={isCopied ? "Link copied" : "Copy link"}
+      variant="ghost"
+      size="icon-sm"
+      title="Copy link"
+      onClick={() => copyToClipboard(url, undefined)}
+    >
+      {isCopied ? <CheckIcon /> : <CopyIcon />}
+    </Button>
+  );
+}
 
 /**
  * What tells the version a service runs from the next: when it went live. The
@@ -71,9 +129,12 @@ function ServiceBrowserPanel({
   service,
   url,
   deployedVersion,
+  yourApp,
 }: {
   service: string;
   url: string;
+  /** Set where this pane is Your app: its header says the app, never the host. */
+  yourApp?: YourAppOf | undefined;
   /** {@link deployedVersionKey} of the service; a change reloads the page. */
   deployedVersion?: string | undefined;
 }) {
@@ -97,17 +158,21 @@ function ServiceBrowserPanel({
       {/* The panel's one row above the page: where it is, reload, and the way out to a tab. */}
       <PanelBar data-site-address-row>
         <GlobeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="flex min-w-0 flex-1 text-caption">
-          <InlineButton
-            tone="muted"
-            className="max-w-full"
-            render={<a href={url} target="_blank" rel="noreferrer" />}
-          >
-            <span className="truncate font-normal">
-              {url.replace(/^https?:\/\//u, "").replace(/\/$/u, "")}
-            </span>
-          </InlineButton>
-        </span>
+        {yourApp === undefined ? (
+          <span className="flex min-w-0 flex-1 text-caption">
+            <InlineButton
+              tone="muted"
+              className="max-w-full"
+              render={<a href={url} target="_blank" rel="noreferrer" />}
+            >
+              <span className="truncate font-normal">
+                {url.replace(/^https?:\/\//u, "").replace(/\/$/u, "")}
+              </span>
+            </InlineButton>
+          </span>
+        ) : (
+          <YourAppWords has={yourApp.has.get(service)} name={yourApp.name} />
+        )}
         <Button
           variant="ghost"
           size="icon-sm"
@@ -129,6 +194,7 @@ function ServiceBrowserPanel({
           <ExternalLinkIcon />
           Open in new tab
         </Button>
+        {yourApp === undefined ? null : <CopyLink url={url} />}
       </PanelBar>
       <iframe
         key={previewKey(version, revision)}
@@ -159,6 +225,7 @@ export function ServiceBrowserPanels({
   services,
   addresses = NO_ADDRESSES,
   addressesKnown = true,
+  yourApp,
 }: {
   surfaces: RightPanelSurface[];
   activeSurfaceId: string | null;
@@ -167,6 +234,8 @@ export function ServiceBrowserPanels({
   addresses?: ReadonlyArray<{ readonly url: string }>;
   /** Whether the account has read every project those addresses come from. */
   addressesKnown?: boolean;
+  /** The conversation's Mate and its application, whose stage's pane is Your app. */
+  yourApp?: YourAppOf | undefined;
 }) {
   return surfaces.map((surface) => {
     if (surface.kind !== "browser" || !("url" in surface)) return null;
@@ -186,6 +255,8 @@ export function ServiceBrowserPanels({
           <ServiceBrowserPanel
             service={surface.service}
             url={surface.url}
+            // A stage half is Your app, as its tab says (`RightPanelTabs`).
+            yourApp={isStageHostname(surface.service) ? yourApp : undefined}
             deployedVersion={
               owner === null
                 ? undefined
