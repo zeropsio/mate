@@ -1,7 +1,8 @@
 /**
  * A crew as mini Mates after its Mate's name in the left menu, like ducklings (the owner,
  * 2026-10-12: "crew can have like mini mates somewhere with some fun effect"): every crewmate's
- * face in its state — the ones that need the viewer first, then the lead, then the crew's order —
+ * face in its state, in a fixed order — the lead, then the crew's order; one that needs the viewer
+ * says so by its face, never by moving —
  * the crew's one fact that needs the viewer, risen into its Mate's own line, and the finished
  * work the viewer may land, for the project's Review tag. A crew never adds a line to its Mate.
  *
@@ -82,6 +83,8 @@ export interface CrewRowFacts {
   /** Up to 4 shown whole, the rest as "+N" (5 or fewer: all whole). */
   readonly minis: ReadonlyArray<CrewMini>;
   readonly more: number;
+  /** A crewmate folded into "+N" needs the viewer: the "+N" wears the need's mark. */
+  readonly moreNeeds: boolean;
   /**
    * Whether the states are read now: otherwise they stand at rest from memory, and a change is
    * no arrival to greet.
@@ -135,8 +138,8 @@ export function crewRowFacts(read: CrewRowRead): CrewRowFacts | undefined {
       doing,
     };
   });
-  const rank = (mini: CrewMini) => (mini.state === "needs" ? 0 : mini.lead ? 1 : 2);
-  const ordered = all.toSorted((a, b) => rank(a) - rank(b));
+  // A fixed order, whatever each one does: a face that moved on every change could not be found.
+  const ordered = all.toSorted((a, b) => Number(b.lead) - Number(a.lead));
   const minis = ordered.length > WHOLE + 1 ? ordered.slice(0, WHOLE) : ordered;
 
   const nameOf = (handle: string) => all.find((mini) => mini.id === handle)?.name ?? handle;
@@ -185,6 +188,7 @@ export function crewRowFacts(read: CrewRowRead): CrewRowFacts | undefined {
   return {
     minis,
     more: ordered.length - minis.length,
+    moreNeeds: ordered.slice(minis.length).some((mini) => mini.state === "needs"),
     known: current,
     need,
     reviews,
