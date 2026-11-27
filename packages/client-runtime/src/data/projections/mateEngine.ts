@@ -586,12 +586,21 @@ function markerActivity(
       );
     }
     case "session-rotated":
-      // One conversation per crewmate: a new session is a line in it, never a link elsewhere.
+      // One conversation per crewmate: a new session is a line in it, never a link elsewhere. The
+      // person who cleared it is named on its line (`by`), never taken to be the one looking.
       return activity(
         item.id,
         CREW_SEAM_ACTIVITY_KIND,
         crewSessionWord(marker.reason),
-        { seam: "stint", previousThreadId: null },
+        {
+          seam: "stint",
+          previousThreadId: null,
+          ...(marker.reason === "cleared" &&
+          item.by.kind === "person" &&
+          item.by.principal.kind === "person"
+            ? { by: item.by.principal.subject }
+            : {}),
+        },
         card,
         item.at,
         item.seq,

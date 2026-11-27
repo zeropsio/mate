@@ -9,9 +9,11 @@ import { expect, it } from "vite-plus/test";
 
 import { projectThreadAwareness } from "./agentAwareness.ts";
 import {
+  crewTints,
   parseCrewHome,
   renderCrewHome,
   validateCrewTopology,
+  unplacedBuilders,
   withBuildersPlaced,
 } from "./crewHome.ts";
 import { crewFromAsk } from "./crewTemplates.ts";
@@ -543,7 +545,7 @@ it("SH11: OpenCode stands in for a person's sign-in only on a model key they set
   ]).toEqual([false, false, true, true]);
 });
 
-// witness: packages/shared/src/crewHome.ts | if (!unplaced(member)) return member; → return member;
+// witness: packages/shared/src/crewHome.ts | unplaced(member) ? { ...member, ...only } : member → member
 it("SH13: A crew drafted before the Mate's dev services are read keeps every crewmate, and its builder is placed on the only dev service, sharing the database it reaches, before Apply admits it; breaks: a crew card pressed on a Mate with a new dev service saves nobody, or a builder starts with nowhere for its copy", () => {
   const drafted = crewFromAsk({
     crew: "crew",
@@ -573,4 +575,46 @@ it("SH13: A crew drafted before the Mate's dev services are read keeps every cre
     ],
     admitted: [],
   });
+});
+
+// witness: packages/shared/src/crewHome.ts | if (places.devHosts.length + pools.length !== 1) return null; → if (places.devHosts.length + pools.length === 0) return null;
+it("SH14: Among several dev services and dev pools a crew's builder is placed only where its crew card or the person named it, a named pool as a pool, and never by itself: it stays unplaced until the person picks; breaks: a builder starts on a service nobody chose, or a card's pool is taken for a service", () => {
+  const places = { devHosts: ["appdev", "apidev"], pools: ["tinypool"] };
+  const drafted = crewFromAsk({
+    crew: "crew",
+    ...places,
+    seats: [
+      { name: "Lead", kind: "lead", part: "Plans the work." },
+      { name: "Api", kind: "writer", part: "Builds the API.", place: "apidev" },
+      { name: "Pages", kind: "writer", part: "Builds the pages.", place: "tinypool" },
+      { name: "Admin", kind: "writer", part: "Builds the admin." },
+    ],
+  });
+  const placed = withBuildersPlaced(drafted, places);
+  expect({
+    placed: placed.members.map((member) => [member.handle, member.host, member.pool]),
+    toPick: unplacedBuilders(placed).map((member) => member.handle),
+  }).toEqual({
+    placed: [
+      ["lead", undefined, undefined],
+      ["api", "apidev", undefined],
+      ["pages", undefined, "tinypool"],
+      ["admin", undefined, undefined],
+    ],
+    toPick: ["admin"],
+  });
+});
+
+// witness: packages/shared/src/crewHome.ts | const worn = new Set(members.flatMap((member) => named(member.tint) ?? [])); → const worn = new Set<MateTintId>();
+it("SH15: A crewmate its crew home gives no tint wears the first of the crew's tints no other crewmate wears, named or given before it, never its Mate's, in the crew's order, and one that names a tint keeps it; breaks: a hand-written crew's crewmates share a colour or their Mate's, or wear one in the top bar and another in the editor", () => {
+  expect([
+    ...crewTints(
+      [{ handle: "lead" }, { handle: "builds", tint: "sky" }, { handle: "reviews", tint: null }],
+      "violet",
+    ),
+  ]).toEqual([
+    ["lead", "coral"],
+    ["builds", "sky"],
+    ["reviews", "olive"],
+  ]);
 });

@@ -41,6 +41,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { LegendListRef } from "@legendapp/list/react";
 import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import { crewmateRoleWords } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 
@@ -953,11 +954,11 @@ const LINE_CREW: ReadonlyArray<{
   readonly key: string;
   readonly name: string;
   readonly tint: MateTintId;
-  readonly lead: boolean;
+  readonly kind: "lead" | "writer" | "reader";
 }> = [
-  { key: "nova", name: "Lead", tint: "violet", lead: true },
-  { key: "juno", name: "World Server", tint: "sky", lead: false },
-  { key: "mira", name: "Game Rules", tint: "rose", lead: false },
+  { key: "nova", name: "Lead", tint: "violet", kind: "lead" },
+  { key: "juno", name: "World Server", tint: "sky", kind: "writer" },
+  { key: "mira", name: "Game Rules", tint: "rose", kind: "reader" },
 ];
 
 /** The line over the pane, as `ChatHeader` draws it for a Mate with a crew. */
@@ -973,11 +974,11 @@ function LineHeader({
     name: seat.name,
     tint: seat.tint,
     face: seat.key === "mira" ? "working" : "idle",
-    lead: seat.lead,
+    lead: seat.kind === "lead",
     open: seat.key === current,
     known: true,
     threadId: ThreadId.make(seat.key),
-    role: seat.lead ? ", Fen's lead" : ", one of Fen's crew",
+    role: crewmateRoleWords("Fen", seat.kind),
     job: null,
     status: null,
   }));

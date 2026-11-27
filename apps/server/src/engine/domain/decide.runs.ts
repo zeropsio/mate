@@ -6,6 +6,7 @@
 import {
   runId as deriveRunId,
   wakeId as deriveWakeId,
+  type ItemActor,
   type ItemBody,
   type Principal,
   type ProviderInteractionMode,
@@ -243,21 +244,23 @@ const withBrief = (b: StepBuilder, run: RunRecord, text: string): string => {
   return `${brief.text}\n\n${text}`;
 };
 
+/** A new session; its line is the person's who asked for it (`by`), else the engine's. */
 export const rotate = (
   b: StepBuilder,
   reason: RotateSessionReason,
   fresh: boolean,
   seed: string | null,
+  by: ItemActor = ENGINE_ACTOR,
 ): void => {
   b.emit({ _tag: "SessionRotated", reason, fresh, seed });
-  recordLoose(b, { kind: "marker", marker: { kind: "session-rotated", reason } });
+  recordLoose(b, { kind: "marker", marker: { kind: "session-rotated", reason } }, by);
   if (seed !== null) recordLoose(b, { kind: "context", notes: [seed] });
 };
 
 /** An item of the conversation's own, under no run, closed as it opens. */
-export const recordLoose = (b: StepBuilder, body: ItemBody): void => {
+export const recordLoose = (b: StepBuilder, body: ItemBody, by: ItemActor = ENGINE_ACTOR): void => {
   const id = ItemId.make(`${b.state.conversationId}/b/${b.state.headSeq + 1}`);
-  b.emit({ _tag: "ItemOpened", runId: null, itemId: id, key: null, by: ENGINE_ACTOR, body });
+  b.emit({ _tag: "ItemOpened", runId: null, itemId: id, key: null, by, body });
   b.emit({ _tag: "ItemClosed", runId: null, itemId: id, body });
 };
 

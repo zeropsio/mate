@@ -18,7 +18,6 @@
  * opens only for one who may change what it changes, and the column stands in
  * its place otherwise.
  */
-import { isPoolServiceType } from "@t3tools/client-runtime/zerops/topology";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type {
   CrewAccess,
@@ -52,7 +51,7 @@ import { crewCommands } from "../../../zerops/crew/crewCommands";
 import { useCrewView, type CrewTabView } from "../../../zerops/crew/crewTab";
 import { hasCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
-import { useProjectTopology } from "../../../zerops/useProjectTopology";
+import { useCrewPools } from "../../../zerops/crew/useCrewPools";
 import { useOpenReview } from "../../../zerops/review";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { crewDevHosts, crewWaitingMembers } from "./CrewEditors.logic";
@@ -114,16 +113,13 @@ export function CrewSectionHost({
   onSignIn,
   proposeWith,
 }: CrewSectionHostProps) {
-  const commands = useCrewCommand(environmentId);
+  const commands = useCrewCommand(environmentId, mate?.tint);
   const tell = useCrewCommand(environmentId);
-  const editorCommands = useCrewCommand(environmentId);
+  const editorCommands = useCrewCommand(environmentId, mate?.tint);
   const readCrewTaskPage = useAtomCommand(crewCommands.taskPage, { reportFailure: false });
   const navigate = useNavigate();
   const openReview = useOpenReview();
-  const topology = useProjectTopology(environmentId);
-  const pools = topology.view?.services
-    .filter((service) => isPoolServiceType(service.type))
-    .map((service) => service.hostname);
+  const pools = useCrewPools(environmentId);
   const providers = useServerConfigs().get(environmentId)?.providers;
   // A draft kept from before (a reload, a closed tab) opens the setup it belongs to.
   const [asked, setView] = useCrewView(environmentId, () =>

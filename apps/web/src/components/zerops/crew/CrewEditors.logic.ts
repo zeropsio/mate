@@ -24,17 +24,26 @@ import {
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { isCrewLeaseAlias } from "../../../zerops/crew/crewHome";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
-import type { CrewDefinition, CrewDefinitionIssue, CrewMemberSpec } from "@t3tools/shared/crewHome";
+import {
+  crewTints,
+  type CrewDefinition,
+  type CrewDefinitionIssue,
+  type CrewMemberSpec,
+} from "@t3tools/shared/crewHome";
 
-/** The tints a crewmate may take: its own and those nobody else wears, never the Mate's. */
+/**
+ * The tints a crewmate may take: its own and those nobody else wears — named or given
+ * (`crewTints`) — never the Mate's.
+ */
 export function freeTints(
   definition: CrewDefinition,
   handle: string | null,
   mateTint: MateTintId | undefined,
 ): ReadonlyArray<MateTintId> {
+  const worn = crewTints(definition.members, mateTint);
   const taken = new Set(
     definition.members.flatMap((member) =>
-      member.handle !== handle && member.tint !== undefined ? [member.tint] : [],
+      member.handle === handle ? [] : [worn.get(member.handle)!],
     ),
   );
   return MATE_TINT_IDS.filter((tint) => tint !== mateTint && !taken.has(tint));

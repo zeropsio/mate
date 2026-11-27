@@ -13,6 +13,11 @@ import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
 import { personaTemplateWrite } from "../projections/hqPersonaTemplates.ts";
+import { hqBirthDeletionFamily, hqBirthDeletionsScope } from "../families/hqBirthDeletion.ts";
+import {
+  birthDeletionAcknowledgementId,
+  birthDeletionOutcomes,
+} from "../projections/birthDeletion.ts";
 
 function account(navigation: SeededHq = {}) {
   const store = makeAccountStore(AtomRegistry.make());
@@ -42,6 +47,129 @@ const progress = (store: AccountStore, id: string) =>
 type App = NonNullable<SeededHq["structure"]>["apps"][number];
 const shop: App = { id: "app-1", name: "Shop", projects: [], births: [], environments: [] };
 const lost = new HqError({ kind: "uncertain", code: "network", message: "HQ's answer was lost." });
+
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | return outcome === "done" || outcome === "unconfirmed_setup" ? { kind: "succeeded" } : null; → return outcome === "done" ? { kind: "succeeded" } : null;
+it.effect(
+  "OP67: A birth deletion sends its own id, follows its HQ navigation outcome and presents an unconfirmed-setup warning once before acknowledging it, staying ended afterward; breaks: an accepted start is mistaken for completion, another deletion is followed, the warning repeats, or an acknowledged deletion reopens",
+  () =>
+    Effect.gen(function* () {
+      const store = account();
+      const scope = hqBirthDeletionsScope(ORG);
+      for (const event of [
+        { kind: "demand", demanded: true },
+        { kind: "attempt" },
+        { kind: "handshake" },
+      ] as const)
+        store.dispatch({ kind: "stream", key: scope, now: 0, event });
+      const generation = readsOfState(store.state()).stream(scope).generation;
+      let revision = 0;
+      const publish = (id: string, outcome?: "unconfirmed_setup", waiting = false) => {
+        const value = {
+          id,
+          birthId: "birth-1",
+          projectId: "project-1",
+          operation: {
+            id,
+            kind: "birth_deletion",
+            phase: "accepted",
+            at: "now",
+            acceptedAt: "now",
+            ...(waiting
+              ? {
+                  failure: { step: "delete", code: "token_expired", at: "now", origin: "hq" },
+                  continueBy: "maker",
+                  offers: ["continue", "end"],
+                }
+              : {}),
+          },
+          ...(outcome === undefined
+            ? {}
+            : { outcome, unconfirmedSetup: ["mate_key", "zcp_service"] }),
+        };
+        const decoded = hqBirthDeletionFamily.hq!.decode(value, `birth-deletion:${id}`);
+        expect(decoded).toEqual(value);
+        store.dispatch({
+          kind: "delivery",
+          via: "hq-stream",
+          scopes: [{ scope, generation }],
+          reset: false,
+          rows: [
+            {
+              family: "hqBirthDeletion",
+              id,
+              value: decoded!,
+              revision: { kind: "hq", incarnation: "core", revision: ++revision },
+            },
+          ],
+          removals: [],
+        });
+        store.dispatch({ kind: "hq-ready", scopes: [{ scope, generation }] });
+      };
+      const sent: unknown[] = [];
+      const operations = operationsOf(store, {
+        deleteBirth: async (...args) => {
+          sent.push(["delete", ...args]);
+        },
+        acknowledgeBirthDeletion: async (...args) => {
+          sent.push(["acknowledge", ...args]);
+        },
+      });
+      yield* operations.submit({
+        kind: "delete-birth",
+        orgId: ORG,
+        appId: "app-1",
+        birthId: "birth-1",
+        id: "ours",
+      });
+      expect(sent).toEqual([["delete", "birth-1", { id: "ours" }]]);
+      expect(progress(store, "r1").stage).toBe("accepted");
+      publish("other", "unconfirmed_setup");
+      expect(progress(store, "r1").stage).toBe("accepted");
+      publish("ours");
+      expect(progress(store, "r1").stage).toBe("reflected");
+      publish("ours", undefined, true);
+      expect(progress(store, "r1").stage).toBe("reflected");
+      expect(
+        birthDeletionOutcomes
+          .derive(readsOfState(store.state()), ORG)
+          .some((item) => item.id === "ours"),
+      ).toBe(false);
+      publish("ours", "unconfirmed_setup");
+      expect(progress(store, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
+      const outcomes = birthDeletionOutcomes.derive(readsOfState(store.state()), ORG);
+      expect(outcomes.find((item) => item.id === "ours")?.unconfirmedSetup).toEqual([
+        "mate_key",
+        "zcp_service",
+      ]);
+      yield* operations.submit(
+        {
+          kind: "acknowledge-birth-deletion",
+          orgId: ORG,
+          id: "ours",
+          settlement: { kind: "succeeded" },
+        },
+        birthDeletionAcknowledgementId(ORG, "ours"),
+      );
+      expect(sent).toEqual([
+        ["delete", "birth-1", { id: "ours" }],
+        ["acknowledge", "ours"],
+      ]);
+      expect(
+        birthDeletionOutcomes
+          .derive(readsOfState(store.state()), ORG)
+          .some((item) => item.id === "ours"),
+      ).toBe(false);
+      store.dispatch({
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: [{ scope, generation }],
+        reset: false,
+        rows: [],
+        removals: [{ family: "hqBirthDeletion", id: "ours" }],
+      });
+      expect(progress(store, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+);
 
 function hqSays(store: AccountStore, apps: readonly App[]) {
   seedHqNavigation(store, ORG, { structure: { apps, ungrouped: [] } });

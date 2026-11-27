@@ -121,7 +121,7 @@ Source words and the product words that replace them:
 - Allow → **Let it; Not now**
 - Back to my tree → **Back to {Mate}'s**
 - parked → **Stopped**
-- writer, reader, lead → **Builds, Reviews, Plans**
+- writer, reader, lead → **Builds, Reviews, Lead**
 - backup set, backup store → **backup, backup bucket**
 - git repositories → **repositories**
 - environment deploy token, token-encryption key → **deploy tokens, key for its deploy tokens**

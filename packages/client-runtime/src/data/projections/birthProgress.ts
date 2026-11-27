@@ -6,10 +6,12 @@ import {
   type HqBirthLeft,
   type HqBirthOffer,
   type HqBirthState,
+  type HqOperation,
 } from "../../zerops/hq/client.ts";
 import { hqMateOffers } from "../../zerops/hq/placement.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { servicesScope } from "../families/service.ts";
+import { hqBirthDeletionsScope } from "../families/hqBirthDeletion.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { hqNavigation } from "./hqNavigation.ts";
@@ -106,7 +108,7 @@ export interface SharedBirth {
   readonly chief?: boolean;
   readonly adopted?: true;
   /**
-   * What an adopted birth's attempt may have written to the project, which its Delete leaves, in
+   * What an adopted birth's attempt may have written to the project, in
    * HQ's order (`births[].left`); absent for any other birth.
    */
   readonly left?: ReadonlyArray<HqBirthLeft>;
@@ -124,6 +126,8 @@ export interface SharedBirth {
   readonly deleteHeld?: true;
   /** Its operation's failure as HQ sent it; absent while it has none. */
   readonly failure?: NonNullable<HqBirth["operation"]["failure"]>;
+  /** Its deletion while HQ still runs it, including a wait for its maker. */
+  readonly deletion?: HqOperation;
 }
 
 export interface SharedBirthState {
@@ -147,6 +151,14 @@ export const sharedBirths: Projection<
     const membership = read.fact("organizationUser", orgId);
     const roleLive = membership.kind === "known" && read.stream(membership.scope).phase === "live";
     const roleCurrent = personId !== "" && current && roleLive;
+    const deletions = read.members(hqBirthDeletionsScope(orgId)).ids.flatMap((id) => {
+      const fact = read.fact("hqBirthDeletion", id);
+      if (fact.kind !== "known" || fact.value.outcome !== undefined) return [];
+      const operation = fact.value.operation;
+      return operation.failure !== undefined && operation.continueBy === undefined
+        ? []
+        : [fact.value];
+    });
     const open = structure.apps.flatMap((app) =>
       (app.births ?? []).map((birth): SharedBirth => {
         const projectId = birth.projectId ?? null;
@@ -183,6 +195,12 @@ export const sharedBirths: Projection<
         const authorized = roleCurrent && app.can?.add_mate?.allow === true;
         const offer = projectId === null ? undefined : hqMateOffers(structure, projectId);
         const editRecord = offer?.held === true && offer.edit.kind === "allowed";
+        const placement = projectId === null ? undefined : read.fact("placement", projectId);
+        const projectOperation =
+          placement?.kind === "known" ? placement.value.operation : undefined;
+        const deletion =
+          deletions.find((entry) => entry.birthId === birth.id)?.operation ??
+          (projectOperation?.kind === "birth_deletion" ? projectOperation : undefined);
         return {
           id: birth.id,
           appId: app.id,
@@ -209,6 +227,7 @@ export const sharedBirths: Projection<
             ? { deleteHeld: true as const }
             : {}),
           ...(birth.operation.failure === undefined ? {} : { failure: birth.operation.failure }),
+          ...(deletion === undefined ? {} : { deletion }),
         };
       }),
     );
@@ -280,6 +299,23 @@ export function birthPresentation(birth: SharedBirth): {
   readonly waitsOnMaker: boolean;
   readonly press: WaitingPress;
 } {
+  if (birth.deletion !== undefined) {
+    const { failure, continueBy, offers = [] } = birth.deletion;
+    const continues = offers.includes("continue");
+    const line = failure === undefined ? "Deleting Mate setup" : operationFailureWords(failure);
+    return {
+      row: line,
+      line,
+      stopped: failure !== undefined,
+      attention: failure !== undefined,
+      waitsOnMaker: continueBy !== undefined && !continues,
+      press: waitingWords(failure?.code ?? "").press,
+      actions: [
+        ...(continues ? ["continue-operation" as const] : []),
+        ...(offers.includes("end") ? ["end-operation" as const] : []),
+      ],
+    };
+  }
   const { phase, next, reason } = birth.progress;
   const stage = BIRTH_STAGE[phase];
   const stopped = birthStopped(birth.state);

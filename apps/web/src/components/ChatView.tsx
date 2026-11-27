@@ -3391,9 +3391,13 @@ function ConversationView(props: ChatViewProps) {
       }
 
       let result: AtomCommandResult<void, unknown> = AsyncResult.success(undefined);
+      // A crewmate's model is its own, set in its job (`crewRunsOn`): its chat never changes it.
+      const crewmateChat = activeThreadShell?.crew != null;
       const metadataUpdate = resolveThreadMetadataUpdateForNextTurn({
         currentModelSelection: serverThread.modelSelection,
-        ...(input.modelSelection ? { nextModelSelection: input.modelSelection } : {}),
+        ...(input.modelSelection && !crewmateChat
+          ? { nextModelSelection: input.modelSelection }
+          : {}),
         currentBranch: serverThread.branch,
         ...(input.branch ? { nextBranch: input.branch } : {}),
       });
@@ -3446,6 +3450,7 @@ function ConversationView(props: ChatViewProps) {
       return result;
     },
     [
+      activeThreadShell?.crew,
       environmentId,
       serverThread,
       setThreadInteractionMode,
@@ -7623,6 +7628,10 @@ function ConversationView(props: ChatViewProps) {
                               }
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
+                              // A crewmate's chat from its first paint: never the saved model.
+                              crewmateModel={
+                                inCrewChat ? (activeCrewmate?.crewmate.model ?? null) : undefined
+                              }
                               mentionMates={mentionableMates}
                               top={threadDetailLoading ? null : composerTop}
                               {...(crewRunsOnLabel === null || activeCrewmate === null

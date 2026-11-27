@@ -85,6 +85,7 @@ export type HqWrites = Pick<
   | "startProjectMove"
   | "startAppRename"
   | "deleteBirth"
+  | "acknowledgeBirthDeletion"
   | "establishZcpAuthorization"
   | "takeChatLink"
   | "askReadAccess"
@@ -669,10 +670,18 @@ export function makeHqExecutor(ports: {
       case "delete-birth":
         return Effect.as(
           Effect.tryPromise({
-            try: () => api.deleteBirth(intent.birthId),
+            try: () => api.deleteBirth(intent.birthId, { id: intent.id }),
             catch: (cause) => faultOf(cause, true),
           }),
-          answered(requestId, intent.birthId),
+          receipt(requestId, intent.id, undefined, PENDING),
+        );
+      case "acknowledge-birth-deletion":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.acknowledgeBirthDeletion(intent.id),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.id),
         );
       case "hand-over-mate":
         // Each of its `409`s is HQ's refusal (`owner_not_member`, `handover_unfinished` at a

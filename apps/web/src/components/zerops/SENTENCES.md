@@ -1,4 +1,4 @@
-next: MN124
+next: MN127
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -116,3 +116,6 @@ next: MN124
 - MN120 — Finished crew work waits on the viewer once per task, only where the viewer adds it to the Mate's code themselves and may review it, and never again as the crew's ready row; breaks: the person is asked to add work the crew adds itself, or the same work twice
 - MN121 — An automated Mate's task waiting for an answer waits on the viewer only while the Mate's conversation says nothing of its own; breaks: the one question is counted twice
 - MN122 — Running counts the working chats of the viewer's own Mates while their word is of now, and their working crewmates; done today counts the turns they finished since the day began; breaks: yesterday's work or a colleague's is counted as the person's today
+- MN124 — A running crew is at work only while a crewmate's turn runs, its clock running on from when its Mate read it; with no turn running, a task left midway included, it waits on the person when something does, its clock standing; breaks: the Crew tab says the crew works on its own while it waits on the person and its clock stands still
+- MN125 — A crew's faces in the menu stand in one order, the lead first and then the crew's, whoever works or needs the viewer; breaks: the faces reshuffle on every change of state and the person loses track of who is who
+- MN126 — A crewmate past the faces the menu draws whole that needs the viewer marks the "+N" it folds into, and one that does not leaves it plain; breaks: a crew's sixth crewmate asks the person something and nothing in the menu shows it

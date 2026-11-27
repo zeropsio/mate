@@ -363,11 +363,15 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             count -= 1;
             continue;
           }
-          // The newest group alone is over: its oldest work goes, its messages and asks stay.
+          // The newest group alone is over: its oldest work goes, its messages, crew cards and asks
+          // stay (a crew card opens its run as a person's message does).
           const items = [...frame.items];
           while (items.length > 0 && bytes > snapshotBytes) {
             const index = items.findIndex(
-              (item) => item.kind !== "person" && item.kind !== "request",
+              (item) =>
+                item.kind !== "person" &&
+                item.kind !== "request" &&
+                !(item.kind === "note" && item.card !== undefined),
             );
             if (index === -1) break;
             bytes -= sizer.listed(items[index]!, items.length);

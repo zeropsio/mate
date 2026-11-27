@@ -29,6 +29,7 @@ import {
   type CrewRefusalReason,
   type EnvironmentId,
 } from "@t3tools/contracts";
+import type { MateTintId } from "@t3tools/shared/brand";
 import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -110,7 +111,11 @@ export interface UseCrewCommand {
 
 type RequestKey = CrewCommandTag | "filesGet" | "filesPut";
 
-export function useCrewCommand(environmentId: EnvironmentId | null): UseCrewCommand {
+/** `mateTint`: the Mate's own face, which an Apply carries so no crewmate given a tint takes it. */
+export function useCrewCommand(
+  environmentId: EnvironmentId | null,
+  mateTint?: MateTintId,
+): UseCrewCommand {
   const files = useAtomValue(environmentId === null ? UNREAD_FILES : crewFilesAtom(environmentId));
   const [inFlight, setInFlight] = useState<ReadonlyMap<RequestKey, number>>(new Map());
   const [failure, setFailure] = useState<CrewFailure | null>(null);
@@ -158,14 +163,16 @@ export function useCrewCommand(environmentId: EnvironmentId | null): UseCrewComm
   const send = useCallback(
     async (command: CrewCommand, origin?: string) => {
       if (environmentId === null) return null;
+      const input =
+        command._tag === "apply" && mateTint !== undefined ? { ...command, mateTint } : command;
       const outcome = await track(
         command._tag,
-        () => runCommand({ environmentId, input: command }),
+        () => runCommand({ environmentId, input }),
         origin ?? null,
       );
       return outcome.ok ? outcome.value : null;
     },
-    [environmentId, runCommand, track],
+    [environmentId, mateTint, runCommand, track],
   );
 
   const readFiles = useCallback(async () => {

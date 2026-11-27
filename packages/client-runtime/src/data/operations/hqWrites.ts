@@ -14,10 +14,12 @@ import type {
   HqProjectMoveStart,
   HqPutLiveStart,
 } from "../../zerops/hq/client.ts";
-import { linkKeys, removedForViewer, type OperationIntent } from "../model.ts";
+import { removedForViewer, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
-import type { IntentOf, OperationKind } from "./kind.ts";
+import type { IntentOf, OperationKind, Settlement } from "./kind.ts";
 import { shownInFacts } from "./shownInFacts.ts";
+import { birthDeletionAcknowledgementId } from "../projections/birthDeletion.ts";
+import { operationFailureWords } from "../projections/operationFailure.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
@@ -142,6 +144,12 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly appId: string;
       readonly birthId: string;
+      readonly id: string;
+    };
+    readonly "acknowledge-birth-deletion": {
+      readonly orgId: string;
+      readonly id: string;
+      readonly settlement: Settlement;
     };
     /** A Mate handed over to `ownerUserId` (a person's id), by HQ with the person's token. */
     readonly "hand-over-mate": {
@@ -228,6 +236,8 @@ const continueOperation = shown(
       return appOperation(app.value, intent.id)?.continueBy === undefined;
     }
     if (intent.projectId === undefined) {
+      const deletion = read.fact("hqBirthDeletion", intent.id);
+      if (deletion.kind === "known") return deletion.value.operation.continueBy === undefined;
       const birth = operationBirth(read, intent.orgId, intent.id);
       if (birth !== undefined)
         return birth.operation !== undefined && birth.operation.continueBy === undefined;
@@ -408,34 +418,39 @@ const startAppRename: OperationKind<"start-app-rename"> = {
   },
 };
 
-/** Absence is evidence only in the live, complete birth list of the known application. */
+/** The start is only accepted until HQ's own retained outcome says how it ended. */
 const deleteBirth: OperationKind<"delete-birth"> = {
   kind: "delete-birth",
   executor: "hq",
-  ...shownInFacts(
-    (intent) => intent.birthId,
-    (read, intent) => {
-      const app = read.fact("hqApp", intent.appId);
-      return (
-        app.kind === "known" &&
-        app.value.births !== undefined &&
-        read.stream(app.scope).phase === "live" &&
-        read.stream(linkKeys.hq(intent.orgId)).phase === "live" &&
-        !app.value.births.some((birth) => birth.id === intent.birthId)
-      );
-    },
-  ),
-  effectHandles: (read, intent) => {
-    const app = read.fact("hqApp", intent.appId);
-    if (
-      app.kind !== "known" ||
-      app.value.births === undefined ||
-      read.stream(app.scope).phase !== "live" ||
-      read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
-    )
-      return null;
-    return app.value.births.some((birth) => birth.id === intent.birthId) ? [] : [intent.birthId];
+  reflected: (read, intent) => {
+    const fact = read.fact("hqBirthDeletion", intent.id);
+    return fact.kind === "known" && fact.value.birthId === intent.birthId;
   },
+  settledBy: (read, intent) => {
+    const fact = read.fact("hqBirthDeletion", intent.id);
+    if (fact.kind !== "known" || fact.value.birthId !== intent.birthId) {
+      const acknowledgement = read.operation(
+        birthDeletionAcknowledgementId(intent.orgId, intent.id),
+      );
+      return acknowledgement?.intent.kind === "acknowledge-birth-deletion"
+        ? acknowledgement.intent.settlement
+        : null;
+    }
+    const { operation, outcome } = fact.value;
+    if (operation.failure !== undefined && operation.continueBy === undefined)
+      return { kind: "failed", reason: operationFailureWords(operation.failure) };
+    return outcome === "done" || outcome === "unconfirmed_setup" ? { kind: "succeeded" } : null;
+  },
+  effectHandles: (read, intent) => {
+    const fact = read.fact("hqBirthDeletion", intent.id);
+    return fact.kind === "known" && fact.value.birthId === intent.birthId ? [intent.id] : [];
+  },
+};
+
+const acknowledgeBirthDeletion: OperationKind<"acknowledge-birth-deletion"> = {
+  kind: "acknowledge-birth-deletion",
+  executor: "hq",
+  reflected: (_read, _intent, receipt) => receipt.outcome.kind === "succeeded",
 };
 
 const updateMateFace = shown(
@@ -501,6 +516,7 @@ export const HQ_WRITE_KINDS = [
   startProjectMove,
   startAppRename,
   deleteBirth,
+  acknowledgeBirthDeletion,
   handOverMate,
 ] as const;
 

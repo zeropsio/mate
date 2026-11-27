@@ -914,3 +914,39 @@ it("CD+6: A handed-off task a message sends back to work after it was ready is h
     ["#1 Paginate · @backend is ready", "#1 Paginate · @backend is ready"],
   ]);
 });
+
+// witness: apps/server/src/zerops/crew/engine/decide.presses.ts | const sent = { text: facts.turn.text, card: facts.turn.card }; → const sent = { text: facts.turn.text, card: null };
+it("CD87: Continue on a card turn a restart could not carry on sends the card again, never its words as the person's own message; breaks: the crew's words show in the crewmate's conversation as the person's", () => {
+  const w = new CrewWorld();
+  w.apply(home(reader("reviewer")));
+  newTask(w, "reviewer", "Read it");
+  w.run("reviewer");
+  w.end("reviewer", CUT);
+  restarted(w);
+  w.refuse("reviewer", "The login is signed out.");
+  w.press({
+    _tag: "operationContinue",
+    handle: "reviewer",
+    operationId: `interrupted:${w.task(1).id}`,
+  });
+  expect(w.turns("reviewer")).toEqual(["task", "continue", "continue"]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.advance.ts | rotateSession(b, member, member.rotateWhenFree.reason, member.rotateWhenFree.as); → rotateSession(b, member, member.rotateWhenFree.reason, { kind: "engine" });
+it("CD88: Start fresh pressed while its crewmate is busy clears its conversation once it is free, as the person who pressed it; breaks: the line in its conversation names nobody, or the crew, as the one who cleared it", () => {
+  const w = new CrewWorld();
+  w.apply(home(writer("backend")));
+  newTask(w, "backend", "First");
+  w.start("backend");
+  w.tool("backend", { tool: "report", input: { status: "done", summary: "Done." } });
+  w.end("backend");
+  w.checkpoint("backend");
+  w.press({ _tag: "startFresh", handle: "backend" }, OTHER);
+  const owed = w.controls("backend").filter((tag) => tag === "RotateSession").length;
+  w.mergeAndCheck("backend");
+  const rotation = w.effects.find(
+    (effect) =>
+      effect.payload.kind === "crew.deliver" && effect.payload.command._tag === "RotateSession",
+  )?.payload;
+  expect([owed, rotation?.kind === "crew.deliver" ? rotation.principal : null]).toEqual([0, OTHER]);
+});

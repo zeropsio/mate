@@ -233,7 +233,7 @@ export function lineCrew(input: {
         open: opens(crewmate.handle),
         known: true,
         threadId: crewmate.currentThreadId,
-        role: crewmateRoleWords(mateName, lead),
+        role: crewmateRoleWords(mateName, crewmate.kind),
         job: lead ? null : crewJobSentence(crewmate.jobFirstLine, crewmate.displayName) || null,
         status: status === null ? null : statusLabel(status.kind),
       };
@@ -252,7 +252,7 @@ export function lineCrew(input: {
     open: opens(face.handle),
     known: false,
     threadId: null,
-    role: crewmateRoleWords(mateName, face.lead),
+    role: crewmateRoleWords(mateName, face.lead ? "lead" : null),
     job: null,
     status: null,
   }));
@@ -270,7 +270,7 @@ export function lineCrew(input: {
       open: true,
       known: false,
       threadId: null,
-      role: crewmateRoleWords(mateName, false),
+      role: crewmateRoleWords(mateName, null),
       job: null,
       status: null,
     },

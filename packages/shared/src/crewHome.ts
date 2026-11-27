@@ -25,12 +25,13 @@
  * ```yaml
  * name: Game team                   # the crew's display name
  * briefTitle: Space shooter MVP     # the brief's title (brief.md holds only its body)
+ * ask: 1x9k2b                       # the crew card it was set up from (`askKeyOf`); unset otherwise
  * members:
  *   - handle: backend               # required; CREW_HANDLE_PATTERN; unique; fixed after Apply
  *     displayName: Backend          # required; free to rename
  *     kind: writer                  # writer (default) | reader | lead
  *     readOnly: false               # the editor's switch; true makes a writer a reader
- *     tint: sky                     # one of MATE_TINT_IDS; unset = assigned by the client
+ *     tint: sky                     # one of MATE_TINT_IDS; unset = the first nobody wears (crewTints)
  *     host: appdev                  # writers choose a dev service (host) or a dev pool (pool)
  *     setup: npm ci                 # run in its copy at Apply and when the lockfile moves
  *     check: npm test               # run in its copy on the tree that will land
@@ -66,8 +67,9 @@
  * service, and a writer on a service with a database declares `env:` or
  * `database: shared` (PRD §5.1). Apply needs both to be empty. A draft may
  * hold a writer with nowhere for its copy yet — the setup can draft a crew
- * before the Mate's dev services are read — and `withBuildersPlaced` places it
- * on what the project has.
+ * before the Mate's dev services are read, or the project has several places
+ * — and `withBuildersPlaced` places it where the project has one place only;
+ * among several the person picks.
  *
  * @module crewHome
  */
@@ -129,6 +131,8 @@ export interface CrewMemberSpec {
 export interface CrewDefinition {
   readonly crew: string;
   readonly name: string;
+  /** The crew card (a `crew-ask` fence's key) whose press set this crew up; absent otherwise. */
+  readonly ask?: string;
   readonly brief: CrewBrief;
   readonly members: ReadonlyArray<CrewMemberSpec>;
 }
@@ -189,13 +193,55 @@ const MEMBER_FIELDS = new Set([
   "context",
   "rotateAfter",
 ]);
-const CREW_FIELDS = new Set(["name", "briefTitle", "members"]);
+const CREW_FIELDS = new Set(["name", "briefTitle", "ask", "members"]);
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
 type Issues = Array<CrewDefinitionIssue>;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The tints a crew takes, in turn: the lead violet, the builders sky and coral — the setup's
+ * three faces — and on.
+ */
+export const CREW_TINTS: ReadonlyArray<MateTintId> = [
+  "violet",
+  "sky",
+  "coral",
+  "olive",
+  "rose",
+  "sand",
+  "slate",
+  "amber",
+];
+
+/**
+ * Each crewmate's tint, in the crew's order: the one it wears (its crew.yaml's, or the one it was
+ * given before), else the first of {@link CREW_TINTS} no other crewmate wears, never its Mate's
+ * own — one colour per crewmate, the same wherever it is drawn, for a hand-written crew too. With
+ * more crewmates than tints, they take them again from the first.
+ */
+export const crewTints = (
+  members: ReadonlyArray<{ readonly handle: string; readonly tint?: string | null | undefined }>,
+  mateTint?: MateTintId,
+): ReadonlyMap<string, MateTintId> => {
+  const named = (tint: string | null | undefined): MateTintId | undefined =>
+    MATE_TINT_IDS.find((id) => id === tint);
+  const offered = CREW_TINTS.filter((tint) => tint !== mateTint);
+  const worn = new Set(members.flatMap((member) => named(member.tint) ?? []));
+  const tints = new Map<string, MateTintId>();
+  let again = 0;
+  for (const member of members) {
+    const tint =
+      named(member.tint) ??
+      offered.find((id) => !worn.has(id)) ??
+      offered[again++ % offered.length]!;
+    worn.add(tint);
+    tints.set(member.handle, tint);
+  }
+  return tints;
+};
 
 /** Read `brief.md`'s two optional sections out of its markdown. */
 export const parseBrief = (title: string, text: string): CrewBrief => {
@@ -509,6 +555,7 @@ export const renderCrewHome = (definition: CrewDefinition): ReadonlyArray<CrewHo
       content: stringifyYaml({
         name: definition.name,
         briefTitle: definition.brief.title,
+        ...(definition.ask === undefined ? {} : { ask: definition.ask }),
         members,
       }),
     },
@@ -562,47 +609,56 @@ export const withSharedDatabase = (
       }
     : definition;
 
-/** Where a crew's builders can work. */
+/** Where a crew's builders can work: its dev services and its dev pools, each a place. */
 export interface CrewPlaces {
-  /** The Mate's dev services; builders take them in turn. */
+  /** The Mate's dev services. */
   readonly devHosts: ReadonlyArray<string>;
   /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
   readonly databaseHosts?: ReadonlyArray<string>;
-  /** Each builder takes its own copy from the first pool when there is no dev service. */
+  /** Its dev pools: a builder there takes a copy of its own from the pool. */
   readonly pools?: ReadonlyArray<string>;
 }
+
+/** The one place a builder can work, where the project has exactly one; `null` otherwise. */
+export const onlyCrewPlace = (
+  places: CrewPlaces,
+): { readonly host: string } | { readonly pool: string } | null => {
+  const pools = places.pools ?? [];
+  if (places.devHosts.length + pools.length !== 1) return null;
+  return places.devHosts[0] === undefined ? { pool: pools[0]! } : { host: places.devHosts[0] };
+};
 
 /** A writer with neither a host nor a pool: nowhere for its copy of the code. */
 const unplaced = (member: CrewMemberSpec): boolean =>
   member.kind === "writer" && member.host === undefined && member.pool === undefined;
 
 /**
- * The definition with each writer that has nowhere for its copy placed — on the dev services in
- * turn, else on the first pool — and each writer on a service with a database sharing it
+ * The definition with each writer that has nowhere for its copy placed on the project's one place
+ * (`onlyCrewPlace`), and each writer on a service with a database sharing it
  * (`withSharedDatabase`): what the setup writes for a builder, whenever the project is read. A
- * writer already placed keeps its place; with neither a dev service nor a pool, it stays unplaced
- * and Apply refuses it. The same definition when nothing needs it.
+ * writer already placed keeps its place. Among several places it stays unplaced until the person
+ * picks one, and with none Apply refuses it. The same definition when nothing needs it.
  */
 export const withBuildersPlaced = (
   definition: CrewDefinition,
   places: CrewPlaces,
 ): CrewDefinition => {
-  const pool = places.pools?.[0];
-  const placeable =
-    (places.devHosts.length > 0 || pool !== undefined) && definition.members.some(unplaced);
-  let turn = 0;
-  const placed = placeable
-    ? {
-        ...definition,
-        members: definition.members.map((member): CrewMemberSpec => {
-          if (!unplaced(member)) return member;
-          if (places.devHosts.length === 0) return { ...member, pool: pool! };
-          return { ...member, host: places.devHosts[turn++ % places.devHosts.length]! };
-        }),
-      }
-    : definition;
+  const only = onlyCrewPlace(places);
+  const placed =
+    only !== null && definition.members.some(unplaced)
+      ? {
+          ...definition,
+          members: definition.members.map((member): CrewMemberSpec =>
+            unplaced(member) ? { ...member, ...only } : member,
+          ),
+        }
+      : definition;
   return withSharedDatabase(placed, places.databaseHosts ?? []);
 };
+
+/** The writers with nowhere for their copy yet: among several places, the person picks each one's. */
+export const unplacedBuilders = (definition: CrewDefinition): ReadonlyArray<CrewMemberSpec> =>
+  definition.members.filter(unplaced);
 
 /** The checks that need the project's services (PRD §5.1, CONCEPT §3.3 *The shared database*). */
 export const validateCrewTopology = (
@@ -699,6 +755,7 @@ export const parseCrewHome = (crew: string, files: ReadonlyArray<CrewHomeFile>):
     issues.push({ code: "field-missing", path: CREW_HOME_FILE, message: "crew.yaml has no name." });
   }
   const briefTitle = readString(doc, "briefTitle", CREW_HOME_FILE, issues);
+  const ask = readString(doc, "ask", CREW_HOME_FILE, issues)?.trim();
   if (briefTitle === undefined || briefTitle.trim() === "") {
     issues.push({
       code: "field-missing",
@@ -755,6 +812,7 @@ export const parseCrewHome = (crew: string, files: ReadonlyArray<CrewHomeFile>):
     definition: {
       crew,
       name: name ?? "",
+      ...(ask === undefined || ask === "" ? {} : { ask }),
       brief: parseBrief(briefTitle ?? "", briefText),
       members,
     },

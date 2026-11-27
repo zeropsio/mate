@@ -17,7 +17,7 @@ import {
   type MemberRecord,
   type TaskRecord,
 } from "./state.ts";
-import { type Builder, crewAs, dispatchPrincipal, landed } from "./decide.step.ts";
+import { type Builder, dispatchPrincipal, landed } from "./decide.step.ts";
 import { rotateSession, startTask, continueTask } from "./decide.turns.ts";
 import { land } from "./decide.land.ts";
 import { wakeLead, checkLimits, followClock } from "./decide.run.ts";
@@ -120,7 +120,7 @@ export const advanceMember = (b: Builder, handle: string): void => {
   // A copy a redeploy may still replace is left alone until it ends.
   if (hostFrozen(b.state, member.host)) return;
   if (member.rotateWhenFree !== null) {
-    rotateSession(b, member, member.rotateWhenFree, crewAs(b.state.run?.startedBy ?? ""));
+    rotateSession(b, member, member.rotateWhenFree.reason, member.rotateWhenFree.as);
   }
   if (claimTurn(b, b.state.members[handle]!)) return;
   const open = openTaskOf(b.state, handle);

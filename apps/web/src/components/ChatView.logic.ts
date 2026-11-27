@@ -471,12 +471,13 @@ export function getProviderCatalogSendBlockReason(
     : null;
 }
 
+/** Why Antigravity cannot take a turn on `model` now; a `null` model is its login's default. */
 export function getAntigravitySendBlockReason(
   provider:
     | Pick<ServerProvider, "driver" | "installed" | "auth" | "models" | "status">
     | null
     | undefined,
-  model: string,
+  model: string | null,
 ): string | null {
   if (provider?.driver !== "antigravity") return null;
   if (!provider.installed) {
@@ -485,6 +486,8 @@ export function getAntigravitySendBlockReason(
   if (provider.auth.status === "unauthenticated") {
     return "Sign in to Antigravity in provider settings before sending.";
   }
+  // The login's default: the session opens on whichever model that is, so none can be gone.
+  if (model === null) return null;
   const slug = model.trim();
   if (slug.length === 0) return "Choose an Antigravity model before sending.";
   // A restart clears the account status and catalog. Session startup checks

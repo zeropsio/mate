@@ -7,7 +7,9 @@
  *   finished work waits for your review, and *Let it work on its own…*
  *   starts a run.
  * - A run running: what it spent and how long its crew worked, against its
- *   limits, and *Stop*. Pause is no longer offered.
+ *   limits, and *Stop*. Pause is no longer offered. Only a crewmate at work
+ *   is "working", its clock running on; with nobody at work and something
+ *   waiting on you it says so, its clock standing.
  * - A run stopped by a limit: which, and *Keep going…* — for its time, only
  *   while something is left to do. A refused turn offers *Try again*.
  *
@@ -50,6 +52,10 @@ export interface CrewModeInput {
   /** How many crewmates' threads work right now. */
   readonly workingCount: number;
   readonly tasks: ReadonlyArray<Pick<CrewTask, "state">>;
+  /** Something stands on *Waiting on you*: an ask, a plan to start, work to land. */
+  readonly waitsOnYou: boolean;
+  /** Now, for the run's clock while a crew turn runs (`CrewRun.countingFrom`). */
+  readonly nowMs: number;
   /** The plan the usage stop watches (`crewPlanOf`); "your plan" while unnamed. */
   readonly plan?: string;
 }
@@ -69,11 +75,32 @@ const AT_WORK: ReadonlySet<CrewTask["state"]> = new Set([
   "landing",
 ]);
 
-const atWork = (input: CrewModeInput): boolean =>
+const atWork = (input: Pick<CrewModeInput, "workingCount" | "tasks">): boolean =>
   input.workingCount > 0 || input.tasks.some((task) => AT_WORK.has(task.state));
 
 const leftToDo = (input: CrewModeInput): boolean =>
   atWork(input) || input.tasks.some((task) => task.state === "queued");
+
+/**
+ * Where a running run stands: at work while a crewmate's turn runs, its clock running on from
+ * when the Mate read it; else waiting on you when something does, or between turns, its clock
+ * standing. A task left at work with no turn running (stopped midway, a conflict, a failed check)
+ * is work left to do, never a crewmate working.
+ */
+export function crewRunStanding(
+  run: Pick<CrewRun, "elapsedMs" | "countingFrom">,
+  input: Omit<CrewModeInput, "run" | "plan">,
+): { readonly at: "working" | "waiting-on-you" | "between"; readonly elapsedMs: number } {
+  const working = input.workingCount > 0 || run.countingFrom != null;
+  if (!working) {
+    return { at: input.waitsOnYou ? "waiting-on-you" : "between", elapsedMs: run.elapsedMs };
+  }
+  const from = run.countingFrom == null ? null : Date.parse(run.countingFrom);
+  return {
+    at: "working",
+    elapsedMs: run.elapsedMs + (from === null ? 0 : Math.max(0, input.nowMs - from)),
+  };
+}
 
 export function crewModeLine(input: CrewModeInput): CrewModeLine {
   const { run } = input;
@@ -83,8 +110,10 @@ export function crewModeLine(input: CrewModeInput): CrewModeLine {
       : { words: CREW_WORKS_WHEN_ASKED, press: null };
   }
   switch (run.state) {
-    case "running":
-      return { words: crewOnItsOwnWords(run), press: press("stop") };
+    case "running": {
+      const { at, elapsedMs } = crewRunStanding(run, input);
+      return { words: crewOnItsOwnWords(run, at, elapsedMs), press: press("stop") };
+    }
     case "finishing":
       return { words: CREW_WRAPPING_UP, press: null };
     case "paused": {

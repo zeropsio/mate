@@ -73,6 +73,11 @@ export function operationEndWords(
         title: `End deleting ${name}?`,
         description: `${unable} Ending it frees ${name} for new work. If Zerops was already asked to delete its project, that goes on.`,
       };
+    case "birth_deletion":
+      return {
+        title: `End deleting ${name}'s setup?`,
+        description: `${unable} Ending it leaves the setup open. Anything already removed stays gone.`,
+      };
     case "proposal_effect":
       return {
         title: `End ${name}?`,

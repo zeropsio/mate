@@ -284,7 +284,11 @@ const rotateForBudget = (b: Builder): void => {
     if (!isWorking(b.state, member.handle)) {
       rotateSession(b, member, "budget", b.envelope.principal);
     } else {
-      b.emit({ _tag: "CrewmateUpdated", handle: member.handle, set: { rotateWhenFree: "budget" } });
+      b.emit({
+        _tag: "CrewmateUpdated",
+        handle: member.handle,
+        set: { rotateWhenFree: { reason: "budget", as: b.envelope.principal } },
+      });
     }
   }
 };

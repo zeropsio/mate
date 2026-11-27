@@ -23,8 +23,15 @@
  * fixture crew; a view (setup, goal, job) is the real view in the same frame,
  * over fixture crew files.
  *
- * Add `&pool=1` for a Mate with only tinypool. Its job view opens a new builder. Add
- * `&handoffs=1` for the conversation's column with a hand-off card for each writer's task.
+ * The conversation column draws Fen's own chat at the same phase — the crew
+ * card it drew, proposed while no crew stands and set up once its crew does —
+ * or, with `&chat=<handle>`, that crewmate's chat with the task cards the
+ * crew sent it (`crewHarnessChats.tsx`), or, with `&handoffs=1`, a hand-off
+ * card for each writer's task.
+ *
+ * Add `&pool=1` for a Mate with only tinypool. Its job view opens a new builder.
+ * Add `&places=2` for a Mate with two dev services: the setup's draft has one
+ * builder on the service its card named and the others still to place.
  * Served by the dev server at `/design-crew.html`. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
@@ -66,12 +73,17 @@ import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import { readCrewThread, type CrewRead } from "~/zerops/crew/useCrew";
 import type { UseCrewCommand } from "~/zerops/crew/useCrewCommand";
 import "../index.css";
+import { CrewChat, crewCardFence } from "./crewHarnessChats";
 
 const params = new URLSearchParams(location.search);
 const pooled = params.get("pool") === "1";
 const pools = pooled ? ["tinypool"] : [];
 const writerPlace = pooled ? { pool: "tinypool" } : { host: "appdev" };
+/** Two dev services: nothing places a builder by itself, so the person picks each one's. */
+const SEVERAL = params.get("places") === "2";
 const STATE = params.get("state") ?? "idle";
+/** Whose chat the conversation column shows: Fen's own, or a crewmate's by its handle. */
+const CHAT = params.get("chat") ?? "fen";
 
 /** Who looks: the person who runs the crew's agent, or — `&viewer=` — somebody who may not. */
 const VIEWERS: Readonly<Record<string, CrewLockOwnership>> = {
@@ -617,6 +629,9 @@ const STATES: Readonly<Record<string, CrewState>> = {
   },
 };
 
+/** The crew card Fen drew in its chat; the standing crew is the one it set up. */
+const CARD = crewCardFence(SEATS, GOAL.body, pooled ? "tinypool" : "appdev");
+
 function snapshotOf(state: CrewState): CrewSnapshot {
   return {
     status: "applied",
@@ -626,6 +641,7 @@ function snapshotOf(state: CrewState): CrewSnapshot {
       briefTitle: GOAL.title,
       briefVersion: 1,
       briefExcerpt: GOAL.body.split("\n")[0] ?? "",
+      ask: CARD.key,
     },
     crewmates: SEATS.map((seat) => crewmateOf(seat, state.tasks)),
     hosts: pooled
@@ -642,7 +658,12 @@ function snapshotOf(state: CrewState): CrewSnapshot {
     board: { tasks: state.tasks },
     run: state.run,
     attention: state.attention,
-    devHosts: pooled ? [] : [{ host: "appdev", database: false }],
+    devHosts: pooled
+      ? []
+      : [
+          { host: "appdev", database: false },
+          ...(SEVERAL ? [{ host: "apidev", database: false }] : []),
+        ],
     landedNotDelivered: state.notShipped,
     lastError: null,
   };
@@ -678,10 +699,22 @@ const DEFINITION: CrewDefinition = (() => {
   };
 })();
 
-/** The crew home as the setup drafts it: the goal's first paragraph, and the crew Fen suggested. */
+/**
+ * The crew home as the setup drafts it: the goal's first paragraph, and the crew Fen suggested —
+ * with two dev services, the server's builder on the one its card named and the others unplaced.
+ */
 const DRAFT: CrewDefinition = {
   ...DEFINITION,
   brief: parseBrief("Letopis — shared persistent world", `${GOAL.body.split("\n")[0]}\n`),
+  members: SEVERAL
+    ? DEFINITION.members.map(({ host: _host, ...member }) =>
+        member.kind !== "writer"
+          ? member
+          : member.handle === SERVER.handle
+            ? { ...member, host: "apidev" }
+            : member,
+      )
+    : DEFINITION.members,
 };
 
 /** `setup-start` has the goal and nobody on the crew; `setup-draft` the crew Fen suggested. */
@@ -715,6 +748,7 @@ const FILES: UseCrewCommand = {
 const noop = () => {};
 
 const MAXIMIZED = params.get("max") === "1";
+const HAND_OFFS = params.get("handoffs") === "1";
 /** The left menu's width: the owner's 435 by default, `?menu=` for another. */
 const MENU = Number(params.get("menu") ?? 435);
 
@@ -881,9 +915,23 @@ function Harness() {
   return (
     <div className="flex h-screen bg-background text-foreground">
       <div className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU }} />
-      <div className={MAXIMIZED ? "w-0 flex-none" : "min-w-0 flex-1 overflow-y-auto"}>
-        {params.get("handoffs") === "1" && !MAXIMIZED ? <HandOffs /> : null}
-      </div>
+      {MAXIMIZED ? (
+        <div className="w-0 flex-none" />
+      ) : HAND_OFFS ? (
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          <HandOffs />
+        </div>
+      ) : (
+        <CrewChat
+          chat={CHAT}
+          crew={crewRead()}
+          environmentId={ENVIRONMENT}
+          fence={CARD.code}
+          mate={FEN}
+          seats={SEATS}
+          threads={COLUMN.threads}
+        />
+      )}
       <RightPanelTabs
         activeSurfaceId="crew"
         availability={resolveRightPanelAvailability({

@@ -77,7 +77,7 @@ const backend: Crewmate = {
       lastCompactSummary: "Paginated /api/users; the cursor is the row id.",
       retiredAt: at("09:10"),
     }),
-    stint("backend", 2, { reason: "You cleared its conversation", startedAt: at("09:10") }),
+    stint("backend", 2, { reason: "Its conversation was cleared", startedAt: at("09:10") }),
   ],
   context: { tokens: 64_200, window: 200_000 },
   compactions: 1,

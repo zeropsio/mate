@@ -1,6 +1,7 @@
 /**
  * A crew a Mate sets up in its answer, as a `crew-ask` fence: the goal it works to and who is on
- * it — each crewmate's name, role and part, and the agent, model and effort it runs on. The card
+ * it — each crewmate's name, role and part, the agent, model and effort it runs on, and a
+ * builder's place (`host`: a dev service or dev pool, by its hostname). The card
  * reads that crew on this Mate's own sign-ins: an agent it isn't signed in to runs on one it is,
  * and the card says so. Its press opens the Crew tab's setup filled in with it, to change and
  * start there.
@@ -12,10 +13,12 @@ import {
   agentIdForDriverKind,
   isZeropsAgentId,
   type CrewMemberKind,
+  type CrewStatus,
   type ProviderInstanceId,
   type ServerProvider,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
+import { onlyCrewPlace, type CrewPlaces } from "@t3tools/shared/crewHome";
 import type { CrewAskSeat } from "@t3tools/shared/crewTemplates";
 
 import {
@@ -23,7 +26,7 @@ import {
   crewLoginOptions,
   crewModelOptions,
 } from "../zerops/crew/CrewEditors.logic";
-import { askKeyOf, namesWords } from "./ask.logic";
+import { type AskState, askKeyOf, namesWords } from "./ask.logic";
 
 /** The roles a fence names, as the crew's kinds: a builder changes files, a reviewer reads. */
 const ROLES: Readonly<Record<string, CrewMemberKind>> = {
@@ -47,6 +50,8 @@ export interface CrewAskCrewmate {
   readonly agent: string | undefined;
   readonly model: string | undefined;
   readonly effort: string | undefined;
+  /** A builder's dev service or dev pool as the Mate named it; never a reader's. */
+  readonly host: string | undefined;
 }
 
 export interface CrewAsk {
@@ -84,6 +89,7 @@ function crewmateOf(value: unknown): CrewAskCrewmate | null {
     agent: line(fields.agent, LONGEST_NAME)?.toLowerCase(),
     model: line(fields.model, LONGEST_PART),
     effort: line(fields.effort, LONGEST_NAME)?.toLowerCase(),
+    host: kind === "writer" ? line(fields.host, LONGEST_NAME) : undefined,
   };
 }
 
@@ -222,14 +228,43 @@ export function crewAskRunsOn(
   };
 }
 
-/** The crew as the setup takes it: each crewmate on what it runs on here. */
+/**
+ * Where a builder works, once the Mate's dev services and pools are read: the place the Mate
+ * named, where this Mate has it; else the project's one place; else, among several, the person
+ * chooses (`choose`); `none` where there is none yet. Until they are read, `unread`: no place is
+ * named, so a named pool is never taken for a dev service. `null` for a crewmate that reads.
+ */
+export type CrewAskPlace =
+  | { readonly kind: "on"; readonly place: string }
+  | { readonly kind: "choose" }
+  | { readonly kind: "none" }
+  | { readonly kind: "unread" };
+
+export function crewAskPlace(
+  crewmate: Pick<CrewAskCrewmate, "kind" | "host">,
+  places: CrewPlaces | null,
+): CrewAskPlace | null {
+  if (crewmate.kind !== "writer") return null;
+  if (places === null) return { kind: "unread" };
+  const all = [...places.devHosts, ...(places.pools ?? [])];
+  if (crewmate.host !== undefined && all.includes(crewmate.host)) {
+    return { kind: "on", place: crewmate.host };
+  }
+  const only = onlyCrewPlace(places);
+  if (only !== null) return { kind: "on", place: "host" in only ? only.host : only.pool };
+  return all.length === 0 ? { kind: "none" } : { kind: "choose" };
+}
+
+/** The crew as the setup takes it: each crewmate on what it runs on here, a builder on its place. */
 export function crewAskSeats(
   ask: CrewAsk,
   providers: ReadonlyArray<ServerProvider>,
   availability: CrewAskAvailability,
+  places: CrewPlaces | null,
 ): ReadonlyArray<CrewAskSeat> {
   return ask.crew.map((crewmate) => {
     const runsOn = crewAskRunsOn(crewmate, providers, availability);
+    const place = crewAskPlace(crewmate, places);
     return {
       name: crewmate.name,
       kind: crewmate.kind,
@@ -237,8 +272,26 @@ export function crewAskSeats(
       login: runsOn.login?.id,
       model: runsOn.model?.slug,
       effort: runsOn.effort?.id,
+      place: place?.kind === "on" ? place.place : undefined,
     };
   });
+}
+
+/**
+ * A builder's place on its card's row: "Works on appdev", that the person picks it, or that there
+ * is nowhere yet; `null` while unread, where the row keeps the line's room.
+ */
+export function crewAskPlaceWords(place: CrewAskPlace): string | null {
+  switch (place.kind) {
+    case "on":
+      return `Works on ${place.place}`;
+    case "choose":
+      return "You choose where it works in the setup";
+    case "none":
+      return "No dev service or dev pool to work on yet";
+    case "unread":
+      return null;
+  }
 }
 
 /** "Claude Opus 5.5 · High": the model and effort it sets, else its login's name. */
@@ -288,4 +341,40 @@ export function crewAskMissingWords(
   return missing.agent.agentId === undefined
     ? `${mate} has no ${missing.agent.name}, so ${who} ${start} on ${missing.instead}.`
     : `Sign in to ${missing.agent.name} first, or ${who} ${start} on ${missing.instead}.`;
+}
+
+/**
+ * What the card knows of its Mate's crew: its status, whose word that is — the Mate's own crew, or
+ * HQ's last view of the Mate while that is read — and whether the standing crew names this card
+ * (`CrewSummary.ask`); `null` while neither has said.
+ */
+export type CrewAskStanding = {
+  readonly status: CrewStatus;
+  readonly from: "mate" | "hq";
+  readonly ours: boolean;
+} | null;
+
+/** The Mate's own crew, else HQ's word on it: the card takes its settled height from either. */
+export function crewAskStanding(
+  mate: { readonly status: CrewStatus | null; readonly ask: string | undefined },
+  held: CrewStatus | null,
+  key: string,
+): CrewAskStanding {
+  if (mate.status !== null) return { status: mate.status, from: "mate", ours: mate.ask === key };
+  return held === null ? null : { status: held, from: "hq", ours: false };
+}
+
+/**
+ * The card's state: its own crew set up only when the Mate's crew came from its press; any other
+ * crew, or one HQ alone names, says the Mate has a crew. While nothing is read it waits as it
+ * would with none.
+ */
+export function crewAskState(standing: CrewAskStanding, mate: string | undefined): AskState {
+  if (standing === null || standing.status === "none") return { kind: "waiting" };
+  if (standing.status === "off") {
+    return { kind: "failed", words: `Crews are turned off for ${mate ?? "this Mate"}.` };
+  }
+  return standing.from === "mate" && standing.ours
+    ? { kind: "done", words: `${mate ?? "This Mate"}'s crew is set up`, told: null }
+    : { kind: "replaced", words: `${mate ?? "This Mate"} has a crew` };
 }

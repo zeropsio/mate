@@ -31,6 +31,7 @@ import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { useMateCrews, type MateCrewRead } from "../../../zerops/crew/useCrew";
 import { useZeropsSessionOptional } from "../../../zerops/ZeropsSessionProvider";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
+import { MateDot } from "../MateDot";
 import { MateFace } from "../primitives";
 import {
   crewRowFacts,
@@ -291,11 +292,15 @@ export function SidebarCrewMinis({ facts }: { readonly facts: CrewRowFacts }): R
         );
       })}
       {facts.more > 0 ? (
-        <span
-          aria-hidden="true"
-          className="inline-grid h-4 flex-none place-items-center rounded-full bg-sidebar-foreground/8 px-1.5 text-2xs leading-none font-semibold text-sidebar-muted-foreground tabular-nums"
-        >
-          +{facts.more}
+        // A crewmate folded in that needs the viewer marks the "+N" on its corner.
+        <span className="relative inline-flex flex-none">
+          <span
+            aria-hidden="true"
+            className="inline-grid h-4 flex-none place-items-center rounded-full bg-sidebar-foreground/8 px-1.5 text-2xs leading-none font-semibold text-sidebar-muted-foreground tabular-nums"
+          >
+            +{facts.more}
+          </span>
+          {facts.moreNeeds ? <MateDot place="corner" tone="attention" /> : null}
         </span>
       ) : null}
     </span>

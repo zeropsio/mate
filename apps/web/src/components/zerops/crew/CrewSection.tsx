@@ -14,6 +14,7 @@
  * composer's own height.
  */
 import { useServerConfigs } from "~/state/entities";
+import { useNowMs } from "~/zerops/useNowMs";
 import type {
   CrewAccess,
   CrewLock,
@@ -190,10 +191,14 @@ export function CrewSection(props: CrewSectionProps) {
     snapshot.crewmates.map((crewmate) => crewmate.login),
     providers,
   );
+  // The run's clock moves on the minute only while a crew turn runs.
+  const nowMs = useNowMs(run?.state === "running" && run.countingFrom != null);
   const mode = crewModeLine({
     run,
     workingCount: view.workingCount,
     tasks: snapshot.board.tasks,
+    waitsOnYou: snapshot.attention.length > 0,
+    nowMs,
     plan,
   });
   const engineError =

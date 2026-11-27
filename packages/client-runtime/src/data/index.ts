@@ -6,6 +6,10 @@
  * @module data
  */
 export { observeAccount, startMateAttention, type AccountObservation } from "./account.ts";
+export {
+  birthDeletionAcknowledgementId,
+  birthDeletionOutcomes,
+} from "./projections/birthDeletion.ts";
 export { makeMateAttentionWire } from "./adapters/mateAttention.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
 export {

@@ -4,10 +4,12 @@
  * someone yourself* begins from, the crew the Mate proposed from the goal
  * (*Let Fen suggest a crew*) and the one it set up in its conversation (a
  * `crew-ask`). Each is placed as `withBuildersPlaced` places a crew's
- * builders — on the dev services in turn, else the first pool, sharing a
- * service's database — so on a Mate whose services are read the setup opens on
- * a crew that could start. Built before they are read, its builders are saved
- * with nowhere for their copy and placed when the crew starts. The person
+ * builders — on the project's one dev service or pool, sharing a service's
+ * database — so on a Mate with one place the setup opens on a crew that could
+ * start. A card's builder may name its place; with several places and none
+ * named, or built before they are read, a builder is saved with nowhere for
+ * its copy: placed when the crew starts where there is one place, else where
+ * the person picks. The person
  * names each crewmate and writes what it is responsible for there.
  *
  * A job is written to its crewmate, and its first sentence is what the Crew
@@ -20,6 +22,7 @@ import type { CrewMemberKind, CrewProposal } from "@t3tools/contracts";
 
 import type { MateTintId } from "./brand.ts";
 import {
+  crewTints,
   parseBrief,
   withBuildersPlaced,
   type CrewDefinition,
@@ -60,21 +63,6 @@ export const CREW_BRIEF_TEMPLATE = `Describe what the crew builds and why.
 - The outcome that finishes the work.
 `;
 
-/**
- * The tints a starting crew takes, in turn: the lead violet, the builders sky
- * and coral — the setup's three faces — stepping past the Mate's own.
- */
-const CREW_TINTS: ReadonlyArray<MateTintId> = [
-  "violet",
-  "sky",
-  "coral",
-  "olive",
-  "rose",
-  "sand",
-  "slate",
-  "amber",
-];
-
 interface Seat {
   readonly handle: string;
   readonly displayName: string;
@@ -84,6 +72,9 @@ interface Seat {
   readonly login?: string;
   readonly model?: string;
   readonly effort?: string;
+  /** A builder's place, where it was named: a dev service, or a dev pool. */
+  readonly host?: string;
+  readonly pool?: string;
 }
 
 const seatsOf = (template: CrewTemplateId): ReadonlyArray<Seat> => {
@@ -130,19 +121,24 @@ export interface CrewAskSeat {
   readonly login?: string | undefined;
   readonly model?: string | undefined;
   readonly effort?: string | undefined;
+  /** A builder's dev service or dev pool, by its hostname; absent where none was named. */
+  readonly place?: string | undefined;
 }
 
 export interface CrewFromAskInput extends Omit<CrewFromProposalInput, "proposal"> {
   readonly seats: ReadonlyArray<CrewAskSeat>;
+  /** The crew card whose press set it up (`CrewDefinition.ask`); absent for a proposal. */
+  readonly ask?: string | undefined;
 }
 
 /**
  * The crew a Mate set up, as a crew home: each crewmate named as set up, its handle from its name
  * (once each), its job opening with its part — the line its row says — and going on as the
  * starting crew's lead or builder, or as a reviewer, on the login, model and effort it was set up
- * on.
+ * on, a builder on the place it was set up on (a pool, when one of the project's pools is named;
+ * else a dev service). A card's crew names the card, so the card knows the crew is its own.
  */
-export const crewFromAsk = (input: CrewFromAskInput): CrewDefinition => {
+export const crewFromAsk = ({ ask, ...input }: CrewFromAskInput): CrewDefinition => {
   const taken = new Set<string>();
   const unique = (name: string): string => {
     const base = handleOf(name);
@@ -156,7 +152,7 @@ export const crewFromAsk = (input: CrewFromAskInput): CrewDefinition => {
   };
   const jobOf = (kind: CrewMemberKind): string =>
     kind === "lead" ? LEAD_JOB : kind === "reader" ? REVIEWER_JOB : BUILDER_JOB;
-  return crewOf(
+  const crew = crewOf(
     input.seats.map((seat): Seat => ({
       handle: unique(seat.name),
       displayName: seat.name,
@@ -165,9 +161,15 @@ export const crewFromAsk = (input: CrewFromAskInput): CrewDefinition => {
       ...(seat.login === undefined ? {} : { login: seat.login }),
       ...(seat.model === undefined ? {} : { model: seat.model }),
       ...(seat.effort === undefined ? {} : { effort: seat.effort }),
+      ...(seat.kind !== "writer" || seat.place === undefined
+        ? {}
+        : (input.pools ?? []).includes(seat.place)
+          ? { pool: seat.place }
+          : { host: seat.place }),
     })),
     input,
   );
+  return ask === undefined ? crew : { ...crew, ask };
 };
 
 /** The crew the Mate proposed from the goal: its lead, then its builders. */
@@ -184,18 +186,20 @@ const crewOf = (
   seats: ReadonlyArray<Seat>,
   input: Omit<CrewTemplateInput, "template">,
 ): CrewDefinition => {
-  const tints = CREW_TINTS.filter((tint) => tint !== input.mateTint);
-  const members = seats.map((seat, index): CrewMemberSpec => ({
+  const tints = crewTints(seats, input.mateTint);
+  const members = seats.map((seat): CrewMemberSpec => ({
     handle: seat.handle,
     displayName: seat.displayName,
     kind: seat.kind,
     readOnly: seat.kind !== "writer",
-    tint: tints[index % tints.length]!,
+    tint: tints.get(seat.handle)!,
     restartAfterMerge: false,
     afterLandRestart: false,
     ...(seat.login === undefined ? {} : { login: seat.login }),
     ...(seat.model === undefined ? {} : { model: seat.model }),
     ...(seat.effort === undefined ? {} : { effort: seat.effort }),
+    ...(seat.host === undefined ? {} : { host: seat.host }),
+    ...(seat.pool === undefined ? {} : { pool: seat.pool }),
     env: {},
     migrations: [],
     job: seat.job,

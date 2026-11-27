@@ -413,6 +413,11 @@ export const CrewRun = Schema.Struct({
    * included; a client reads either the same way.
    */
   elapsedMs: NonNegativeInt,
+  /**
+   * While a crew turn runs, when `elapsedMs` was read: the clock runs on from there. `null` while
+   * it stands (nobody works); absent from a Mate that does not say, read as standing.
+   */
+  countingFrom: Schema.optionalKey(Schema.NullOr(IsoDateTime)),
   spentUsd: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
   /** The usage window's current use; `null` when the login reports none. */
   usagePercent: Schema.NullOr(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100 }))),
@@ -496,6 +501,8 @@ export const CrewSummary = Schema.Struct({
   briefVersion: PositiveInt,
   /** The brief's first two lines. */
   briefExcerpt: Schema.String,
+  /** The crew card whose press set the crew up (`crew.yaml`'s `ask`); absent for any other crew. */
+  ask: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type CrewSummary = typeof CrewSummary.Type;
 
@@ -524,7 +531,12 @@ export const CrewSeam = Schema.Union([
   }),
   Schema.Struct({ seam: Schema.Literal("closed"), taskId: CrewTaskId, number: PositiveInt }),
   Schema.Struct({ seam: Schema.Literal("saved"), apply: CrewApplyChoice }),
-  Schema.Struct({ seam: Schema.Literal("stint"), previousThreadId: Schema.NullOr(ThreadId) }),
+  Schema.Struct({
+    seam: Schema.Literal("stint"),
+    previousThreadId: Schema.NullOr(ThreadId),
+    /** The person who opened it (*Start fresh*), by their recorded subject; absent: the crew. */
+    by: Schema.optionalKey(Schema.String),
+  }),
   Schema.Struct({
     seam: Schema.Literal("swept"),
     branch: TrimmedNonEmptyString,
@@ -664,7 +676,8 @@ const runRef = { runId: CrewRunId } as const;
  * (PRD §2.3).
  */
 export const CrewCommand = Schema.TaggedUnion({
-  apply: {},
+  /** The Mate's own tint, which no crewmate it gives a tint takes (`crewTints`); absent: unknown. */
+  apply: { mateTint: Schema.optionalKey(CrewTint) },
   rebuildCopy: { ...handleRef },
   /** Thaws a host whose redeploy could not be read: the person says it ended. */
   thawHost: { host: Schema.String },

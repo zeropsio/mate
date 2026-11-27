@@ -110,6 +110,16 @@
   color: var(--contrast-muted-foreground);
 }
 
+/* A card drawn in an answer keeps its own headings' look (the kit's `Text`), not the answer's
+   heading scale: this sheet is unlayered, so the kit's layered utilities come back by name. */
+.chat-markdown .chat-markdown-island :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+  color: revert-layer;
+}
+
 /* A heading owns the gap under it; the block that follows adds none.
 
    Why no rule in this sheet puts `+` or `~` after a bare tag or `*`: the browser keys a sibling

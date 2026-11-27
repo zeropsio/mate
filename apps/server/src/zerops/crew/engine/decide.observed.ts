@@ -421,7 +421,7 @@ const interrupted = (
         row: true,
         ...(delivery?.text == null
           ? {}
-          : { turn: { text: delivery.text, principal: delivery.principal } }),
+          : { turn: { text: delivery.text, card: delivery.card, principal: delivery.principal } }),
       },
     },
   });

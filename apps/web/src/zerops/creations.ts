@@ -15,9 +15,10 @@ import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { create } from "zustand";
+import { randomUUID } from "~/lib/utils";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
+import { useAccountOperationsOptional } from "./accountOperations";
 import { useNewMateDialog } from "./newMate";
 import { menuCreations } from "./menuCreations";
 import {
@@ -145,7 +146,7 @@ export function useCreationEnds(): {
       if (birth === null || operations === null) return;
       const orgId = creation.organizationId;
       operations
-        .run({ kind: "delete-birth", orgId, ...birth }, { orgId, unobserved: HQ_UNFOLLOWED })
+        .submit({ kind: "delete-birth", orgId, ...birth, id: randomUUID() })
         .catch(() => undefined);
     };
     return {

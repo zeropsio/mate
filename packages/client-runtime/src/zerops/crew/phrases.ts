@@ -97,15 +97,25 @@ export const CREW_WORKING_WITH_YOU = "Working with you · finished work waits fo
 /** The mode line while a run ends. */
 export const CREW_WRAPPING_UP = "Wrapping up";
 
-/** "Working on its own · $6.40 of $20 · 1 h 12 m of 8 h": the run as it goes. */
+/**
+ * A run as it goes, by what it is at: "Working on its own · $6.40 of $20 · 1 h 12 m of 8 h"
+ * while a crewmate works, "Waiting on you · …" while nobody does and something waits on the
+ * person, "On its own · …" between turns. The time is the time the crew worked (`elapsedMs`).
+ */
 export function crewOnItsOwnWords(
-  run: Pick<CrewRun, "spentUsd" | "elapsedMs" | "options">,
+  run: Pick<CrewRun, "spentUsd" | "options">,
+  at: "working" | "waiting-on-you" | "between",
+  elapsedMs: number,
 ): string {
   const { budgetUsd, timeLimitHours } = run.options;
   const spent = dollars(run.spentUsd, true);
-  const time = formatCrewDuration(run.elapsedMs);
+  const time = formatCrewDuration(elapsedMs);
   return [
-    "Working on its own",
+    at === "working"
+      ? "Working on its own"
+      : at === "waiting-on-you"
+        ? "Waiting on you"
+        : "On its own",
     budgetUsd === "unlimited" ? `${spent} spent` : `${spent} of ${dollars(budgetUsd)}`,
     timeLimitHours === "unlimited" ? time : `${time} of ${timeLimitHours} h`,
   ].join(" · ");
@@ -560,7 +570,7 @@ export function crewNeedSentence(
               crew.crewmates.find((candidate) => candidate.handle === by)?.kind === "lead"
             ? "The lead"
             : (crew.crewmates.find((candidate) => candidate.handle === by)?.displayName ??
-              "Its reviewer");
+              "Its review");
       return row.text === null || row.text.trim() === ""
         ? `${reviewer} sent it back.`
         : `${reviewer} sent it back: ${clause(row.text)}`;
@@ -772,11 +782,15 @@ export const CREW_SETUP_WORDS = {
   goalLine: "What the whole crew works toward. Every crewmate reads it.",
   goalPlaceholder: "What should the crew build, and why?",
   whosOnIt: "Who's on it",
-  leadAndTwo: "Start with a lead and two builders",
+  leadAndTwo: "Start with a lead and two who build",
   leadAndTwoLine: "You name them and write what each is responsible for.",
   addYourself: "Add someone yourself",
   start: "Start the crew",
   pickFirst: "Pick who's on it first.",
+  /** Why *Start the crew* waits while a builder has nowhere for its copy among several places. */
+  placeFirst: "Choose where each builder works first.",
+  /** A builder's row while it has nowhere for its copy among several places; its job picks one. */
+  choosePlace: "Choose where it works",
   /** Why *Start the crew* and *Let Fen suggest a crew* wait. */
   goalFirst: "Write the goal first.",
   /** Throws the setup's goal and picks away; the crew home goes back to nobody. */
@@ -798,7 +812,7 @@ export const crewSuggestLine = (mateName: string): string =>
 
 /**
  * The setup's footer — the one place it says where the crewmates work: their own copies, and,
- * where builders share their service's database (`sharedDatabases`, how many), that they do —
+ * where those who build share their service's database (`sharedDatabases`, how many), that they do —
  * never by a service's hostname (run 2: "on appdev").
  */
 export function crewSetUpFooter(mateName: string, sharedDatabases = 0): string {
@@ -807,9 +821,9 @@ export function crewSetUpFooter(mateName: string, sharedDatabases = 0): string {
     sharedDatabases === 0
       ? ""
       : sharedDatabases === 1
-        ? " The builders share one database."
-        : ` The builders share ${crewPossessive(mateName)} databases.`;
-  return `Each builder works in its own copy of ${code}; nothing reaches ${code} until you review it.${database} Getting the copies ready takes a minute or two; each row shows how it's going.`;
+        ? " Those who build share one database."
+        : ` Those who build share ${crewPossessive(mateName)} databases.`;
+  return `Each crewmate who builds works in its own copy of ${code}; nothing reaches ${code} until you review it.${database} Getting the copies ready takes a minute or two; each row shows how it's going.`;
 }
 
 /**
@@ -857,31 +871,34 @@ export function crewProposalFailedWords(
   }
 }
 
-/** What each kind of crewmate does, at a setup row's right edge and in its job. */
+/**
+ * Each kind of crewmate's role, as every surface a person reads names it: the lead, and what the
+ * others do. The kinds' own names (`writer`, `reader`) are the code's, never said.
+ */
 export const CREW_KIND_WORDS = {
-  lead: "Plans",
+  lead: "Lead",
   writer: "Builds",
   reader: "Reviews",
 } as const;
 
 /**
- * What a roster row says beside a crewmate's name: *Lead* for the lead not named so, and what a
- * builder or reviewer does where its job's sentence doesn't open with it — said once (run 2: the
- * roster said nobody was the lead).
+ * What a roster row says beside a crewmate's name: *Lead* for the lead not named so, and what
+ * another does where its job's sentence doesn't open with it — said once (run 2: the roster said
+ * nobody was the lead).
  */
 export function crewRoleTag(
   kind: keyof typeof CREW_KIND_WORDS,
   name: string,
   jobSentence: string,
 ): string | null {
-  if (kind === "lead") return name.trim().toLowerCase() === "lead" ? null : "Lead";
+  if (kind === "lead") return name.trim().toLowerCase() === "lead" ? null : CREW_KIND_WORDS.lead;
   const word = CREW_KIND_WORDS[kind];
   return jobSentence.trimStart().startsWith(word) ? null : word;
 }
 
 /** A dev service without crew ports: the setup's offer, and its press. */
 export const crewPortsOfferWords = (mateName: string): string =>
-  `To try each builder's work at its own address, ${mateName} can give each one`;
+  `To try the work of each crewmate who builds at its own address, ${mateName} can give each one`;
 export const crewAskMateWord = (mateName: string): string => `Ask ${mateName}`;
 
 export const crewPoolOptionWord = (pool: string): string => `${pool} — a copy of its own`;
@@ -915,7 +932,7 @@ export const CREW_JOB_WORDS = {
   does: "What it does",
   builds: CREW_KIND_WORDS.writer,
   reviews: CREW_KIND_WORDS.reader,
-  reviewsLine: "Reads and checks the others' work. Changes nothing.",
+  reviewsLine: "Reviews the others' work. Changes nothing.",
   more: "More",
   /** The job past its first line: what the crewmate is told, which its row never says. */
   howItWorks: "How it works",
@@ -949,23 +966,34 @@ export const CREW_JOB_WORDS = {
 export const crewWaitingWords = (name: string): string => `${name} isn't in the crew yet`;
 export const CREW_WAITING_REMOVE = "Remove";
 
-/** Who a crewmate is, under its name in its job. */
-export const crewOneOfWord = (mateName: string, lead: boolean): string =>
-  lead ? `${crewPossessive(mateName)} lead` : `One of ${crewPossessive(mateName)} crew`;
+/**
+ * Who a crewmate is, by its role, under its name in its job and its empty conversation: "Fen's
+ * lead", "Builds in Fen's crew", "Reviews in Fen's crew".
+ */
+export const crewRoleWord = (mateName: string, kind: Crewmate["kind"]): string =>
+  kind === "lead"
+    ? `${crewPossessive(mateName)} lead`
+    : `${CREW_KIND_WORDS[kind]} in ${crewPossessive(mateName)} crew`;
 
 /** *Builds*' line. */
 export const crewBuildsLine = (mateName: string): string =>
   `Changes code, in its own copy of ${crewPossessive(mateName)} code.`;
 
+/** Where a builder works: its dev service, or its dev pool (a copy of its own from it). */
+export const crewPlaceWord = (place: string): string => `works on ${place}`;
+
 /** More's summary line while it is folded. */
 export function crewMoreSummary(input: {
   readonly runsOn: string;
+  /** A builder's dev service or pool; `null` for a crewmate that reads, or one not chosen yet. */
+  readonly place: string | null;
   readonly check: string | null;
   readonly run: string | null;
 }): string {
   return [
     "Its name and face",
     `runs on ${input.runsOn}`,
+    input.place === null ? null : crewPlaceWord(input.place),
     input.check === null ? null : `checks its work with ${input.check}`,
     input.run === null ? null : `starts its app with ${input.run}`,
   ]
@@ -998,11 +1026,11 @@ const REFUSALS: Readonly<Record<CrewRefusalReason, string>> = {
   unavailable: "Crew mode is off in this Mate",
   "no-crew": "No crew is set up yet",
   "invalid-definition": "The crew's setup has a mistake",
-  "copy-refused": "The writer could not get its copy",
+  "copy-refused": "A crewmate who builds could not get its copy",
   "handle-taken": "That name is taken",
   "no-free-disk": "The service has no free disk for another copy of the code",
   "database-undeclared":
-    "A builder works on a service with a database and doesn't say whether it shares it",
+    "A crewmate who builds works on a service with a database and doesn't say whether it shares it",
   "no-mention": "Pick who it's for, or add a lead to split the work",
   "unknown-crewmate": "There is no such crewmate on the crew",
   "unknown-task": "That piece of work is gone",
@@ -1170,6 +1198,13 @@ export function crewSeamWords(
 }
 
 /**
+ * *Start fresh*'s line, naming who pressed it: `"you"` for the person looking, a colleague by
+ * name, `null` when the record or the member list does not say.
+ */
+export const crewClearedWord = (who: "you" | string | null): string =>
+  `${who === null ? "Its conversation was cleared" : `${who === "you" ? "You" : who} cleared its conversation`} — it keeps its job and its work`;
+
+/**
  * Why a crewmate's one conversation started a new session, as the line in it says (engine
  * `session-rotated`, `CREW_SESSION_REASONS`): the conversation goes on, so the line says what
  * changed and what it keeps — never a link to another.
@@ -1177,7 +1212,7 @@ export function crewSeamWords(
 export function crewSessionWord(reason: string | undefined): string {
   switch (reason) {
     case "cleared":
-      return "You cleared its conversation — it keeps its job and its work";
+      return crewClearedWord(null);
     case "context":
       return "It started afresh: its conversation grew too long — it carries on from memory";
     case "job":
@@ -1289,40 +1324,42 @@ export function crewLoginRunsWord(names: ReadonlyArray<string>, lead: string | n
 /* ------------------------------------------------------------ the conversation's line */
 
 /**
- * What each kind of crewmate does, as a clause: the lead plans and reviews,
- * a builder works in its own copy of the Mate's code (the job view's
- * _Builds_), a reviewer changes nothing (its _Reviews_).
+ * What each kind of crewmate does, as a clause after its role: the lead
+ * plans and reviews, one that builds works in its own copy of the Mate's code
+ * (the job view's _Builds_), one that reviews changes nothing (its _Reviews_).
  */
 export function crewmateDoesWords(kind: Crewmate["kind"], mateName: string): string {
   switch (kind) {
     case "lead":
       return "plans and reviews the crew's work";
     case "writer":
-      return `builds its part in its own copy of ${crewPossessive(mateName)} code`;
+      return `works in its own copy of ${crewPossessive(mateName)} code`;
     case "reader":
-      return "checks the others' work and changes nothing";
+      return "changes nothing";
   }
 }
 
 /**
- * Who a crewmate is on the conversation's line, after its name: one of its
- * Mate's crew, or the Mate's lead and what the lead does. A face's tooltip
- * and its accessible name say it; the name stands before it.
+ * Who a crewmate is on the conversation's line, after its name: its role in
+ * its Mate's crew, and for the lead what the lead does. A face's tooltip and
+ * its accessible name say it; the name stands before it.
  */
-export function crewmateRoleWords(mateName: string, lead: boolean): string {
-  return lead
-    ? `, ${mateName}'s lead — ${crewmateDoesWords("lead", mateName)}`
-    : `, one of ${mateName}'s crew`;
+export function crewmateRoleWords(mateName: string, kind: Crewmate["kind"] | null): string {
+  if (kind === "lead") return `, ${mateName}'s lead — ${crewmateDoesWords("lead", mateName)}`;
+  // Read from memory, a crewmate's role is not said: only whose crew it is in.
+  return kind === null
+    ? `, in ${crewPossessive(mateName)} crew`
+    : `, ${CREW_KIND_WORDS[kind].toLowerCase()} in ${crewPossessive(mateName)} crew`;
 }
 
 /**
  * Whose a crewmate is and what it does, the one line under its name in its
  * empty conversation, after its Mate's small face: "Fen's lead · plans and
- * reviews the crew's work", "One of Fen's crew · builds its part in its own
- * copy of Fen's code".
+ * reviews the crew's work", "Builds in Fen's crew · works in its own copy of
+ * Fen's code".
  */
 export function crewmateWhoseLine(kind: Crewmate["kind"], mateName: string): string {
-  return `${crewOneOfWord(mateName, kind === "lead")} · ${crewmateDoesWords(kind, mateName)}`;
+  return `${crewRoleWord(mateName, kind)} · ${crewmateDoesWords(kind, mateName)}`;
 }
 
 /** The Mate's own chat, as its face on the line says it while another chat is open. */

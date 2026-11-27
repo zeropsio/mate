@@ -379,6 +379,12 @@ interface ChatComposerProps {
    */
   crewRunsOn?: { readonly label: string; readonly onEdit: () => void } | undefined;
   /**
+   * A crewmate's chat, known from its first paint: the model the crewmate is set to, which Send
+   * checks in place of the one its conversation last saved; `null` for its login's default, and
+   * while the crew is unread. Absent in every other chat.
+   */
+  crewmateModel?: string | null | undefined;
+  /**
    * The composer's top (C3): what waits on the person — this Mate's change,
    * waiting for their review — as a section inside the composer, sharing its
    * edges and corners, over what they write.
@@ -548,6 +554,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     mentionCrewmates,
     mentionMates,
     crewRunsOn,
+    crewmateModel,
     top,
     phase,
     isConnecting,
@@ -852,9 +859,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectModelSelection: activeProjectDefaultModelSelection,
     settings,
   });
+  // A crewmate's chat runs the model the crewmate is set to, never the one its conversation last
+  // saved: that is the model Send checks.
   const providerSendBlockReason =
-    getAntigravitySendBlockReason(selectedProviderEntry?.snapshot, selectedModel) ??
-    getProviderCatalogSendBlockReason(selectedProviderEntry?.snapshot);
+    getAntigravitySendBlockReason(
+      selectedProviderEntry?.snapshot,
+      crewmateModel === undefined ? selectedModel : crewmateModel,
+    ) ?? getProviderCatalogSendBlockReason(selectedProviderEntry?.snapshot);
   const providerSendable = agentTakesTurn({
     providerPicked: !noProviderAvailable,
     providerBlock: providerSendBlockReason,

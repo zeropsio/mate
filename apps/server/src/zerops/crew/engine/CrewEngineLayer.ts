@@ -43,14 +43,14 @@ import {
   type CrewSnapshot,
   type CrewTaskPage,
   type CrewTaskPageInput,
-  type CrewTint,
   type Principal,
   type RecordedCrewSeam,
   type ZeropsLogin,
 } from "@t3tools/contracts";
-import { MATE_TINT_IDS } from "@t3tools/shared/brand";
+import type { MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_HOME_FILE,
+  crewTints,
   parseCrewHome,
   renderCrewHome,
   validateCrewTopology,
@@ -263,28 +263,23 @@ const refuse = (reason: CrewRefusalReason, detail: string | null = null) =>
 export const principalOf = (principal: TurnPrincipal): Principal =>
   principal.kind === "session" ? { kind: "person", subject: principal.subject } : principal;
 
-/** Tints for crewmates without one: the first a crewmate of this crew does not wear. */
+/**
+ * Each crewmate's tint at Apply (`crewTints`): its own, else the one it wore, else the first a
+ * crewmate of this crew does not wear, never its Mate's.
+ */
 const withTints = (
   members: ReadonlyArray<CrewMemberSpec>,
   previous: CrewState,
+  mateTint: MateTintId | undefined,
 ): ReadonlyArray<CrewMemberSpec> => {
-  const chosen = new Map<string, CrewTint>();
-  for (const member of members) {
-    const kept = member.tint ?? previous.members[member.handle]?.tint;
-    if (kept !== undefined && kept !== null) chosen.set(member.handle, kept as CrewTint);
-  }
-  for (const member of members) {
-    if (chosen.has(member.handle)) continue;
-    const taken = new Set(chosen.values());
-    chosen.set(
-      member.handle,
-      (MATE_TINT_IDS.find((tint) => !taken.has(tint)) ?? MATE_TINT_IDS[0]) as CrewTint,
-    );
-  }
-  return members.map((member) => {
-    const tint = chosen.get(member.handle);
-    return tint === undefined ? member : { ...member, tint };
-  });
+  const tints = crewTints(
+    members.map((member) => ({
+      handle: member.handle,
+      tint: member.tint ?? previous.members[member.handle]?.tint,
+    })),
+    mateTint,
+  );
+  return members.map((member) => ({ ...member, tint: tints.get(member.handle)! }));
 };
 
 /** What installs the crew's thread policies for the scope it runs in (`installCrewThreadPolicy`). */
@@ -755,7 +750,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       });
 
     /** The crew home as saved, with existing writers' recorded leases resolved before admission. */
-    const loadHome = (current: CrewState, applying: boolean) =>
+    const loadHome = (current: CrewState, applying: boolean, mateTint: MateTintId | undefined) =>
       Effect.gen(function* () {
         const parsed = yield* home.load;
         if (parsed.definition === undefined || parsed.issues.length > 0) {
@@ -839,6 +834,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
               login: member.login ?? defaultLogin,
             })),
             current,
+            mateTint,
           ),
         };
         return filled;
@@ -1157,7 +1153,13 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         if (read !== undefined) return read;
         const needsHome =
           press._tag === "apply" || press._tag === "briefSave" || press._tag === "jobSave";
-        let definition = needsHome ? yield* loadHome(current, press._tag === "apply") : undefined;
+        let definition = needsHome
+          ? yield* loadHome(
+              current,
+              press._tag === "apply",
+              press._tag === "apply" ? press.mateTint : undefined,
+            )
+          : undefined;
         const refusal = yield* admitAt(doorLogins(current, press, definition), principal);
         if (refusal !== null) return yield* refuse("not-allowed", refusal);
         yield* requireSpendReported(current, press, definition);

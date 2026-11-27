@@ -7,8 +7,10 @@
  * fills the rows to edit — or from *Start with a lead and two builders*, or
  * *Add someone yourself*. Once drafted, a row per crewmate exactly like the
  * tab's, each opening its job. *Start the crew* places each builder with
- * nowhere for its copy on the Mate's dev services as last read, or its pool
- * (`withBuildersPlaced`): a crew can be drafted before they are read. It then
+ * nowhere for its copy on the Mate's one dev service or pool as last read
+ * (`withBuildersPlaced`): a crew can be drafted before they are read. Among
+ * several, such a builder's row asks the person to choose, its job picks the
+ * place, and *Start the crew* waits for it. It then
  * makes each builder its own copy of the Mate's code, and each row says how
  * that goes, until the crew stands and the view becomes the tab.
  *
@@ -21,6 +23,7 @@
  * saying why.
  */
 import { Text } from "~/components/ui/text";
+import { useServerConfigs } from "~/state/entities";
 import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_COPY_READYING,
@@ -47,7 +50,9 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_BRIEF_FILE,
   CREW_HOME_FILE,
+  crewTints,
   renderCrewHome,
+  unplacedBuilders,
   withBuildersPlaced,
   type CrewDefinition,
   type CrewMemberSpec,
@@ -193,20 +198,32 @@ export function CrewSetup(props: CrewSetupProps) {
   };
 
   // A crew the Mate set up in its conversation fills the setup in once it is read, as its proposal
-  // does: the goal and the rows, over a draft here — its card's press asked for it. It fills in at
-  // once, on the dev services as the crew last read them; opening the tab reads them again only
-  // after, so a builder may have nowhere for its copy yet: it keeps its row, and Start places it.
+  // does: the goal and the rows, over a draft here — its card's press asked for it, and the crew
+  // names the card, so the card says it is set up once it starts (`crewAskState`) — on a Mate
+  // whose server reads that name (`crewCardAsk`); an older one refuses it, so it goes unnamed
+  // there and the card says only that the Mate has a crew. It fills in once the Mate's pools are
+  // read, on the dev services as the crew last read them; a builder the card placed nowhere keeps
+  // its row with nowhere for its copy, and Start places it where there is one place.
   const filledIn = useRef<string | null>(null);
   const { proposed } = props;
+  const capabilities = useServerConfigs().get(props.environmentId)?.environment.capabilities;
   useEffect(() => {
     if (proposed === undefined || filledIn.current === proposed.key) return;
-    if (props.applied || members === null || busy) return;
+    if (props.applied || members === null || busy || capabilities === undefined) return;
+    // The Mate's pools are read first: a card's named pool is never written as a dev service.
+    if (props.pools === undefined) return;
     filledIn.current = proposed.key;
     proposal.cancel();
     setStartFailure(null);
     draft.setGoal(proposed.goal);
     const next = withGoal(
-      crewFromAsk({ seats: proposed.seats, crew: "crew", ...hostsOf, ...mateTint }),
+      crewFromAsk({
+        seats: proposed.seats,
+        ask: capabilities.crewCardAsk === true ? proposed.key : undefined,
+        crew: "crew",
+        ...hostsOf,
+        ...mateTint,
+      }),
       proposed.goal,
     );
     void saveAll(next).then((saved) => setAsked(saved));
@@ -249,10 +266,19 @@ export function CrewSetup(props: CrewSetupProps) {
 
   const startLock = members === null ? null : (props.startLock?.(members) ?? null);
   const writers = members === null ? [] : members.filter((member) => member.kind === "writer");
+  // Each drafted face as every other surface draws it (`crewTints`), a tint it names none of too.
+  const tints = crewTints(members ?? [], mate.tint);
   const noDevHost =
     props.devHosts.length === 0 &&
     !props.pools?.length &&
     writers.some((member) => member.pool === undefined);
+  // Among several places nothing picks a builder's for it: its row asks, and Start waits.
+  const severalPlaces = devHosts.length + (props.pools?.length ?? 0) > 1;
+  const toPlace = new Set(
+    severalPlaces && definition !== null
+      ? unplacedBuilders(definition).map((member) => member.handle)
+      : [],
+  );
   // The services whose database its builders share: the footer says how many, never their names.
   const sharedDatabases = new Set(
     writers.flatMap((member) =>
@@ -278,6 +304,7 @@ export function CrewSetup(props: CrewSetupProps) {
   const startPress = crewStartState({
     goal,
     drafted,
+    unplaced: toPlace.size > 0,
     blocked:
       busy ||
       props.applied ||
@@ -416,10 +443,12 @@ export function CrewSetup(props: CrewSetupProps) {
             {members.map((member) => (
               <SetupRow
                 applied={props.applied}
+                choosePlace={toPlace.has(member.handle)}
                 crewmate={props.crewmates.find((row) => row.handle === member.handle)}
                 key={member.handle}
                 mateName={mate.name}
                 member={member}
+                tint={tints.get(member.handle)!}
                 onOpen={() => {
                   void saveGoal().then(() => props.onEditCrewmate(member.handle));
                 }}
@@ -541,19 +570,27 @@ function TrioFaces({ mateTint }: { readonly mateTint: MateTintId | undefined }) 
   );
 }
 
-/** A crewmate being set up: the tab's row — its name, the first line of its job — and its copy's progress once it starts. */
+/**
+ * A crewmate being set up: the tab's row — its name, the first line of its job — that a builder
+ * with nowhere for its copy among several places has yet to be placed, and its copy's progress
+ * once it starts.
+ */
 function SetupRow({
   member,
   crewmate,
   applied,
+  choosePlace,
   mateName,
   onOpen,
+  tint,
 }: {
   readonly member: CrewMemberSpec;
   readonly crewmate: Crewmate | undefined;
   readonly applied: boolean;
+  readonly choosePlace: boolean;
   readonly mateName: string;
   readonly onOpen: () => void;
+  readonly tint: MateTintId;
 }) {
   const lane = applied ? (crewmate?.lane ?? null) : null;
   const readying = lane?.state === "creating" || lane?.state === "setting-up";
@@ -565,12 +602,11 @@ function SetupRow({
     <Row
       aria-disabled={applied || undefined}
       data-crew-setup-row={member.handle}
-      lead={
-        <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
-      }
+      lead={<MateFace size={24} state={readying ? "working" : "idle"} tint={tint} />}
       line={
         <>
           <span className="block">{sentence}</span>
+          {choosePlace ? <span className="block">{CREW_SETUP_WORDS.choosePlace}</span> : null}
           {readying ? <span className="block">{CREW_COPY_READYING}</span> : null}
           {broken === null ? null : (
             <Text className="block" variant="error">

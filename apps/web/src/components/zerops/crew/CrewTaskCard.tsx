@@ -11,6 +11,7 @@
  */
 import {
   CREW_PREVIOUS_STINT_LINK,
+  crewClearedWord,
   crewClosedWord,
   crewWentInWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -22,12 +23,13 @@ import type {
   Crewmate,
   ThreadId,
 } from "@t3tools/contracts";
-import { createContext, use, useMemo } from "react";
+import { createContext, use, useMemo, type ComponentProps } from "react";
 
 import { Card } from "../../ui/card";
 import type { CrewCard } from "../../chat/conversation.logic";
 import { crewTaskCardModel } from "./CrewTaskCard.logic";
 import { CrewRestartLine, CrewSeamLine } from "./CrewSeamLine";
+import { useRecordedPerson } from "~/zerops/useZeropsMateOwners";
 import { Text } from "~/components/ui/text";
 
 export interface CrewTimeline {
@@ -117,6 +119,9 @@ export function CrewSeamActivity({
     previous === null || crew === null
       ? undefined
       : { label: CREW_PREVIOUS_STINT_LINK, onOpen: () => crew.onOpenThread(previous) };
+  if (seam.seam === "stint" && seam.by !== undefined) {
+    return <CrewClearedLine asEvent={asEvent} by={seam.by} link={link} words={words} />;
+  }
   if (asEvent && seam.seam === "stint") return <CrewRestartLine link={link} text={words} />;
   return (
     <CrewSeamLine
@@ -129,5 +134,29 @@ export function CrewSeamActivity({
             : words
       }
     />
+  );
+}
+
+/**
+ * *Start fresh*'s line, naming who pressed it: a colleague's press is never "You". Only this line
+ * follows a person's name.
+ */
+function CrewClearedLine({
+  by,
+  words,
+  link,
+  asEvent,
+}: {
+  readonly by: string;
+  readonly words: string;
+  readonly link: ComponentProps<typeof CrewSeamLine>["link"];
+  readonly asEvent: boolean;
+}) {
+  const clearedBy = useRecordedPerson(by);
+  const text = clearedBy === null ? words : crewClearedWord(clearedBy);
+  return asEvent ? (
+    <CrewRestartLine link={link} text={text} />
+  ) : (
+    <CrewSeamLine link={link} text={text} />
   );
 }

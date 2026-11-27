@@ -28,7 +28,7 @@ import {
   type CrewTint,
   type Crewmate,
 } from "@t3tools/contracts";
-import { MATE_TINT_IDS } from "@t3tools/shared/brand";
+import { crewTints } from "@t3tools/shared/crewHome";
 import * as DateTime from "effect/DateTime";
 
 import { CREW_OFF_SNAPSHOT } from "../crewSnapshot.ts";
@@ -42,6 +42,7 @@ import {
   leadOf,
   membersInOrder,
   questionKey,
+  reviewUnderWay,
   runElapsedMs,
   tasksInOrder,
   usagePercentOf,
@@ -90,11 +91,6 @@ const devHostsOf = (view: CrewView): ReadonlyArray<CrewDevHost> =>
   Object.entries(view.devHosts)
     .map(([host, database]) => ({ host, database }))
     .toSorted((a, b) => a.host.localeCompare(b.host));
-
-const tintOf = (member: MemberRecord): CrewTint =>
-  (MATE_TINT_IDS as ReadonlyArray<string>).includes(member.tint ?? "")
-    ? (member.tint as CrewTint)
-    : "slate";
 
 const laneState = (
   state: CrewState,
@@ -201,7 +197,9 @@ const taskAttention = (
       const lead = leadOf(state);
       const reviewing =
         state.lead.serving?.taskId === task.id && lead !== undefined && lead.active !== null;
-      return reviewing || view.nowMs - task.updatedAt < UNATTENDED_MS
+      // The lead waits for a review it planned (`reviewUnderWay`): that review's own row says what
+      // holds it (its question to you, its plan to start), never a second need here.
+      return reviewing || reviewUnderWay(state, task) || view.nowMs - task.updatedAt < UNATTENDED_MS
         ? undefined
         : row("review-wait");
     }
@@ -331,6 +329,7 @@ const toCrewmate = (
   member: MemberRecord,
   tasks: ReadonlyArray<TaskRecord>,
   view: CrewView,
+  tint: CrewTint,
 ): Crewmate => {
   const own = tasks.filter((task) => task.owner === member.handle);
   const open = own.find((task) => isOpenTask(task.state));
@@ -341,7 +340,7 @@ const toCrewmate = (
   return {
     handle: member.handle,
     displayName: member.displayName,
-    tint: tintOf(member),
+    tint,
     kind: member.kind,
     jobFirstLine: member.jobFirstLine,
     jobVersion: member.jobVersion,
@@ -402,6 +401,7 @@ const toRun = (state: CrewState, nowMs: number): CrewRun | null => {
     startedBy: run.startedBy,
     startedAt: iso(run.startedAt),
     elapsedMs: runElapsedMs(run, nowMs),
+    countingFrom: run.since === null ? null : iso(nowMs),
     spentUsd: run.spentUsd,
     usagePercent: usagePercentOf(state),
     options: run.options,
@@ -472,6 +472,8 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
   }
   const tasks = boardTasks(state);
   const all = tasksInOrder(state);
+  const members = membersInOrder(state);
+  const tints = crewTints(members);
   const claimAttention = Object.entries(state.claims)
     .filter(([, claim]) => claim.state === "requested")
     .map(([host, claim]): CrewAttention => ({
@@ -493,8 +495,11 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
       briefTitle: applied.definition.brief.title,
       briefVersion: applied.briefVersion,
       briefExcerpt: firstLines(applied.definition.brief.text, 2),
+      ...(applied.definition.ask === undefined ? {} : { ask: applied.definition.ask }),
     },
-    crewmates: membersInOrder(state).map((member) => toCrewmate(state, member, all, view)),
+    crewmates: members.map((member) =>
+      toCrewmate(state, member, all, view, tints.get(member.handle)!),
+    ),
     hosts: Object.entries(state.hosts)
       .toSorted(([a], [b]) => a.localeCompare(b))
       .map(([host, record]) => {
