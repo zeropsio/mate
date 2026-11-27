@@ -108,3 +108,4 @@ next: MN114
 - MN108 — the live warning says only that it goes offline at once for good; breaks: the warning promises backups for services without them
 - MN109 — End on a Mate's row names the project for a project's deletion, and the Mate for its own deletion or restart; breaks: a person ends the whole project deletion thinking only the Mate's ends.
 - MN113 — A task's row reads its own change's Review build and the given-up decision even without a pull request, and an overdue take becomes unavailable by the reader's clock; breaks: a failed build reads up for review or never reaches its task row
+- MN+1 — Sites lists a pool part's stage address but never its leased workspaces; breaks: a person keeps a pool address that ends when the lease does.

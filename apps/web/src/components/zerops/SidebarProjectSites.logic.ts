@@ -5,8 +5,8 @@
  *
  * Sites is addresses: the places a person opens to follow along. Shared environments keep their
  * own sections. Under each Mate, one row per service by its real hostname, as production's and a
- * stage's are (Aleš, 2026-10-29): each part's dev (the dev service, or for a dev pool each
- * workspace zcp holds on it, by its alias) then its stage; then the Mate's other addresses. A
+ * stage's are (Aleš, 2026-10-29): each part's ordinary dev service then its stage; then the Mate's
+ * other addresses. A pool workspace is live only while its lease is held and is not an app address. A
  * service with nothing to open is its hostname, muted, its tooltip saying why. A dev on several
  * addresses is a row per address. A pool's per-slot routes are never a workspace's address, and no
  * work, status or lease shows outside a muted row's tooltip.
@@ -299,9 +299,9 @@ export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
 
 /**
  * A Mate's addresses: its parts' services (`mateParts`, the one reader every surface shows them
- * from), each part's dev then its stage, then every other public service. Never the control plane.
+ * from), each ordinary dev then its stage, then every other public service. Never the control plane.
  * `undefined` while its routes are unread — never none before the answer. Sites is addresses only
- * (Aleš, 2026-10-27): a workspace is its alias here, never the chat or the branch it is for.
+ * (Aleš, 2026-10-27).
  */
 export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined {
   if (mate.routes === undefined) return undefined;
@@ -314,11 +314,11 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
     standIns: mate.standIns,
     leases: mate.leases,
   });
-  // One row per service: a dev several parts share is listed once.
+  // Pool workspaces end with their lease; only a part's stage is its durable address.
   const services = new Map<string, SitesService>();
   for (const part of parts)
     for (const entry of [
-      ...(part.dev.length === 0 ? [devPlaceholder(mate, part)] : part.dev),
+      ...(part.pooled ? [] : part.dev.length === 0 ? [devPlaceholder(mate, part)] : part.dev),
       ...(part.preview === undefined ? [] : [part.preview]),
     ])
       if (!services.has(entry.key))
@@ -503,17 +503,10 @@ export function sitesLinkCount(sections: ReadonlyArray<SitesSection>): number {
 }
 
 /**
- * Whether the project has no address anywhere: the sections list none, and no Mate has a dev pool
- * whose leases are not read — those may hold previews nobody has read yet.
+ * Whether the project has no address anywhere in the sections already read.
  */
-export function sitesHoldNothing(
-  sections: ReadonlyArray<SitesSection>,
-  mates: ReadonlyArray<SitesMateFacts>,
-): boolean {
-  return (
-    sitesLinkCount(sections) === 0 &&
-    mates.every((mate) => mate.leases !== undefined || (mate.pools ?? []).length === 0)
-  );
+export function sitesHoldNothing(sections: ReadonlyArray<SitesSection>): boolean {
+  return sitesLinkCount(sections) === 0;
 }
 
 /**

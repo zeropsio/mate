@@ -139,7 +139,7 @@ import {
 } from "../gitBrowser/GitBrowserLink";
 import { ReviewCommits } from "./ReviewCommits";
 import { mainStagesOf, useGroupName, useMatePreviews } from "./reviewReads";
-import type { ReviewTryTargets } from "./ZeropsReview.logic";
+import type { ReviewTryTargets } from "@t3tools/client-runtime/zerops/tryItTargets";
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import { useReviewHold } from "./ZeropsReviewDialog";
@@ -623,9 +623,11 @@ function ChangeReviewData({
     flow?.mateTier,
     pull.repository,
     pull.repositoryUrl,
+    pull.state !== "closed" && !pull.merged,
     pull.branch,
     pull.headSha,
     pull.reviewBuild,
+    now,
   );
   // Reviewed together: a queued change that settled elsewhere leaves, by the open changes the flow
   // holds; a change done here moves the queue on, after a beat that says so.

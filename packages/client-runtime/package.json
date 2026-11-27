@@ -515,6 +515,10 @@
       "types": "./src/zerops/releaseFacts.ts",
       "default": "./src/zerops/releaseFacts.ts"
     },
+    "./zerops/tryItTargets": {
+      "types": "./src/zerops/tryItTargets.ts",
+      "default": "./src/zerops/tryItTargets.ts"
+    },
     "./zerops/reviewVerdict": {
       "types": "./src/zerops/reviewVerdict.ts",
       "default": "./src/zerops/reviewVerdict.ts"

@@ -918,26 +918,44 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
   };
 }
 
-/** "Try it": the change's Preview and its Review build's passed public stages. */
+/** "Try it": the app's stage and, while the change is open, its live Preview. */
 export function ReviewTry({
   previews,
   previewState,
   builds = [],
 }: {
   readonly previews: ReadonlyArray<{ readonly service: string; readonly url: string }>;
-  readonly previewState?: "reading" | "not-running" | "available" | undefined;
+  readonly previewState?: "reading" | "not-running" | "available" | "ended" | undefined;
   readonly builds?:
     | ReadonlyArray<{
         readonly service: string;
         readonly url: string;
-        readonly head: string;
-        readonly at: string;
+        readonly version: "building" | "unknown";
       }>
     | undefined;
 }) {
   return (
     <ReviewSection title="Try it">
       <div className="flex flex-wrap gap-2">
+        {builds.map((build) => (
+          <div className="flex min-w-0 flex-col" key={`${build.service}:${build.url}`}>
+            <Button
+              className="max-w-full"
+              render={<a href={build.url} rel="noreferrer" target="_blank" />}
+              size="sm"
+              title={build.url}
+              variant="secondary"
+            >
+              <GlobeIcon aria-hidden="true" />
+              <span className="flex-none font-medium">Your app</span>
+              <span className="min-w-0 truncate text-muted-foreground">· {build.service}</span>
+              <ArrowUpRightIcon aria-hidden="true" />
+            </Button>
+            <Text className="mt-1" render={<p />} variant="description">
+              {build.version === "building" ? "Building this version" : "Version not available"}
+            </Text>
+          </div>
+        ))}
         {previews.map((preview) => (
           <Button
             className="max-w-full"
@@ -947,31 +965,18 @@ export function ReviewTry({
             variant="secondary"
           >
             <GlobeIcon aria-hidden="true" />
-            <span className="flex-none font-medium">Preview</span>
+            <span className="flex-none font-medium">Live while the Mate works</span>
             <span className="min-w-0 truncate text-muted-foreground">· {preview.service}</span>
             <ArrowUpRightIcon aria-hidden="true" />
           </Button>
         ))}
-        {builds.map((build) => (
-          <Button
-            className="max-w-full"
-            key={`${build.service}:${build.url}`}
-            render={<a href={build.url} rel="noreferrer" target="_blank" />}
-            size="sm"
-            title={build.url}
-            variant="secondary"
-          >
-            <GlobeIcon aria-hidden="true" />
-            <span className="flex-none font-medium">Review build</span>
-            <span className="min-w-0 truncate text-muted-foreground">
-              · {build.service} · {build.url} · {build.head.slice(0, 7)} ·{" "}
-              <time dateTime={build.at}>{new Date(build.at).toLocaleString()}</time>
-            </span>
-            <ArrowUpRightIcon aria-hidden="true" />
-          </Button>
-        ))}
       </div>
-      {previews.length > 0 ? null : (
+      {builds.length === 0 ? (
+        <Text className="mt-1.5" render={<p />} variant="description">
+          App address not available yet.
+        </Text>
+      ) : null}
+      {previews.length > 0 || previewState === "ended" ? null : (
         <Text className="mt-1.5" render={<p />} variant="description">
           {previewState === "reading" ? "Preview not read yet." : "Preview is not running."}
         </Text>

@@ -8,26 +8,21 @@
  *
  * Pure: no DOM, no clock.
  */
-import type { MessageAbout, ZeropsDevServer, ZeropsLease } from "@t3tools/contracts";
+import type { MessageAbout } from "@t3tools/contracts";
 import {
   deployedVersion,
-  leaseOfRepository,
   type Moved,
   type ProductionRun,
   type ReviewPrimary,
   type ReviewState,
   type ReviewVerdict,
   type ReleaseReplaces,
-  type ZeropsPublicRoute,
   PRODUCTION_OUTSIDE_DECIDES,
 } from "@t3tools/client-runtime/zerops";
 import { keyRenewedBy, stopKeyGap } from "@t3tools/client-runtime/zerops/flow";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import type { KeyRenewal } from "~/zerops/renewDeployKey.logic";
-import { mateParts, poolWorkspaceLink } from "@t3tools/client-runtime/zerops/mateParts";
-import { reviewBuildVerdict } from "@t3tools/client-runtime/zerops/reviewVerdict";
-import { parseAttachmentUrl, repoOfUrl, type HqReviewBuild } from "@t3tools/shared/hqChanges";
-import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
+import { parseAttachmentUrl } from "@t3tools/shared/hqChanges";
 import { NO_ACCESS } from "~/zerops/hqRead.logic";
 import { environmentTitle } from "../place/place.logic";
 
@@ -711,98 +706,6 @@ export function stageDeploysMerges(row: {
     row.commit !== undefined ||
     row.deploys.some((job) => job.kind === "deploy" && job.state === "live")
   );
-}
-
-/** The change's own workspace and its Review build's passed public stages. */
-export interface ReviewTryTargets {
-  readonly previews: ReadonlyArray<{ readonly service: string; readonly url: string }>;
-  readonly previewState: "reading" | "not-running" | "available";
-  readonly builds: ReadonlyArray<{
-    readonly service: string;
-    readonly url: string;
-    readonly head: string;
-    readonly at: string;
-  }>;
-}
-
-/** Select the branch's workspace and only stages proven by a result at its head. */
-export function tryItTargets(input: {
-  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly hostnames: ReadonlyArray<string>;
-  readonly pools: ReadonlyArray<string> | undefined;
-  readonly controlPlane: string | undefined;
-  readonly tier: string | undefined;
-  readonly repository: string;
-  readonly repositoryUrl: string | undefined;
-  /** The external repository HQ says this repository follows or mirrors. */
-  readonly repositoryRemote: string | undefined;
-  readonly branch: string | undefined;
-  readonly head: string | undefined;
-  readonly reviewBuild: HqReviewBuild | undefined;
-  readonly leases: ReadonlyArray<ZeropsLease> | undefined;
-  /** The classic dev checkout's branch, null when read and not a branch. */
-  readonly classicBranch: string | null | undefined;
-  /** The dev servers zcp last read on the classic service. */
-  readonly classicServers: ReadonlyArray<ZeropsDevServer> | undefined;
-}): ReviewTryTargets {
-  const { parts } = mateParts({
-    services: input.hostnames.map((hostname) => ({ hostname })),
-    routes: input.routes,
-    pools: input.pools,
-    controlPlane: input.controlPlane,
-    tier: input.tier,
-  });
-  const classic = parts.find((part) => part.devService === input.repository && !part.pooled);
-  const changeRepo = input.repositoryUrl === undefined ? null : repoOfUrl(input.repositoryUrl);
-  let repositoryUnread = false;
-  const previews = (input.leases ?? []).flatMap((lease) => {
-    if (input.branch === undefined || lease.branch !== input.branch) return [];
-    const link = poolWorkspaceLink(lease);
-    if (link.url === undefined) return [];
-    const remoteMatches =
-      lease.repo !== undefined &&
-      input.repositoryRemote !== undefined &&
-      normalizeGitRemoteUrl(lease.repo) === normalizeGitRemoteUrl(input.repositoryRemote);
-    const leaseRepo = lease.repo === undefined ? null : repoOfUrl(lease.repo);
-    if (remoteMatches) return [{ service: lease.alias, url: link.url }];
-    if (
-      changeRepo === null ||
-      leaseRepo === null ||
-      changeRepo.hq.toLowerCase() !== leaseRepo.hq.toLowerCase()
-    ) {
-      repositoryUnread = true;
-      return [];
-    }
-    return leaseOfRepository(lease.repo, input.repositoryUrl)
-      ? [{ service: lease.alias, url: link.url }]
-      : [];
-  });
-  if (input.branch !== undefined && input.classicBranch === input.branch && classic !== undefined) {
-    const link = poolWorkspaceLink({ state: "held", devServers: input.classicServers });
-    if (link.url !== undefined) previews.push({ service: classic.devService, url: link.url });
-  }
-  const reading =
-    input.branch === undefined ||
-    ((input.pools === undefined || input.pools.length > 0) && input.leases === undefined) ||
-    repositoryUnread ||
-    (classic !== undefined &&
-      (input.classicBranch === undefined ||
-        (input.classicBranch === input.branch && input.classicServers === undefined)));
-  const build = input.reviewBuild;
-  const builds =
-    build !== undefined && input.head !== undefined && build.head === input.head
-      ? (reviewBuildVerdict(build, undefined)?.links ?? []).map(({ setup, url }) => ({
-          service: setup,
-          url,
-          head: build.head,
-          at: build.at,
-        }))
-      : [];
-  return {
-    previews,
-    previewState: previews.length > 0 ? "available" : reading ? "reading" : "not-running",
-    builds,
-  };
 }
 
 /**

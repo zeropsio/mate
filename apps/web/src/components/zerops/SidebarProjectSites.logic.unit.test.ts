@@ -1,6 +1,6 @@
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import { expect, it } from "vite-plus/test";
-import { applicationSetupOf, projectSitesStatus } from "./SidebarProjectSites.logic.ts";
+import { applicationSetupOf, mateLinks, projectSitesStatus } from "./SidebarProjectSites.logic.ts";
 
 const AT = "2026-11-23T10:00:00.000Z";
 const operation = (kind: string, more: Partial<HqOperation> = {}): HqOperation => ({
@@ -38,4 +38,31 @@ it("MN26: A project's menu row says Setting up while HQ's frame shows its applic
     expect(status?.sentence, JSON.stringify(shown)).toBe(sentence);
     if (sentence !== undefined) expect(status?.word).toBe("Setting up");
   }
+});
+
+// witness: apps/web/src/components/zerops/SidebarProjectSites.logic.ts | part.pooled ? [] : part.dev.length === 0 → part.pooled ? part.dev : part.dev.length === 0
+it("MN+1: Sites lists a pool part's stage address but never its leased workspaces; breaks: a person keeps a pool address that ends when the lease does.", () => {
+  const mate = {
+    projectId: "mate",
+    name: "Mate",
+    owner: undefined,
+    routes: [
+      { service: "webstage", url: "https://stage.example", host: "stage.example", port: 443 },
+    ],
+    hostnames: ["webpool", "webstage"],
+    controlPlane: undefined,
+    pools: ["webpool"],
+    poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
+    leases: [
+      {
+        alias: "webpool-1",
+        pool: "webpool",
+        state: "held",
+        devServers: [{ name: "web", status: "running", url: "https://slot.example", readAt: AT }],
+      },
+    ],
+  };
+  expect(mateLinks(mate)?.services.map((row) => [row.service, row.url])).toEqual([
+    ["webstage", "https://stage.example"],
+  ]);
 });

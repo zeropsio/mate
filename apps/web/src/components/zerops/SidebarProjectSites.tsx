@@ -206,8 +206,7 @@ export function ProjectSites(
   const tagId = `${id}-tag`;
   const popup = useRef<HTMLDivElement>(null);
 
-  // What the doors say needs no moment: addresses do not age. At rest no Mate's leases are read,
-  // so a dev pool's previews are only possible: they keep the globe from saying none.
+  // What the doors say needs no moment: addresses do not age.
   const restingMates = mates.map((mate) => factsOf(mate));
   const atRest = projectSitesSections({
     production: production?.(0),
@@ -218,7 +217,7 @@ export function ProjectSites(
     mates: restingMates,
   });
   const reading = atRest.some((section) => section.links === undefined);
-  const none = !reading && sitesHoldNothing(atRest, restingMates);
+  const none = !reading && sitesHoldNothing(atRest);
   const prodUrl = productionUrl(production?.(0));
   const mac = typeof navigator !== "undefined" && isMacPlatform(navigator.platform);
   const globeTip = none
@@ -1352,6 +1351,11 @@ function SitesServices({
             </TooltipPopup>
           </Tooltip>
         )}
+        {row.key.startsWith("preview:") ? (
+          <Text className="px-2 pb-1" render={<p />} variant="description">
+            Version not available
+          </Text>
+        ) : null}
         <RowButtons
           done={done}
           host={host}

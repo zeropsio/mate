@@ -19,7 +19,8 @@ import { useHqAppReleases } from "~/zerops/useHqAppDetail";
 import { vcsStatus } from "~/state/workspace";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { stageDeploysMerges, tryItTargets, type ReviewTryTargets } from "./ZeropsReview.logic";
+import { stageDeploysMerges } from "./ZeropsReview.logic";
+import { tryItTargets, type ReviewTryTargets } from "@t3tools/client-runtime/zerops/tryItTargets";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 
 /** The project's name, as the menu names it. */
@@ -36,16 +37,18 @@ export function useGroupName(groupId: string): string | undefined {
 
 const NO_BRANCH = Atom.make<string | null | undefined>(undefined);
 
-/** The branch's Preview and the Review build at its current head. */
+/** The part's app address and the open branch's live Preview. */
 export function useMatePreviews(
   appId: string,
   mateProjectId: string,
   mateTier: string | undefined,
   repository: string,
   repositoryUrl: string | undefined,
+  open: boolean,
   branch: string | undefined,
   head: string | undefined,
   reviewBuild: HqReviewBuild | undefined,
+  now: number,
 ): ReviewTryTargets {
   const { listing } = useZeropsDetailCandidates();
   const appIds = useMemo(() => [appId], [appId]);
@@ -58,7 +61,9 @@ export function useMatePreviews(
   const threadKey =
     sites?.mates.find((mate) => mate.candidate.project.id === mateProjectId)?.threadKey ??
     (mainChat === undefined ? undefined : scopedThreadKey(mainChat));
-  const leases = useMatesLeases([{ projectId: mateProjectId, threadKey }])[mateProjectId]?.leases;
+  const leaseReading = useMatesLeases([{ projectId: mateProjectId, threadKey }])[mateProjectId];
+  const leases = leaseReading?.leases;
+  const poolPairs = leaseReading?.poolPairs;
   const thread = threadKey === undefined ? null : parseScopedThreadKey(threadKey);
   const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
   const pooled = (row?.services?.pools?.length ?? 0) > 0;
@@ -92,10 +97,13 @@ export function useMatePreviews(
         repository,
         repositoryUrl,
         repositoryRemote,
+        open,
         branch,
         head,
         reviewBuild,
+        now,
         leases: row?.services === undefined ? undefined : leases,
+        poolPairs,
         classicBranch,
         classicServers,
       }),
@@ -105,10 +113,13 @@ export function useMatePreviews(
       repository,
       repositoryUrl,
       repositoryRemote,
+      open,
       branch,
       head,
       reviewBuild,
+      now,
       leases,
+      poolPairs,
       classicBranch,
       classicServers,
     ],
