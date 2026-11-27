@@ -1,8 +1,9 @@
 /**
  * A Mate's crew run ask (`crew-run` fence) as its card: the goal it gives the crew this Mate has,
  * then who's on it, as the crew stands. Its press opens the run's limits right here, in the
- * conversation (`CrewRunDialog`); Start saves the goal as the crew's brief, starts the crew and
- * tells its lead to plan the goal (`crewRunTell`). The run names this card, so the card follows it
+ * conversation (`CrewRunDialog`); Start saves the goal as the crew's brief, starts the crew from
+ * this conversation, which the run reports to when it ends, and tells its lead to plan the goal
+ * (`crewRunTell`). The run names this card, so the card follows it
  * (`crewRunAskState`). A viewer who may not run the crew (D6) reads the card with the reason in
  * place of the press.
  */
@@ -119,7 +120,12 @@ function CrewRunAskCard({
                 setDialog({
                   mode: "start",
                   after: crewRunTell(ask),
-                  card: { key: ask.key, before: saveGoal(ask) },
+                  // A client's thread is its engine conversation, which the run reports to.
+                  card: {
+                    key: ask.key,
+                    from: { conversationId: threadRef.threadId },
+                    before: saveGoal(ask),
+                  },
                 })
         }
         run={snapshot?.run ?? null}

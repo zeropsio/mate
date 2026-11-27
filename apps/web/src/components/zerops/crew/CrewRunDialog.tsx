@@ -24,7 +24,13 @@ import {
   crewUsageOfWord,
   crewUsageStopWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewCommand, CrewRun, CrewSnapshot, EnvironmentId } from "@t3tools/contracts";
+import type {
+  CrewCommand,
+  CrewRun,
+  CrewRunFrom,
+  CrewSnapshot,
+  EnvironmentId,
+} from "@t3tools/contracts";
 import { useState, type ReactNode } from "react";
 
 import { Failure } from "~/components/ui/failure";
@@ -66,12 +72,14 @@ export interface CrewRunDialogAsk {
   readonly mode: "start" | "resume";
   readonly after: CrewCommand | null;
   /**
-   * A crew-run card's press: the card the run it starts names (`CrewRun.ask`), and what goes
+   * A crew-run card's press: the card the run it starts names (`CrewRun.ask`), the conversation
+   * the card stands in, which the run reports to when it ends (`CrewRun.from`), and what goes
    * first once Start is pressed — the card's goal saved as the crew's brief — through the dialog's
    * own presses, so a failure shows in it and a cancel changes nothing.
    */
   readonly card?: {
     readonly key: string;
+    readonly from: CrewRunFrom;
     readonly before: (commands: UseCrewCommand) => Promise<boolean>;
   };
 }
@@ -114,7 +122,9 @@ export function CrewRunDialog({
   const submit = (command: CrewCommand) => {
     const card = command._tag === "start" ? ask?.card : undefined;
     const sent: CrewCommand =
-      command._tag === "start" && card !== undefined ? { ...command, ask: card.key } : command;
+      command._tag === "start" && card !== undefined
+        ? { ...command, ask: card.key, from: card.from }
+        : command;
     void (async () => {
       if (card !== undefined && !(await card.before(commands))) return;
       const result = await commands.send(sent);
