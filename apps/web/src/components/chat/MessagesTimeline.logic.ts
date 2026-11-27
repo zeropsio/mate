@@ -92,6 +92,7 @@ import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { engineCardEffort, heldLines, withPagedEffort } from "./engineCardPaging.logic";
 import { chatItemHasLine, runEndedWell, selectChatItems, slotModelOf } from "./runCard.logic";
 import { type MirrorAskPlace, mirrorAskRowId } from "../zerops/mirror/mirrorAsk.logic";
+import { type BoardAskPlace, boardAskRowId } from "../zerops/board/boardAsk.logic";
 import type { OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import type { ThreadEndNotice } from "./threadErrorNotice.logic";
@@ -788,6 +789,16 @@ type MessagesTimelineRowBody =
        * reads the ask as it stands.
        */
       kind: "mirror-request";
+      id: string;
+      createdAt: string;
+      requestId: string;
+    }
+  | {
+      /**
+       * Work the Mate proposed for the Board (`zerops_board_propose`): the person puts it there or
+       * not, so it stands after the run and its answer; its card reads the ask as it stands.
+       */
+      kind: "board-request";
       id: string;
       createdAt: string;
       requestId: string;
@@ -2620,6 +2631,8 @@ export function deriveMessagesTimelineRows(input: {
   originAsks?: ReadonlyArray<OriginAskPlace>;
   /** The repositories the engine asked the person to connect to GitHub, by run card. */
   mirrorAsks?: ReadonlyArray<MirrorAskPlace>;
+  /** The work the engine proposed for the Board, by run card. */
+  boardAsks?: ReadonlyArray<BoardAskPlace>;
   /**
    * What the last derive of this conversation read and drew
    * (`createMessagesTimelineRowsCache`): a run whose reads are the same draws
@@ -3676,6 +3689,15 @@ export function deriveMessagesTimelineRows(input: {
       rows.push({
         kind: "mirror-request",
         id: mirrorAskRowId(ask.requestId),
+        createdAt: ask.createdAt,
+        requestId: ask.requestId,
+      });
+    }
+    for (const ask of input.boardAsks ?? []) {
+      if (!turnIds.has(ask.turnId)) continue;
+      rows.push({
+        kind: "board-request",
+        id: boardAskRowId(ask.requestId),
         createdAt: ask.createdAt,
         requestId: ask.requestId,
       });

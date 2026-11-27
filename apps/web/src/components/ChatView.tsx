@@ -225,6 +225,7 @@ import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { mateMentionNotes, useMentionableMates } from "../zerops/mateMentions";
 import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
+import { boardAskPlaces, boardAskPlacesKey } from "./zerops/board/boardAsk.logic";
 import { MirrorAskWatch } from "./zerops/mirror/MirrorAskWatch";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
 import { MateFaceAsMark } from "./zerops/primitives";
@@ -1762,6 +1763,8 @@ function ConversationView(props: ChatViewProps) {
   const originAsks = useMemo(() => originAskPlaces(originAskKey), [originAskKey]);
   const mirrorAskKey = useMemo(() => mirrorAskPlacesKey(threadActivities), [threadActivities]);
   const mirrorAsks = useMemo(() => mirrorAskPlaces(mirrorAskKey), [mirrorAskKey]);
+  const boardAskKey = useMemo(() => boardAskPlacesKey(threadActivities), [threadActivities]);
+  const boardAsks = useMemo(() => boardAskPlaces(boardAskKey), [boardAskKey]);
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
@@ -7369,6 +7372,7 @@ function ConversationView(props: ChatViewProps) {
                     isCompacting,
                     originAsks,
                     mirrorAsks,
+                    boardAsks,
                     isStopping,
                     activeTurnStartedAt: activeWorkStartedAt,
                     listRef: legendListRef,

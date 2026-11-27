@@ -6,6 +6,7 @@
  * apps are read and made the same way (`useGithubApp`).
  */
 import {
+  appTaskPut,
   appTaskWrites,
   makeTaskSourceSettings,
   taskSourceSetting,
@@ -23,6 +24,7 @@ import type {
   HqGithubManifestRequest,
   HqGithubManifestView,
 } from "@t3tools/shared/hqGithub";
+import type { HqAppTask, HqPutTaskRequest } from "@t3tools/shared/hqIntake";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
@@ -203,4 +205,50 @@ export function useGithubApp(shown = true): GithubAppControls {
       controls.write({ kind: "github-forget", githubAppId });
     },
   };
+}
+
+const IDLE_PUT = Atom.make<TaskWriteAction>({ kind: "idle" });
+
+/** The Board's writes to an application's tasks, each answered by the task as it stands, or `null`. */
+export interface BoardTaskWrites {
+  /** Puts work on the Board from a conversation, pressed on `card`. */
+  readonly put: (card: string, request: HqPutTaskRequest) => Promise<HqAppTask | null>;
+  /** Takes a queued task for one of the person's own Mates. */
+  readonly take: (taskId: string, mateProjectId: string) => Promise<HqAppTask | null>;
+  readonly release: (taskId: string) => Promise<HqAppTask | null>;
+  readonly done: (taskId: string) => Promise<HqAppTask | null>;
+  /** Its putter's answer or steer on a conversation's task a pool Mate holds. */
+  readonly answer: (taskId: string, text: string) => void;
+}
+
+/**
+ * The Board's writes to application `appId`'s tasks; where each stands is `useAppTaskStops`'s
+ * record by the task, and a put's `useAppTaskPut`'s by its card. `null` while no HQ or application
+ * is known.
+ */
+export function useBoardTaskWrites(appId: string | null): BoardTaskWrites | null {
+  const { host, orgId } = useHost();
+  return useMemo(() => {
+    if (host === null || orgId === null || appId === null) return null;
+    const key = { orgId, appId };
+    return {
+      put: (card, request) => host.putTask(key, card, request),
+      take: (taskId, mateProjectId) => host.takeTask(key, taskId, mateProjectId),
+      release: (taskId) => host.releaseTask(key, taskId),
+      done: (taskId) => host.doneTask(key, taskId),
+      answer: (taskId, text) => void host.write(key, { kind: "task-message", taskId, text }),
+    };
+  }, [appId, host, orgId]);
+}
+
+/** Where the Put on board pressed on `card` stands (`appTaskPut`): idle where none was pressed. */
+export function useAppTaskPut(appId: string | null, card: string): TaskWriteAction {
+  const { store, orgId } = useHost();
+  const key = useMemo(
+    () => (orgId === null || appId === null ? null : { orgId, appId, card }),
+    [orgId, appId, card],
+  );
+  return useAtomValue(
+    store === null || key === null ? IDLE_PUT : store.data.project(appTaskPut, key),
+  );
 }

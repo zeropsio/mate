@@ -19,6 +19,7 @@ const EMPTY_NOTICES: ReadonlyArray<ConversationNotice> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 const EMPTY_ORIGIN_ASKS: ReadonlyArray<OriginAskPlace> = [];
 const EMPTY_MIRROR_ASKS: ReadonlyArray<MirrorAskPlace> = [];
+const EMPTY_BOARD_ASKS: ReadonlyArray<BoardAskPlace> = [];
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import { type TimelineScrollDirection } from "@t3tools/client-runtime/zerops/timelineFollow";
 import { conversationBegins, historyAbove } from "@t3tools/client-runtime/zerops/timelineHistory";
@@ -122,6 +123,7 @@ import { CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { NewestReleaseAskContext } from "../zerops/proposal/ProposalCardContainer";
 import { type MirrorAskPlace } from "../zerops/mirror/mirrorAsk.logic";
+import { type BoardAskPlace } from "../zerops/board/boardAsk.logic";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { type TimelinePersonInput, useTimelinePersonInput } from "./useTimelinePersonInput";
 
@@ -171,6 +173,8 @@ interface MessagesTimelineProps {
   originAsks?: ReadonlyArray<OriginAskPlace>;
   /** The repositories the engine asked the person to connect to GitHub (`mirrorAskPlaces`). */
   mirrorAsks?: ReadonlyArray<MirrorAskPlace>;
+  /** The work the engine proposed for the Board (`boardAskPlaces`). */
+  boardAsks?: ReadonlyArray<BoardAskPlace>;
   /** A person's Stop is in force (`conversationStop`). */
   isStopping?: boolean;
   activeTurnStartedAt: string | null;
@@ -290,6 +294,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isCompacting = false,
   originAsks = EMPTY_ORIGIN_ASKS,
   mirrorAsks = EMPTY_MIRROR_ASKS,
+  boardAsks = EMPTY_BOARD_ASKS,
   isStopping = false,
   activeTurnStartedAt,
   agentPanelModel,
@@ -430,6 +435,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         isCompacting,
         originAsks,
         mirrorAsks,
+        boardAsks,
       }),
     [
       inCrewmate,
@@ -437,6 +443,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       liveLines,
       originAsks,
       mirrorAsks,
+      boardAsks,
       isCompacting,
       runCards,
       nowMs,

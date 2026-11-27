@@ -8,6 +8,7 @@ import {
   VaultRequestTimelineRow,
   OriginRequestTimelineRow,
   MirrorRequestTimelineRow,
+  BoardRequestTimelineRow,
   ProposalTimelineRow,
 } from "./TimelineAskRows";
 import {
@@ -356,6 +357,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
       {row.kind === "origin-request" ? <OriginRequestTimelineRow row={row} /> : null}
       {row.kind === "mirror-request" ? <MirrorRequestTimelineRow row={row} /> : null}
+      {row.kind === "board-request" ? <BoardRequestTimelineRow row={row} /> : null}
       {row.kind === "proposal" ? <ProposalTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "crew-seam" ? (

@@ -4,6 +4,7 @@ import { TimelineRowCtx } from "./timelineContext";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
 import { MirrorAskCardContainer } from "../zerops/mirror/MirrorAskCardContainer";
+import { BoardAskCardContainer } from "../zerops/board/BoardAskCardContainer";
 import { OriginAskCardContainer } from "../zerops/origin/OriginAskCardContainer";
 import { VaultRequestCardContainer } from "../zerops/vault/VaultAskContainer";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
@@ -112,6 +113,24 @@ export const MirrorRequestTimelineRow = memo(function MirrorRequestTimelineRow({
   return (
     <div className="min-w-0 px-1 py-0.5">
       <MirrorAskCardContainer
+        environmentId={ctx.activeThreadEnvironmentId}
+        requestId={row.requestId}
+        threadRef={ctx.threadRef}
+      />
+    </div>
+  );
+});
+
+/** Work the Mate proposed for the Board, after its run: the card that puts it there. */
+export const BoardRequestTimelineRow = memo(function BoardRequestTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "board-request" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <BoardAskCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
         requestId={row.requestId}
         threadRef={ctx.threadRef}

@@ -8,6 +8,7 @@ import {
 } from "@t3tools/client-runtime/work-log/activity-normalization";
 import {
   MIRROR_ASK_ACTIVITY_KIND,
+  BOARD_ASK_ACTIVITY_KIND,
   ORIGIN_ASK_ACTIVITY_KIND,
   VAULT_ASK_ACTIVITY_KIND,
   projectActivityLimit,
@@ -978,6 +979,7 @@ export function deriveWorkLogEntries(
     if (activity.kind === VAULT_ASK_ACTIVITY_KIND) continue;
     if (activity.kind === ORIGIN_ASK_ACTIVITY_KIND) continue;
     if (activity.kind === MIRROR_ASK_ACTIVITY_KIND) continue;
+    if (activity.kind === BOARD_ASK_ACTIVITY_KIND) continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
