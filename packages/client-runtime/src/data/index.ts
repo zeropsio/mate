@@ -700,3 +700,9 @@ export {
 export { projectOperator } from "./projections/permissionFacts.ts";
 
 export { makeDraftPreviewWire } from "./adapters/draftPreview.ts";
+export {
+  boardOffers,
+  boardRevision,
+  type BoardOffers,
+  type BoardTaskOffer,
+} from "./projections/boardOffers.ts";

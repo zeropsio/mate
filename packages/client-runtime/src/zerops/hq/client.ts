@@ -73,6 +73,7 @@ import type {
   HqHiddenEnvironment,
   HqNavigationIntake,
   HqNavigationMateTask,
+  HqNavigationTakenTask,
 } from "@t3tools/shared/hqStream";
 import { HqMergersAnswer, type HqMergers, type HqMergersRequest } from "@t3tools/shared/hqMergers";
 import {
@@ -183,6 +184,8 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly automated?: boolean | undefined;
   /** The task an automated Mate is on, or none. */
   readonly task?: HqNavigationMateTask | null | undefined;
+  /** The Board's tasks its person took for it and has not finished (`HqNavigationTakenTask`). */
+  readonly taken?: ReadonlyArray<HqNavigationTakenTask> | undefined;
   /** Zerops refused its key and HQ dropped it, until a hand-over admits a new one. */
   readonly keyRefused?: true | undefined;
 }

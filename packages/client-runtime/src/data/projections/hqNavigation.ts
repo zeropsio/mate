@@ -147,6 +147,7 @@ function mateOf(
     ...(mate.importProcessId === undefined ? {} : { importProcessId: mate.importProcessId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
     ...(mate.task === undefined ? {} : { task: mate.task }),
+    ...(mate.taken === undefined ? {} : { taken: mate.taken }),
     // Who last signed each of its agents in, as HQ's record keeps it (`Mine` without an owner).
     ...(signers === undefined || Object.keys(signers).length === 0 ? {} : { signers }),
   };
