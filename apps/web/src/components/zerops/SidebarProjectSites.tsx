@@ -759,6 +759,7 @@ export function SitesPanel({
                     title={section.title}
                   />
                   <SitesServices
+                    appName={projectName}
                     copied={copied}
                     onCopy={copy}
                     onPreview={preview}
@@ -1303,11 +1304,14 @@ function RowButtons({
  * why in its host's place: never only on a hover.
  */
 function SitesServices({
+  appName,
   services,
   copied,
   onCopy,
   onPreview,
 }: {
+  /** The application, as Your app's row names it. */
+  readonly appName: string;
   readonly services: ReadonlyArray<SitesService>;
   readonly copied: string | undefined;
   readonly onCopy: (link: CopiedLink) => void;
@@ -1351,12 +1355,6 @@ function SitesServices({
     const host = row.host ?? url;
     const link = {
       href: url,
-      // A stage that is Your app says what it has, in the chat script's words (`yourAppHas`).
-      ...(row.has === undefined
-        ? {}
-        : {
-            line: `Your app has "${row.has.title}" · added ${formatDayAwareTimestamp(row.has.at, "locale")}`,
-          }),
       onCopyKey: () => {
         onCopy({ key: row.key, url });
       },
@@ -1366,14 +1364,26 @@ function SitesServices({
           : () => {
               onPreview(row.service, url);
             },
-      title: (
-        <>
-          <span className="me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
-            <RealName>{row.service}</RealName>
-          </span>
-          <span className="font-normal text-muted-foreground">{host}</span>
-        </>
-      ),
+      // Your app goes by the app and says what it has (`yourAppHas`), in the chat script's words:
+      // "guestbook · Add a guestbook page · added 08:15", never by its container or its host.
+      title:
+        row.yourApp === true ? (
+          <>
+            <span className="font-medium text-foreground">{appName}</span>
+            {row.has === undefined ? null : (
+              <span className="ms-2 font-normal text-muted-foreground">
+                {row.has.title} · added {formatDayAwareTimestamp(row.has.at, "locale")}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
+              <RealName>{row.service}</RealName>
+            </span>
+            <span className="font-normal text-muted-foreground">{host}</span>
+          </>
+        ),
     };
     return (
       <div

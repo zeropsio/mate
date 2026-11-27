@@ -66,3 +66,25 @@ it("MN114: Sites lists a pool part's stage address but never its leased workspac
     ["webstage", "https://stage.example"],
   ]);
 });
+
+// witness: apps/web/src/components/zerops/SidebarProjectSites.logic.ts | ...(entry === stage ? { yourApp: true as const } : {}), → ...(entry !== stage ? { yourApp: true as const } : {}),
+it("MN+2: Of a Mate's part, Sites takes its stage for Your app and never its dev; breaks: Sites names the app by its stage container, or calls the dev service Your app", () => {
+  const mate = {
+    projectId: "mate",
+    name: "Abel",
+    owner: undefined,
+    routes: [
+      { service: "appdev", url: "https://dev.example", host: "dev.example", port: 443 },
+      { service: "appstage", url: "https://stage.example", host: "stage.example", port: 443 },
+    ],
+    hostnames: ["appdev", "appstage"],
+    controlPlane: undefined,
+    pools: [],
+    poolPairs: [],
+    leases: [],
+  };
+  expect(mateLinks(mate)?.services.map((row) => [row.service, row.yourApp === true])).toEqual([
+    ["appdev", false],
+    ["appstage", true],
+  ]);
+});

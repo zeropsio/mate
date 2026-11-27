@@ -261,6 +261,11 @@ export interface SitesService {
   readonly more: ReadonlyArray<string>;
   /** Only where it has no address, in plain words: its tooltip. */
   readonly why: string | undefined;
+  /**
+   * A part's stage: Your app, which a row names by the app, never by its container (the chat
+   * script's Sites).
+   */
+  readonly yourApp?: true | undefined;
   /** A stage that is Your app: the change it has (`yourAppHas`); none where that is not known. */
   readonly has?: YourAppHas | undefined;
 }
@@ -355,6 +360,7 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
           host: entry.host,
           more: entry.more,
           why: entry.why,
+          ...(entry === stage ? { yourApp: true as const } : {}),
           ...(entry === stage && has !== undefined ? { has } : {}),
         });
   }
