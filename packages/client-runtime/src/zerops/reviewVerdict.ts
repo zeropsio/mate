@@ -178,6 +178,7 @@ export interface ReviewPrimary {
 
 /** A quiet word in the foot beside the one button: a change's *Close without merging…*. */
 interface ReviewSecondary {
+  readonly action?: "stop-adding";
   readonly label: string;
   readonly enabled: boolean;
 }
@@ -242,6 +243,9 @@ export type ReviewPress =
    */
   | {
       readonly kind: "done";
+      /** HQ accepted an addition; this is not yet a merge. */
+      readonly adding?: true;
+      readonly at?: string | undefined;
       readonly deploys?: HqDeployAnswer | undefined;
       readonly rollout?: AppDeployRollout | undefined;
     };
@@ -308,6 +312,8 @@ export interface ChangeReviewInput {
     readonly mergedAt: string | undefined;
     /** `closed` for one no longer open — merged, or closed without merging. */
     readonly state?: string | undefined;
+    readonly addingError?: string | undefined;
+    readonly updatedAt?: string | undefined;
     /** Whether `main` has moved on past the commit it was cut from. */
     readonly behind: boolean;
     /** Whether it asks for review: its Mate described it at its head. Absent reads as ready. */
@@ -557,6 +563,7 @@ const CLOSE_LABEL = "Close without merging";
 const CLOSE_OFFER: ReviewSecondary = { label: `${CLOSE_LABEL}…`, enabled: true };
 /** The way back from the ask. */
 const KEEP_OPEN: ReviewSecondary = { label: "Keep it open", enabled: true };
+const STOP_ADDING: ReviewSecondary = { action: "stop-adding", label: "Stop adding", enabled: true };
 
 /** A change no longer open and never merged: nothing more to press. */
 function closedReview(base: string, why: string): ReviewModel {
@@ -601,12 +608,14 @@ function closeReview(
   const number = `#${String(pull.number)}`;
   const allowed = input.offered?.close === true;
   const consequence = allowed
-    ? `Closes ${number} for good; ${input.mateName}'s branch stays as it is.`
+    ? pull.kind === "code"
+      ? "Your app does not change."
+      : `Closes ${number} for good; ${input.mateName}'s branch stays as it is.`
     : input.offered === undefined
       ? "Closing waits: HQ has not said whether you may close this change."
       : "HQ no longer offers Close for this change.";
   const primary = (enabled: boolean): ReviewPrimary => ({
-    label: CLOSE_LABEL,
+    label: pull.kind === "code" ? "Discard draft" : CLOSE_LABEL,
     enabled,
     safe: false,
   });
@@ -616,8 +625,11 @@ function closeReview(
         verdict: {
           state: "close-confirm",
           tone: "attention",
-          title: `Close ${number} without merging?`,
-          why: `Nothing of it reaches ${pull.baseBranch}`,
+          title: pull.kind === "code" ? "Discard this draft?" : `Close ${number} without merging?`,
+          why:
+            pull.kind === "code"
+              ? "Your app does not change"
+              : `Nothing of it reaches ${pull.baseBranch}`,
           fix: undefined,
         },
         consequence,
@@ -1344,7 +1356,9 @@ function mateAtIt(
   const base = pull.baseBranch;
   const primary = model.primary;
   // Merge where it merges now: named for the version it lands. One that waits keeps its word.
-  const merges = primary?.label === "Merge" && MERGES_AS_IT_IS.has(model.verdict.state);
+  const merges =
+    (primary?.label === "Merge" || primary?.label === "Add to your app") &&
+    MERGES_AS_IT_IS.has(model.verdict.state);
   return {
     ...model,
     verdict: {
@@ -1387,8 +1401,18 @@ function changeReviewModel(
 function changeReviewModelOfHead(
   input: ChangeReviewInput,
 ): ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease"> {
-  const { pull, press } = input;
+  const { pull } = input;
+  const heldPress = input.press;
+  const press: ReviewPress | undefined =
+    pull.state === "open" &&
+    pull.addingError !== undefined &&
+    (heldPress === undefined ||
+      heldPress.kind === "idle" ||
+      (heldPress.kind === "done" && heldPress.adding === true && heldPress.at !== pull.updatedAt))
+      ? { kind: "refused", reason: hqRefusalWords({ code: "conflict", reason: pull.addingError }) }
+      : heldPress;
   const base = pull.baseBranch;
+  const mergeLabel = pull.kind === "code" ? "Add to your app" : "Merge";
   const close = input.close ?? { kind: "idle" };
 
   // Owner-proven terminal facts win over an outdated local press.
@@ -1455,9 +1479,50 @@ function changeReviewModelOfHead(
     };
   }
 
+  // HQ has accepted the addition, but the stage is still checking it before the merge.
+  const adding =
+    pull.state === "adding" ||
+    pull.state === "merging" ||
+    (press?.kind === "done" && press.adding === true && pull.updatedAt === press.at);
+  if (adding) {
+    const givenUp = pull.state === "adding" ? checksGivenUpSentence(pull.checksGivenUp) : undefined;
+    const failed = pull.state === "adding" && pull.reviewBuild?.state === "failing";
+    const unavailable = pull.state === "adding" && pull.reviewBuild?.state === "unavailable";
+    const attempt = pull.reviewBuild?.try;
+    return {
+      verdict: {
+        state: givenUp !== undefined || failed || unavailable ? "merge-refused" : "merging",
+        tone: givenUp !== undefined || failed || unavailable ? "attention" : "busy",
+        title:
+          givenUp !== undefined
+            ? "Could not add to your app"
+            : failed
+              ? "Not added yet"
+              : unavailable
+                ? "Waiting to add"
+                : "Adding to your app",
+        why:
+          givenUp ??
+          (failed
+            ? `This draft did not build${attempt === undefined ? "." : ` · try ${attempt} of 3.`}`
+            : unavailable
+              ? "The build is unavailable. Your app has not changed."
+              : pull.state === "merging"
+                ? "Adding the change."
+                : pull.reviewBuild?.state === "awaiting"
+                  ? "Checking it builds. A few minutes."
+                  : "Waiting to add this draft."),
+        fix: undefined,
+      },
+      consequence: "Your app keeps its current version until this change is added.",
+      primary: undefined,
+      ...(pull.state === "adding" ? { secondary: STOP_ADDING } : {}),
+    };
+  }
+
   // The merge answer can arrive before the app-detail stream updates the change or its pull request.
   const githubMerged = pull.pullRequest?.state === "merged";
-  if (githubMerged || press?.kind === "done") {
+  if (githubMerged || (press?.kind === "done" && press.adding !== true)) {
     return {
       verdict: {
         state: "merging",
@@ -1477,7 +1542,12 @@ function changeReviewModelOfHead(
   if (close.kind === "done") return closedReview(base, "You closed it; its branch is still there");
   if (close.kind !== "idle") return closeReview(input, close);
   // Close without merging, quiet beside Merge where HQ's rule offers it — never while Merge runs.
-  const secondary = input.offered?.close === true ? CLOSE_OFFER : undefined;
+  const secondary =
+    input.offered?.close === true
+      ? pull.kind === "code"
+        ? { label: "Discard draft…", enabled: true }
+        : CLOSE_OFFER
+      : undefined;
   // Opened before its branch was pushed: nothing to merge yet, and a person may still close it.
   if (pull.unpushed === true) {
     return {
@@ -1548,10 +1618,23 @@ function changeReviewModelOfHead(
     input.readout !== "reading" &&
     input.readout !== "unread" &&
     input.offered?.merge === true;
-  const squash = sentences(
-    mergeSentence(pull, input.readout === "failed", nothingLive(input)),
-    afterMain(input),
-  );
+  const squash =
+    pull.kind === "code"
+      ? sentences(
+          input.downstream.stage
+            ? "Your app's address gets this change in a few minutes."
+            : "This adds the draft to your app.",
+          input.downstream.production
+            ? `Production isn't touched until ${releaseWaitsFor(input, false)}.`
+            : input.downstream.productionOutside === true
+              ? PRODUCTION_OUTSIDE_DECIDES
+              : "Nothing goes live.",
+          input.readout === "failed" ? "Its files could not be shown." : undefined,
+        )
+      : sentences(
+          mergeSentence(pull, input.readout === "failed", nothingLive(input)),
+          afterMain(input),
+        );
   // HQ's merge check, still to come: its own wait, said once it is past the usual.
   const mergeWait = verdict.state === "checking" && pull.mergeability === "checking";
   const late =
@@ -1586,12 +1669,12 @@ function changeReviewModelOfHead(
       verdict: {
         state: "merging",
         tone: "busy",
-        title: `Merging into ${base}`,
-        why: `Adding this change to ${base}`,
+        title: pull.kind === "code" ? "Adding to your app" : `Merging into ${base}`,
+        why: pull.kind === "code" ? "Starting to add this draft." : `Adding this change to ${base}`,
         fix: undefined,
       },
       consequence: squash,
-      primary: { label: "Merge", enabled: false, safe: false },
+      primary: { label: mergeLabel, enabled: false, safe: false },
       standing: merging,
     };
   }
@@ -1605,7 +1688,7 @@ function changeReviewModelOfHead(
       verdict: {
         state: "merge-refused",
         tone: "attention",
-        title: "Not merged",
+        title: pull.kind === "code" ? "Not added" : "Not merged",
         why: limited ?? press.reason,
         fix: problemsFix(press.problems ?? []) ?? verdict.fix,
         // A file above HQ's merge limit: the Mate merges main into the change by hand.
@@ -1613,7 +1696,7 @@ function changeReviewModelOfHead(
       },
       consequence: enabled ? squash : held,
       // A second try is the person's deliberate press, never ⌘↵'s.
-      primary: { label: "Merge", enabled, safe: false },
+      primary: { label: mergeLabel, enabled, safe: false },
       secondary,
       standing: merging,
     };
@@ -1655,7 +1738,7 @@ function changeReviewModelOfHead(
         }
       : {}),
     primary: {
-      label: "Merge",
+      label: mergeLabel,
       enabled,
       safe: safeOnceRead && input.readout === "read" && !waiting,
       ...(safeOnceRead && waiting ? { shortcut: true } : {}),

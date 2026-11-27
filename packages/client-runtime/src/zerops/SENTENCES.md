@@ -174,3 +174,6 @@ next: ZV206
 - ZV203 — A routed app stage is offered only for the change's repository, including after its build report leaves; breaks: a merged change loses its app address or opens another repository's app.
 - ZV204 — A public app address remains available while a Review build runs or its report is for another head; breaks: a person loses their app address during another build.
 - ZV205 — A change handed to a person for failed checks says whether its Mate ran out of tries, has no usable agent or reached a usage limit, on the Review build and GitHub verdicts; breaks: the person cannot tell what to do next
+- ZV+1 — A draft stays visible and says it is being added while HQ builds or merges it; breaks: the change vanishes or reads ready to add again.
+- ZV+2 — An addition in progress keeps the draft open and offers Stop adding only until HQ claims the merge; breaks: a person is told the change merged early or can request a stop HQ cannot take.
+- ZV+3 — A failed addition and a handoff to a person are visible while the draft stays open; breaks: a person sees a build in progress after it failed or needs their help.

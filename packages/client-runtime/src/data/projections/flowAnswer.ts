@@ -6,7 +6,7 @@
  *
  * @module data/projections/flowAnswer
  */
-import type { HqMergeAsk } from "@t3tools/shared/hqChanges";
+import type { ChangeState, HqMergeAsk } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import type { AppDeployRollout } from "../../zerops/hq/deployHandover.logic.ts";
@@ -17,6 +17,7 @@ import { sameValue } from "./equal.ts";
 interface FlowWriteAnswer {
   /** The release a release or a roll back made. */
   readonly tag?: string;
+  readonly state?: ChangeState;
   readonly deploys: HqDeployAnswer | undefined;
   /** The rollout its deploys are of, in its application: what a handed-over answer follows. */
   readonly rollout?: AppDeployRollout;
@@ -51,8 +52,23 @@ export const flowAnswer: Projection<string, FlowWriteAnswer | null> = {
       return { tag, deploys, rollout: { appId: intent.appId, cause: "release", ref: tag } };
     }
     const mergedSha = result?.mergedSha;
-    return intent.kind === "merge-change" && typeof mergedSha === "string"
-      ? { deploys, rollout: { appId: intent.link.appId, cause: "merge", ref: mergedSha } }
-      : { deploys };
+    if (intent.kind === "merge-change") {
+      const detail = read.fact("hqAppDetail", `${intent.link.appId}/changes`);
+      const observed =
+        detail.kind === "known" && detail.value.kind === "changes"
+          ? detail.value.value.find(
+              (change) => change.repo === intent.link.repo && change.number === intent.link.number,
+            )?.state
+          : undefined;
+      const state = result?.state ?? observed;
+      return {
+        deploys,
+        ...(state === undefined ? {} : { state }),
+        ...(typeof mergedSha === "string"
+          ? { rollout: { appId: intent.link.appId, cause: "merge" as const, ref: mergedSha } }
+          : {}),
+      };
+    }
+    return { deploys };
   },
 };

@@ -12,6 +12,8 @@ import { ORG } from "../__fixtures__/account.ts";
 import { hqAppDetailScope, type HqAppDetailValue } from "../families/hqAppDetail.ts";
 import { projectFlow } from "../projections/projectFlow.ts";
 import { operationProgress } from "../projections/operation.ts";
+import { flowAnswer } from "../projections/flowAnswer.ts";
+import { changeActOf } from "../../zerops/changeAct.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
@@ -73,7 +75,7 @@ function submitThroughHq(store: AccountStore, writes: Partial<HqWrites>) {
 const progress = (store: AccountStore) =>
   operationProgress.derive(readsOfState(store.state()), "r1");
 
-// witness: packages/client-runtime/src/data/operations/flowWrites.ts | return state === "closed" → return state === "merged"
+// witness: packages/client-runtime/src/data/operations/flowWrites.ts | : { kind: "failed", reason: "The change was merged instead of closed." }; → : { kind: "succeeded" };
 it.effect("OP35: A colleague's merge ends a pending Close without claiming it was closed", () =>
   Effect.gen(function* () {
     const store = makeAccountStore(AtomRegistry.make());
@@ -241,3 +243,48 @@ function gitProduction(preflight: ReadonlyArray<HqGitReleasePreflight>) {
     }
   });
 }
+
+// witness: packages/client-runtime/src/zerops/changeAct.ts | return merge?.state === "merged" ? MERGED : undefined; → return MERGED;
+it.effect(
+  "OP+1: An accepted Add is acknowledged as adding, and Stop adding finishes when HQ reopens that change; breaks: an active build is reported as a closed change or a stop acts on another change.",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      detail(store, { changes: { kind: "changes", value: [change("open")] } });
+      const operations = submitThroughHq(store, {
+        mergeChange: async () => ({ made: change("adding"), deploys: undefined }),
+      });
+      yield* operations.submit({
+        kind: "merge-change",
+        orgId: ORG,
+        link: LINK,
+        expectedHead: HEAD,
+      });
+      detail(store, { changes: { kind: "changes", value: [change("adding")] } });
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+      const answer = flowAnswer.derive(readsOfState(store.state()), "r1");
+      expect(answer?.state).toBe("adding");
+      expect(
+        changeActOf({ merge: { pending: false, progress: progress(store), state: answer?.state } }),
+      ).toBeUndefined();
+      expect(changeActOf({ merge: { pending: false, progress: progress(store) } })).toBeUndefined();
+      expect(
+        changeActOf({ merge: { pending: false, progress: progress(store), state: "merged" } })
+          ?.kind,
+      ).toBe("merged");
+
+      const stoppedStore = makeAccountStore(AtomRegistry.make());
+      detail(stoppedStore, { changes: { kind: "changes", value: [change("adding")] } });
+      let stoppedLink: typeof LINK | undefined;
+      const stop = submitThroughHq(stoppedStore, {
+        stopAdding: async (link) => {
+          stoppedLink = link;
+          return change("open");
+        },
+      });
+      yield* stop.submit({ kind: "stop-adding", orgId: ORG, link: LINK });
+      detail(stoppedStore, { changes: { kind: "changes", value: [change("open")] } });
+      expect(stoppedLink).toEqual(LINK);
+      expect(progress(stoppedStore)).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+);

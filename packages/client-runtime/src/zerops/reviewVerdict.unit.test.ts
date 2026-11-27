@@ -273,3 +273,47 @@ it("ZV205: A change handed to a person for failed checks says whether its Mate r
     expect(github.verdict.showWhy).toBe(true);
   }
 });
+
+// witness: packages/client-runtime/src/zerops/reviewVerdict.ts | ...(pull.state === "adding" ? { secondary: STOP_ADDING } : {}), → ...(pull.state === "merging" ? { secondary: STOP_ADDING } : {}),
+it("ZV+2: An addition in progress keeps the draft open and offers Stop adding only until HQ claims the merge; breaks: a person is told the change merged early or can request a stop HQ cannot take.", () => {
+  const offered = { merge: true, close: true };
+  const adding = reviewOf({ ...openChange, state: "adding" }, "read", offered);
+  expect(adding.verdict.state).toBe("merging");
+  expect(adding.primary).toBeUndefined();
+  expect([adding.secondary?.action, adding.secondary?.enabled]).toEqual(["stop-adding", true]);
+  const merging = reviewOf({ ...openChange, state: "merging" }, "read", offered);
+  expect(merging.verdict.state).toBe("merging");
+  expect(merging.secondary).toBeUndefined();
+  const reopened = reviewOf(
+    { ...openChange, state: "open", addingError: "github_unreachable" },
+    "read",
+    offered,
+  );
+  expect(reopened.verdict.state).toBe("merge-refused");
+  expect(reopened.primary?.enabled).toBe(true);
+});
+
+// witness: packages/client-runtime/src/zerops/reviewVerdict.ts | const failed = pull.state === "adding" && pull.reviewBuild?.state === "failing"; → const failed = pull.state === "adding" && pull.reviewBuild?.state === "passing";
+it("ZV+3: A failed addition and a handoff to a person are visible while the draft stays open; breaks: a person sees a build in progress after it failed or needs their help.", () => {
+  const offered = { merge: true, close: true };
+  const failed = reviewOf(
+    {
+      ...openChange,
+      state: "adding",
+      reviewBuild: { state: "failing", head: HEAD, at: "2026-11-27T09:00:00Z", try: 2 },
+    },
+    "read",
+    offered,
+  );
+  expect(failed.verdict.state).toBe("merge-refused");
+  expect(failed.verdict.tone).toBe("attention");
+  expect(failed.secondary?.action).toBe("stop-adding");
+  const givenUp = reviewOf(
+    { ...openChange, state: "adding", checksGivenUp: { reason: "tries" } },
+    "read",
+    offered,
+  );
+  expect(givenUp.verdict.state).toBe("merge-refused");
+  expect(givenUp.verdict.tone).toBe("attention");
+  expect(givenUp.primary).toBeUndefined();
+});

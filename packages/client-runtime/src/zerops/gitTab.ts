@@ -45,7 +45,7 @@ import {
   type ZeropsMateCopies,
 } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { leaseMayBeOf, repoOfUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { isActiveChange, leaseMayBeOf, repoOfUrl, type HqChange } from "@t3tools/shared/hqChanges";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
@@ -571,7 +571,7 @@ function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockS
   if (checkout.read === false || !changes.read) return "unread";
   if (!checkout.isRepo) return "no-repository";
   if (changes.change?.merged === true) return "merged";
-  if (changes.change?.state === "open") return "in-review";
+  if (isActiveChange(changes.change?.state)) return "in-review";
   if (!checkout.hasUpstream || checkout.aheadCount > 0) return "unpushed";
   if (checkout.behindCount > 0) return "behind";
   return "untouched";

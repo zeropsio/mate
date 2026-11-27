@@ -27,6 +27,7 @@ import { changeActWords, type ChangeAct } from "./changeAct.ts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   changeUrl,
+  isActiveChange,
   type HqChange,
   type HqCorePush,
   type HqLastComment,
@@ -120,6 +121,7 @@ export interface FlowPullRequest {
    * review read it carries none.
    */
   readonly state?: string | undefined;
+  readonly addingError?: string | undefined;
   readonly headSha: string | undefined;
   /**
    * Open with nothing pushed yet (`HqChange.head` null): its branch absent, or holding nothing
@@ -266,7 +268,8 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(change.state === "closed" && change.landedWith !== undefined
       ? { landedWith: change.landedWith }
       : {}),
-    state: change.state === "open" ? "open" : "closed",
+    state: change.state === "merged" ? "closed" : change.state,
+    ...(change.addingError === undefined ? {} : { addingError: change.addingError }),
     headSha: change.head ?? undefined,
     ...(change.state === "open" && change.head === null ? { unpushed: true } : {}),
     baseBranch: FALLBACK_BASE,
@@ -294,7 +297,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
 function standingFacts(
   change: Pick<HqChange, "state" | "mergeAsk" | "buildsOn" | "lastComment">,
 ): Pick<FlowPullRequest, "mergeAsk" | "buildsOn" | "lastComment"> {
-  if (change.state !== "open") return {};
+  if (!isActiveChange(change.state)) return {};
   return {
     ...(change.lastComment === undefined ? {} : { lastComment: change.lastComment }),
     ...(change.mergeAsk === undefined ? {} : { mergeAsk: change.mergeAsk }),
@@ -320,7 +323,7 @@ export function flowChanges(input: {
   const row = (change: HqChange) => flowChange(change, input.hqAddress);
   return {
     pullRequests: input.changes
-      .filter((change) => change.state === "open" && change.head !== null)
+      .filter((change) => isActiveChange(change.state) && change.head !== null)
       .map(row),
     // Filtered into a fresh array, so the sort touches nothing else.
     merged: input.changes
@@ -345,7 +348,8 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
     behind: false,
     merged: false,
     mergedAt: undefined,
-    state: "open",
+    state: change.state,
+    ...(change.addingError === undefined ? {} : { addingError: change.addingError }),
     headSha: undefined,
     baseBranch: FALLBACK_BASE,
     line:
@@ -390,15 +394,26 @@ export function flowAppChanges(input: {
           // never reopens from its navigation row.
           !(input.detail ?? []).some(
             (row) =>
-              row.repo === change.repo && row.number === change.number && row.state !== "open",
+              row.repo === change.repo &&
+              row.number === change.number &&
+              !isActiveChange(row.state),
           ),
       )
-      .map(
-        (change) =>
-          held?.pullRequests.find(
-            (pull) => pull.repository === change.repo && pull.number === change.number,
-          ) ?? menuChange(input.appId, change, input.hqAddress),
-      ),
+      .map((change) => {
+        const detail = held?.pullRequests.find(
+          (pull) => pull.repository === change.repo && pull.number === change.number,
+        );
+        if (detail === undefined) return menuChange(input.appId, change, input.hqAddress);
+        // Navigation owns which active state is listed; detail supplies its head and description.
+        return {
+          ...detail,
+          state: change.state,
+          updatedAt: change.updatedAt,
+          addingError: change.addingError,
+          reviewBuild: change.reviewBuild,
+          checksGivenUp: change.checksGivenUp,
+        };
+      }),
     merged: held?.merged ?? [],
   };
 }
@@ -746,6 +761,12 @@ export function changeState(
   },
   now?: number,
 ): ChangeState | undefined {
+  if (pull.state === "adding" && pull.checksGivenUp != null)
+    return { word: "Could not add to your app", tone: "attention" };
+  if (pull.state === "adding" && pull.reviewBuild?.state === "failing")
+    return { word: "Not added yet", tone: "attention" };
+  if (pull.state === "adding" || pull.state === "merging")
+    return { word: "Adding to your app", tone: "busy" };
   // GitHub merged its pull request; HQ's main takes the merge next. Nothing is left to do with it.
   if (pull.pullRequest?.state === "merged") return { word: "Merged on GitHub", tone: "off" };
   // Nobody carries it on until a person closes it or hands it to another Mate.
@@ -906,7 +927,7 @@ export type FlowVerb =
    * (`ask-merge`) and that ask taken back.
    */
   | {
-      readonly kind: "merge" | "close" | "hand" | "ask-merge" | "take-back-ask";
+      readonly kind: "merge" | "stop-adding" | "close" | "hand" | "ask-merge" | "take-back-ask";
       readonly groupId: string;
       readonly repository: string;
       readonly number: number;
@@ -932,6 +953,7 @@ export type FlowVerb =
 export function flowVerbKey(verb: FlowVerb): string {
   switch (verb.kind) {
     case "merge":
+    case "stop-adding":
     case "close":
     case "hand":
     case "ask-merge":
@@ -952,7 +974,7 @@ export function flowVerbKey(verb: FlowVerb): string {
  * or handed over only from its review, which says so in its own words.
  */
 export function flowVerbLabel(
-  kind: Exclude<FlowVerb["kind"], "close" | "hand">,
+  kind: Exclude<FlowVerb["kind"], "close" | "hand" | "stop-adding">,
   running: boolean,
 ): string {
   switch (kind) {

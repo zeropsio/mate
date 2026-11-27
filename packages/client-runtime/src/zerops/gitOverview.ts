@@ -13,7 +13,7 @@
  */
 
 import { byNewest, changeState, type FlowPullRequest } from "./projectFlow.ts";
-import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { isActiveChange, type RepoListEntry } from "@t3tools/shared/hqChanges";
 import { codeStandingLine, type CodeStanding } from "./codeStanding.ts";
 
 export type GitRepositoryFacts = Pick<
@@ -108,7 +108,7 @@ export function gitOverview(input: {
             coverage: app.coverage ?? "complete",
             open:
               (app.coverage !== undefined && app.coverage !== "complete") ||
-              changes.some(({ pull }) => pull.state === "open"),
+              changes.some(({ pull }) => isActiveChange(pull.state)),
           })),
       };
     });
@@ -167,7 +167,7 @@ export function gitOverviewGroups(
         count +
         app.repositories.reduce(
           (sum, repository) =>
-            sum + repository.changes.filter(({ pull }) => pull.state === "open").length,
+            sum + repository.changes.filter(({ pull }) => isActiveChange(pull.state)).length,
           0,
         ),
       0,
@@ -207,7 +207,7 @@ export function gitOverviewView(
       tab === "open"
         ? group.repositories.filter((repository) => repository.open)
         : group.repositories;
-    const setupOpen = group.setup?.changes.some(({ pull }) => pull.state === "open") === true;
+    const setupOpen = group.setup?.changes.some(({ pull }) => isActiveChange(pull.state)) === true;
     if (tab === "open" && repositories.length === 0 && !setupOpen) return [];
     if (matchesName(group.name)) return [{ ...group, repositories }];
     const matches = repositories.filter((repository) => matchesName(repository.name));
@@ -247,7 +247,7 @@ export function gitOverviewView(
 
 /** Open-change words and the most serious tone, in newest-first order. */
 export function gitChangesStatus(changes: ReadonlyArray<GitOverviewChange>) {
-  const open = changes.filter(({ pull }) => pull.state === "open");
+  const open = changes.filter(({ pull }) => isActiveChange(pull.state));
   if (open.length === 0) return undefined;
   const counts = new Map<string, number>();
   for (const { status } of open)

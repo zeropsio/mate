@@ -1,4 +1,5 @@
 import type { GitOverviewChange, GitOverviewRepository } from "@t3tools/client-runtime/zerops";
+import { isActiveChange } from "@t3tools/shared/hqChanges";
 
 /** The repository page's answer, from the facts already held for it. */
 export function repositoryPage(input: {
@@ -46,7 +47,7 @@ export function repositoryChanges(repository: GitOverviewRepository | undefined)
   if (repository.coverage === "unread") return { kind: "unread" };
   return {
     kind: "read",
-    open: repository.changes.filter(({ pull }) => pull.state === "open"),
+    open: repository.changes.filter(({ pull }) => isActiveChange(pull.state)),
     stale: repository.coverage === "failed",
   };
 }

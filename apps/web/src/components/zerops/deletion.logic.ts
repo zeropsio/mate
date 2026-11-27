@@ -7,6 +7,7 @@ import {
   type HqOperationStanding,
 } from "@t3tools/client-runtime/data";
 import type { HqOperation, HqStructure } from "@t3tools/client-runtime/zerops/hq";
+import { isActiveChange } from "@t3tools/shared/hqChanges";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
@@ -351,7 +352,7 @@ export function applicationHoldings(detail: {
   if (detail.repos === undefined || detail.changes === undefined) return undefined;
   return {
     repos: detail.repos.map((repo) => ({ name: repo.name, canKeep: repo.canKeep?.allow === true })),
-    openChanges: detail.changes.filter((change) => change.state === "open").length,
+    openChanges: detail.changes.filter((change) => isActiveChange(change.state)).length,
   };
 }
 
