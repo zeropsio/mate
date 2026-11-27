@@ -29,6 +29,26 @@ export function changesFrom(names: ReadonlyArray<string | undefined>): string | 
   return `from ${String(unique.length)} Mates`;
 }
 
+/** What a place's page says for an address that names no place of its project. */
+export const NO_PLACE = {
+  title: "Not in this project",
+  why: "Removed, or the address is wrong",
+} as const;
+
+/**
+ * Whether a place's address, which HQ names no environment for, names no place of its project at
+ * all, so its page says so (`NO_PLACE`) instead of waiting: HQ told the project's environments and
+ * the inventory is read, and no stop of a legacy bookmark's Zerops project is in it. Until both are
+ * read it waits.
+ */
+export function placeAbsent(input: {
+  readonly environmentsTold: boolean;
+  readonly inventoryRead: boolean;
+  readonly legacyStops: number;
+}): boolean {
+  return input.environmentsTold && input.inventoryRead && input.legacyStops === 0;
+}
+
 const newestFirst = (left: string | undefined, right: string | undefined) =>
   (right ?? "").localeCompare(left ?? "");
 

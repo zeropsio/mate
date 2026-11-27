@@ -165,6 +165,8 @@ import {
   changesWaitingForStage,
   createsFirstLine,
   laterChangesLine,
+  NO_PLACE,
+  placeAbsent,
   placeFixProblem,
   placeHeaderLine,
   stageNextTitle,
@@ -294,6 +296,7 @@ export function ZeropsStopDetailPage({
       <ZeropsUnresolvedStopDetailPage
         groupId={groupId}
         environmentId={environmentId}
+        environmentsTold={read.environments !== undefined}
         groupName={navigation?.structure?.apps.find((app) => app.id === groupId)?.name}
         note={note}
       />
@@ -320,11 +323,14 @@ export function ZeropsStopDetailPage({
 function ZeropsUnresolvedStopDetailPage({
   groupId,
   environmentId,
+  environmentsTold,
   groupName,
   note,
 }: {
   readonly groupId: string;
   readonly environmentId: string;
+  /** HQ told the project's environments, none of them this address's. */
+  readonly environmentsTold: boolean;
   readonly groupName: string | undefined;
   readonly note: UnreadFlowWords | null;
 }) {
@@ -335,9 +341,15 @@ function ZeropsUnresolvedStopDetailPage({
   );
   const deployments = useStopDeploymentsShown(stops.map((stop) => stop.projectId));
   const trail = usePageTrail({ project: { groupId, name: groupName }, here: stops[0]?.name });
+  const absent = placeAbsent({
+    environmentsTold,
+    inventoryRead: !inventory.isLoading,
+    legacyStops: stops.length,
+  });
+  const shown = note ?? (absent ? NO_PLACE : null);
   return (
     <DetailShell title={stops[0]?.name} trail={trail}>
-      {note !== null ? <UnreadNote words={note} /> : <StopVerdictStandIn />}
+      {shown !== null ? <UnreadNote words={shown} /> : <StopVerdictStandIn />}
       <ZeropsRuntimeStops stops={stops} deployments={deployments} />
     </DetailShell>
   );

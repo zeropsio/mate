@@ -2,7 +2,7 @@
 export const NO_ACCESS = { title: "No access", why: "Deleted or access removed" } as const;
 
 /** What a detail page says in place of a project it cannot read. */
-export type UnreadFlowWords = string | typeof NO_ACCESS;
+export type UnreadFlowWords = string | { readonly title: string; readonly why: string };
 
 /** The reason a detail page cannot read its project from HQ, without another platform read. */
 export function unreadFlowWords(input: {
