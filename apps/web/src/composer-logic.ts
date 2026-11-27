@@ -7,7 +7,7 @@ import { INLINE_FILE_PLACEHOLDER } from "./lib/composerFiles";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "skill" | "crewmate";
-export type ComposerSlashCommand = "model" | "plan" | "default" | "mcp";
+export type ComposerSlashCommand = "model" | "plan" | "default" | "mcp" | "board";
 export type ComposerSubmissionIntent = "foreground" | "background";
 
 export interface ComposerTrigger {
@@ -331,6 +331,29 @@ export function composerStateAtPromptEnd(text: string): {
     trigger: detectComposerTrigger(text, expandCollapsedComposerCursor(text, cursor)),
   };
 }
+
+/**
+ * `/board <words>`, Mate's own: the words go to the agent as the person's message, with a note
+ * asking it to propose them for the Board (`PUT_ON_BOARD_NOTE`) rather than do them. The words
+ * after the command; `null` for any other message.
+ */
+export function boardCommandWords(text: string): string | null {
+  const match = /^\s*\/board(?:\s+([\s\S]*))?$/i.exec(text);
+  return match === null ? null : (match[1] ?? "").trim();
+}
+
+/** The draft as the composer's Put on board sends it: its words after `/board`, once. */
+export function withBoardCommand(text: string): string {
+  return boardCommandWords(text) === null ? `/board ${text.trimStart()}` : text;
+}
+
+/**
+ * What the agent hears in front of the person's words on a Put on board: the person asks to put
+ * them on the Board (zcp's rule proposes asked work only then), so it proposes them as one
+ * self-contained task through its tool and leaves the work to whoever takes it.
+ */
+export const PUT_ON_BOARD_NOTE =
+  "The person asks to put this on the Board: propose it with zerops_board_propose as one task whose title and brief anyone can act on without this chat, say so in one sentence, and do not start it.";
 
 /** `/mcp` alone is Mate's own: it opens the MCP tab and never reaches the agent. */
 export function isStandaloneMcpCommand(text: string): boolean {

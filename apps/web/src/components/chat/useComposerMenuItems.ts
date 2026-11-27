@@ -33,6 +33,7 @@ export function useComposerMenuItems({
   workspaceEntries,
   dataMentions,
   mcpCommandOffered,
+  boardCommandOffered,
   planModeUiEnabled,
   selectedProviderSkills,
   settings,
@@ -47,6 +48,8 @@ export function useComposerMenuItems({
   workspaceEntries: ComposerPathSearchState & { readonly searchedTarget: ComposerPathSearchTarget };
   dataMentions: ReadonlyArray<DataMentionEntry>;
   mcpCommandOffered: boolean;
+  /** `/board`: the conversation's Mate may put work on its application's Board. */
+  boardCommandOffered: boolean;
   planModeUiEnabled: boolean;
   selectedProviderSkills: ServerProvider["skills"];
   settings: UnifiedSettings;
@@ -130,6 +133,17 @@ export function useComposerMenuItems({
               },
             ] as const)
           : []),
+        ...(boardCommandOffered
+          ? ([
+              {
+                id: "slash:board",
+                type: "slash-command",
+                command: "board",
+                label: "/board",
+                description: "Put this on the Board for whoever takes it, instead of doing it now",
+              },
+            ] as const)
+          : []),
         ...(planModeUiEnabled
           ? ([
               {
@@ -204,6 +218,7 @@ export function useComposerMenuItems({
     }
     return [];
   }, [
+    boardCommandOffered,
     compactSlashCommandAvailable,
     composerTrigger,
     dataMentions,

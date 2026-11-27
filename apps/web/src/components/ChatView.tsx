@@ -134,8 +134,10 @@ import { useDiffPanelStore } from "../diffPanelStore";
 import {
   collapseExpandedComposerCursor,
   type ComposerSubmissionIntent,
+  boardCommandWords,
   isStandaloneMcpCommand,
   parseStandaloneComposerSlashCommand,
+  PUT_ON_BOARD_NOTE,
 } from "../composer-logic";
 import {
   createMessageAttachmentPreviewProjector,
@@ -226,6 +228,8 @@ import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates"
 import { mateMentionNotes, useMentionableMates } from "../zerops/mateMentions";
 import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
 import { boardAskPlaces, boardAskPlacesKey } from "./zerops/board/boardAsk.logic";
+import { useBoardOffers } from "../zerops/useBoardTasks";
+import { useApplicationOfProject } from "./zerops/useGitEnvironmentFormInputs";
 import { MirrorAskWatch } from "./zerops/mirror/MirrorAskWatch";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
 import { MateFaceAsMark } from "./zerops/primitives";
@@ -2093,6 +2097,18 @@ function ConversationView(props: ChatViewProps) {
   // The person's other Mates, named with `@`: the Mate hears which Mate is meant and how to ask it.
   // A crewmate's chat is written to the crewmate, and names none.
   const ownMate = useZeropsMate(environmentId);
+  // Put on board, from Send's menu or `/board`: a person's own Mate's chat (never a crewmate's, nor
+  // an automated Mate's), in an application whose Board the rule lets them put on.
+  const boardMateProjectId =
+    ownMate.kind === "mate" &&
+    ownMate.mate.automated !== true &&
+    (activeThreadShell?.crew ?? null) === null
+      ? ownMate.mate.projectId
+      : undefined;
+  const boardApp = useApplicationOfProject(boardMateProjectId);
+  const boardPutFrom = useBoardOffers(boardApp?.id ?? null)?.putFrom;
+  const boardOffered =
+    boardMateProjectId !== undefined && boardPutFrom?.includes(boardMateProjectId) === true;
   const mentionableMates = useMentionableMates(
     ownMate.kind === "mate" ? ownMate.mate.projectId : undefined,
     (activeThreadShell?.crew ?? null) === null,
@@ -5283,7 +5299,11 @@ function ConversationView(props: ChatViewProps) {
       interactionMode: sendInteractionMode,
       interactionModeEnabled: sendInteractionModeEnabled,
     } = sendCtx;
-    const promptForSend = queuedMessage ? queuedMessage.prompt : promptRef.current;
+    // What was typed, kept whole for the composer to restore; `/board` sends its words alone, with a
+    // note asking the agent to propose them for the Board (`PUT_ON_BOARD_NOTE`).
+    const promptTyped = queuedMessage ? queuedMessage.prompt : promptRef.current;
+    const boardWords = boardCommandWords(promptTyped);
+    const promptForSend = boardWords ?? promptTyped;
     // A request a review left in the composer goes about its change while its words still hold it
     // (`askAbout.ts`): its Mate's row then says it works on that change.
     const leftAbout =
@@ -5554,7 +5574,7 @@ function ConversationView(props: ChatViewProps) {
       return !draft?.prompt.length && !composerDraftHasUserContent(draft);
     };
     const restoreSentToComposer = (messageId?: MessageId) => {
-      promptRef.current = promptForSend;
+      promptRef.current = promptTyped;
       const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
       composerImagesRef.current = retryComposerImages;
       composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
@@ -5562,7 +5582,7 @@ function ConversationView(props: ChatViewProps) {
       if (messageId !== undefined) {
         store.settleComposerSend(routeThreadRef, messageId, "restore", retryComposerImages);
       } else {
-        setComposerDraftPrompt(composerDraftTarget, promptForSend);
+        setComposerDraftPrompt(composerDraftTarget, promptTyped);
         addComposerDraftImages(composerDraftTarget, retryComposerImages);
         store.syncFiles(
           composerDraftTarget,
@@ -5573,8 +5593,8 @@ function ConversationView(props: ChatViewProps) {
         setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
       }
       composerRef.current?.resetCursorState({
-        cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
-        prompt: promptForSend,
+        cursor: collapseExpandedComposerCursor(promptTyped, promptTyped.length),
+        prompt: promptTyped,
         detectTrigger: true,
       });
     };
@@ -5734,7 +5754,7 @@ function ConversationView(props: ChatViewProps) {
         precedingMessageId:
           activeThread.messages.findLast((message) => message.turnId !== null)?.id ?? null,
         content: {
-          prompt: promptForSend,
+          prompt: promptTyped,
           images: composerImagesSnapshot,
           persistedAttachments: savedPictures,
           nonPersistedImageIds: [],
@@ -5949,12 +5969,14 @@ function ConversationView(props: ChatViewProps) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
       }
       const sendContext = queuedMessage ? null : turnContextFor(outgoingMessageText);
-      const turnAgentNotes = agentNotesFor(
+      // A Put on board's note leads: it is what the turn is for.
+      const contextNotes = agentNotesFor(
         outgoingMessageText,
         sendContext === null ? (queuedMessage?.agentNotes ?? []) : sendContext.notes,
       );
+      const turnAgentNotes = [...(boardWords === null ? [] : [PUT_ON_BOARD_NOTE]), ...contextNotes];
       const toldVault =
-        turnAgentNotes.length > 0
+        contextNotes.length > 0
           ? sendContext === null
             ? (queuedMessage?.vaultChanges ?? [])
             : sendContext.vaultChanges
@@ -7680,6 +7702,7 @@ function ConversationView(props: ChatViewProps) {
                                   : undefined
                               }
                               onMcpCommand={addMcpSurface}
+                              boardOffered={boardOffered}
                               externalDrawerAttached={externalComposerDrawerAttached}
                               environmentUnavailable={activeEnvironmentUnavailable}
                               activePendingApproval={activePendingApproval}

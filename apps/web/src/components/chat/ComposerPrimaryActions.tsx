@@ -50,6 +50,11 @@ interface ComposerPrimaryActionsProps {
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
+  /**
+   * Send's split menu: **Put on board** sends the draft as `/board <words>`, asking the agent to
+   * propose it for the application's Board. Absent where the conversation's Mate cannot.
+   */
+  onPutOnBoard?: (() => void) | undefined;
 }
 
 const sendLabels = {
@@ -108,6 +113,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   onPreviousPendingQuestion,
   onInterrupt,
   onImplementPlanInNewThread,
+  onPutOnBoard,
 }: ComposerPrimaryActionsProps) {
   const pointerFocusProps = preserveComposerFocusOnPointerDown
     ? { onPointerDown: preventPointerFocus }
@@ -321,9 +327,47 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     </Tooltip>
   );
 
+  // Where the Mate may put work on the Board, Send splits as Implement does: its other way is Put
+  // on board. The split stands whatever the draft holds, so nothing moves as the person types.
+  const sendPress =
+    onPutOnBoard === undefined ? (
+      sendButton
+    ) : (
+      <Group data-chat-composer-send-actions="true">
+        {sendButton}
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                variant="send"
+                shape="round"
+                size="icon-md"
+                className="size-9 sm:size-8"
+                aria-label="Other ways to send"
+                {...pointerFocusProps}
+                disabled={held || !hasSendableContent}
+              />
+            }
+          >
+            {/* The seam between the pill's two presses, in the pill's own ink. */}
+            <span
+              aria-hidden="true"
+              className="absolute inset-y-0 start-0 w-px bg-message-action-foreground/20"
+            />
+            <ChevronDownIcon className="size-3.5" />
+          </MenuTrigger>
+          <MenuPopup align="end" side="top">
+            <MenuItem disabled={held || !hasSendableContent} onClick={onPutOnBoard}>
+              Put on board
+            </MenuItem>
+          </MenuPopup>
+        </Menu>
+      </Group>
+    );
+
   if (primary === "send") {
     if (backgroundWork === null) {
-      return sendButton;
+      return sendPress;
     }
     return (
       <>
@@ -332,7 +376,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           onClick: backgroundWork.onStop,
           disabled: backgroundWork.stopping,
         })}
-        {sendButton}
+        {sendPress}
       </>
     );
   }
@@ -345,7 +389,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         false,
         stopping ? { label: "Stopping…", onClick: onInterrupt } : undefined,
       )}
-      {primary === "stop-and-send" ? sendButton : null}
+      {primary === "stop-and-send" ? sendPress : null}
     </>
   );
 });

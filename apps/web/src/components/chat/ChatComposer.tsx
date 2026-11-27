@@ -76,6 +76,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import {
+  boardCommandWords,
   clampCollapsedComposerCursor,
   type ComposerSubmissionIntent,
   type ComposerTrigger,
@@ -87,6 +88,7 @@ import {
   expandCollapsedComposerCursor,
   isPathSuggestionCurrent,
   replaceTextRange,
+  withBoardCommand,
 } from "../../composer-logic";
 import {
   DEFAULT_CONNECTED_COMPOSER_PLACEHOLDER,
@@ -413,6 +415,11 @@ interface ChatComposerProps {
   onUsageLimitsCommand?: (() => void) | undefined;
   /** Mate's own /mcp: opens the MCP tab; nothing is sent. */
   onMcpCommand?: (() => void) | undefined;
+  /**
+   * The conversation's Mate may put work on its application's Board: Send's split menu offers Put
+   * on board, and `/board` does the same (`boardCommandWords`).
+   */
+  boardOffered?: boolean | undefined;
   /** The composer's environment is not connected: nothing can be sent. */
   environmentUnavailable: boolean;
 
@@ -1292,6 +1299,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
 
   const mcpCommandOffered = props.onMcpCommand !== undefined;
+  const boardOffered = props.boardOffered === true;
   const composerMenuItems = useComposerMenuItems({
     composerTrigger,
     mentionCrewmates,
@@ -1299,6 +1307,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     workspaceEntries,
     dataMentions,
     mcpCommandOffered,
+    boardCommandOffered: boardOffered,
     planModeUiEnabled,
     selectedProviderSkills,
     settings,
@@ -2138,6 +2147,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           }
           return;
         }
+        if (item.command === "board") {
+          // Its words follow it: the send asks the agent to propose them for the Board.
+          const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "/board ", {
+            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+          });
+          if (applied) setComposerHighlightedItemId(null);
+          return;
+        }
         if (item.command === "mcp") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
             expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
@@ -2906,6 +2923,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
     void onImplementPlanInNewThread();
   }, [onImplementPlanInNewThread]);
+  // Send's Put on board: the draft goes as `/board <words>`, the same send `/board` makes.
+  const handlePutOnBoard = useCallback(() => {
+    const draft = promptRef.current;
+    if (boardCommandWords(draft) === null)
+      applyPromptReplacement(0, draft.length, withBoardCommand(draft), {
+        expectedText: draft,
+        focusEditorAfterReplace: false,
+      });
+    submitComposer();
+  }, [applyPromptReplacement, promptRef, submitComposer]);
   const scheduleComposerCollapseCheck = useCallback(() => {
     if (!isMobileViewport) {
       return;
@@ -3613,6 +3640,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                       onInterrupt={handleInterruptPrimaryAction}
                       onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
+                      onPutOnBoard={boardOffered ? handlePutOnBoard : undefined}
                       compactDisabled={
                         compactDisabled || noProviderAvailable || isSendBusy || isConnecting
                       }
