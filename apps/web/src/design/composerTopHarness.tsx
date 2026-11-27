@@ -398,6 +398,24 @@ const ACTS: ReadonlyArray<{
     ]),
   },
   {
+    state: "adding",
+    name: "HQ adding it · checking it builds",
+    strip: standingStrip(
+      [
+        {
+          ...teaChange(21, GIFT, false),
+          state: "adding",
+          reviewBuild: {
+            state: "awaiting",
+            head: "a".repeat(40),
+            at: "2026-11-27T21:18:10Z",
+          },
+        },
+      ],
+      AS_ADA,
+    ),
+  },
+  {
     state: "merging-several",
     name: "Two changes · one merging",
     strip: standingStrip(
