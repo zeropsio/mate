@@ -26,6 +26,7 @@ import {
   ConversationAgent,
   type ThreadId,
   ConversationId,
+  ItemId,
   Principal,
   RunEnd,
   RunId,
@@ -324,8 +325,8 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       readonly conversationId: ConversationId;
       readonly messageId: string;
     }) =>
-      sql<{ readonly body_json: string }>`
-        SELECT item.body_json FROM engine_item AS item
+      sql<{ readonly item_id: string; readonly body_json: string }>`
+        SELECT item.item_id, item.body_json FROM engine_item AS item
         JOIN engine_run AS run ON run.run_id = item.run_id
         WHERE item.conversation_id = ${find.conversationId} AND item.kind = 'note'
           AND item.state = 'closed' AND json_extract(item.by_json, '$.kind') = 'mate'
@@ -337,7 +338,9 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
           const row = rows[0];
           if (row === undefined) return undefined;
           const body = Option.getOrUndefined(decodeNoteText(row.body_json));
-          return body === undefined || body.text.trim() === "" ? undefined : body.text;
+          return body === undefined || body.text.trim() === ""
+            ? undefined
+            : { itemId: ItemId.make(row.item_id), text: body.text };
         }),
       );
 

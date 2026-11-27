@@ -23,6 +23,7 @@ import {
   type ChatAttachment,
   type ConversationRow,
   type CrewCard,
+  type MateMessageFrom,
   type MateMessageItem,
   type MateTaskMessage,
   type MateTaskSource,
@@ -155,6 +156,8 @@ interface EngineMessage extends OrchestrationMessage {
   readonly taskMessage?: MateTaskMessage;
   /** Sent by another Mate of the person's: drawn as that Mate's row, never as the person's. */
   readonly mateMessage?: MateMessageItem;
+  /** The Mate's note that went back as its answer to that Mate's message: drawn as addressed to it. */
+  readonly mateAnswerTo?: MateMessageFrom;
   /**
    * HQ's id of the task the message is for (its brief, a follow-up): every task of an automated
    * Mate runs in its one conversation. Absent on an older task's own conversation, which names it.
@@ -196,6 +199,7 @@ function messageOf(
   queued: (runId: string) => boolean = () => false,
   refusedAtAdmission: NeverStarted = () => false,
   mateNamesOf: MateNamesOf = () => undefined,
+  answerTo: (itemId: string) => MateMessageFrom | undefined = () => undefined,
 ): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
@@ -236,7 +240,7 @@ function messageOf(
         ),
         streaming: false,
       };
-    case "note":
+    case "note": {
       // The crew's card opens its run as V1's card message did, typed.
       if (item.card !== undefined)
         return {
@@ -247,13 +251,16 @@ function messageOf(
           streaming: false,
           crewCard: item.card,
         };
+      const to = answerTo(item.id);
       return {
         ...base,
         id: MessageId.make(item.id),
         role: "assistant",
         text: item.text,
         streaming: item.streaming,
+        ...(to === undefined ? {} : { mateAnswerTo: namedAsMenu(to, mateNamesOf) }),
       };
+    }
     case "thought":
       // A thought still being written is drawn from its first word, which the live text holds.
       return item.preview.length === 0 && !item.streaming
@@ -1118,6 +1125,14 @@ export function engineThreadOf(
         : [],
     ),
   );
+  // The notes that went back as answers to other Mates' messages, each by its `mate.answer` marker.
+  const answers = new Map(
+    items.flatMap((item) =>
+      item.kind === "marker" && item.marker.answer !== undefined
+        ? [[item.marker.answer.item as string, item.marker.answer.to] as const]
+        : [],
+    ),
+  );
   for (const item of items) {
     const message = messageOf(
       item,
@@ -1126,6 +1141,7 @@ export function engineThreadOf(
       (runId) => runById.get(runId)?.state === "queued",
       refusedAtAdmission,
       mateNamesOf,
+      (itemId) => answers.get(itemId),
     );
     if (message !== null) messages.push(message);
     switch (item.kind) {

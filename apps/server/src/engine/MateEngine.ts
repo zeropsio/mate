@@ -19,6 +19,7 @@ import type {
   ConversationAgent,
   ConversationId,
   EngineEvent,
+  ItemId,
   Principal,
   RunEnd,
   RunEndSource,
@@ -268,9 +269,9 @@ export interface MateEngineService {
         readonly reachedAgent: boolean | "unknown";
         /**
          * A Mate message's runs only: the agent's last words in them, said whole — what its asker
-         * hears back. Absent: it said none.
+         * hears back — and the note that said them. Absent: it said none.
          */
-        readonly lastWords?: string;
+        readonly lastWords?: { readonly itemId: ItemId; readonly text: string };
         /**
          * A Mate message's runs only: whether this run is the one the message itself opened (its
          * trigger is the message), not a continuation of it; and whether any run of it reached

@@ -19,6 +19,8 @@ import { cn } from "~/lib/utils";
  *   it stands in), lightly, hugging what it says: the run's one bubble among rows.
  * - `another-mate`: a message another of the person's Mates sent, standing on the page as its
  *   own voice: a wash of its hue and an edge in it, room for its name over its words.
+ * - `to-another-mate`: a Mate's words that went to another of the person's Mates, not to the
+ *   person: that Mate's edge and no wash, room for its name over the words.
  */
 const messageBubbleVariants = cva("min-w-0 rounded-card text-prose", {
   defaultVariants: { speaker: "person", queued: false },
@@ -27,6 +29,7 @@ const messageBubbleVariants = cva("min-w-0 rounded-card text-prose", {
       person: "",
       mate: "w-fit max-w-full overflow-hidden bg-(--mate-tint)/17 px-3 py-2 leading-5 text-foreground",
       "another-mate": "border border-mate-edge bg-mate-wash px-4 py-3 text-foreground",
+      "to-another-mate": "border border-mate-edge px-4 py-3 text-foreground",
     },
     queued: { true: "", false: "" },
   },

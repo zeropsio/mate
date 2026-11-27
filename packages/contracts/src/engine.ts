@@ -35,7 +35,7 @@ import { ThreadTokenUsageSnapshot, ToolPresentation } from "./providerRuntime.ts
 import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
 import { MATE_TASK_BODY_MAX, MateTaskMessage, MateTaskSource } from "./mateTask.ts";
-import { MateMessageItem } from "./mateMessage.ts";
+import { MateMessageFrom, MateMessageItem } from "./mateMessage.ts";
 import { MessageAbout } from "./messageAbout.ts";
 import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
@@ -621,6 +621,13 @@ const itemBodyFields = {
       driver: Schema.optionalKey(Schema.String),
       /** A crew seam's facts, on a marker of kind `crew.seam`. */
       seam: Schema.optionalKey(RecordedCrewSeam),
+      /**
+       * On a marker of kind `mate.answer`: the note that went back to another Mate as the answer to
+       * its message (`MateMessage`, by HQ's id), and that Mate as the message named it.
+       */
+      answer: Schema.optionalKey(
+        Schema.Struct({ messageId: Schema.String, item: ItemId, to: MateMessageFrom }),
+      ),
     }),
   },
 } as const;
