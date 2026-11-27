@@ -53,6 +53,11 @@ export function operationEndWords(
 ): { readonly title: string; readonly description: string } {
   const unable = "A request already at Zerops may still finish.";
   switch (kind) {
+    case "birth":
+      return {
+        title: `End setting up ${name}?`,
+        description: `${unable} Ending it removes this setup. Its project may remain in Zerops and can be deleted there.`,
+      };
     case "mate_restart":
       return {
         title: `End restarting ${name}?`,

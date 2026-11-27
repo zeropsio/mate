@@ -41,14 +41,14 @@ declare module "../model.ts" {
     };
     /**
      * The end of the waiting operation `id` HQ offers this reader, shown on the application `appId`,
-     * its production included, or on the project `projectId`.
+     * its production included, on the project `projectId`, or on birth `birthId` in `appId`.
      */
     readonly "end-operation": {
       readonly orgId: string;
       readonly id: string;
     } & (
-      | { readonly appId: string; readonly projectId?: undefined }
-      | { readonly projectId: string; readonly appId?: undefined }
+      | { readonly appId: string; readonly birthId?: string; readonly projectId?: undefined }
+      | { readonly projectId: string; readonly appId?: undefined; readonly birthId?: undefined }
     );
     /**
      * A Mate's deletion, which HQ runs as its operation `id` on the person's token; `keptGit: "keep"`
@@ -255,16 +255,21 @@ const endedOn = (
 /**
  * HQ's answer is its end. The application, its production or the project showing the operation
  * ended (its failure `ended`), or no longer showing it, or no longer there, adopts a lost answer.
- * One shown running or still waiting is not ended: its maker's Continue may have won.
+ * A birth's disappearance does not prove its End: HQ also stops showing an unbound Chief birth
+ * to another reader when its maker continues it. One shown running or still waiting is not ended.
  */
 const endOperation = shown(
   "end-operation",
   (intent) => intent.id,
   (read, intent) => {
     if (intent.appId !== undefined) {
+      // A reader's navigation may hide the birth even while it continues. Only HQ's answer proves
+      // this End; a lost answer remains uncertain.
+      if (intent.birthId !== undefined) return false;
       const app = read.fact("hqApp", intent.appId);
       if (removedForViewer(app)) return true;
-      return app.kind === "known" && endedOn(appOperation(app.value, intent.id), intent.id);
+      if (app.kind !== "known") return false;
+      return endedOn(appOperation(app.value, intent.id), intent.id);
     }
     const placement = read.fact("placement", intent.projectId);
     if (removedForViewer(placement)) return true;

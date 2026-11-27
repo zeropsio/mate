@@ -17,6 +17,13 @@ import { organizationProjects, rosterAnswered } from "./projects.ts";
 import { projectServices } from "./services.ts";
 import { projectProcesses } from "./processes.ts";
 import { firstBuildState } from "./mateArrival.ts";
+import {
+  accessLostLine,
+  operationFailureWords,
+  platformErrorLine,
+  waitingWords,
+  type WaitingPress,
+} from "./operationFailure.ts";
 
 export interface BirthEvidence {
   readonly birth: Pick<HqBirth, "operation" | "projectId" | "importProcessId">;
@@ -28,7 +35,12 @@ export interface BirthEvidence {
 }
 
 export interface BirthProgress {
-  readonly phase: "creating-project" | "project-created" | "import-accepted" | "container-starting";
+  readonly phase:
+    | "creating-project"
+    | "project-created"
+    | "import-accepted"
+    | "container-starting"
+    | "deleting-project";
   readonly next:
     | { readonly kind: "blocked" }
     | {
@@ -50,7 +62,7 @@ export const birthStopped = (state: HqBirthState): boolean =>
   state === "failed" || state === "waiting_for_maker";
 
 /**
- * What a person is offered of HQ's offers for a birth: Continue as HQ names its reader; Delete of
+ * What a person is offered of HQ's offers for a birth: Continue and End as HQ names its reader; Delete of
  * the birth alone where they may add a Mate to its application (`addMate`); its project's deletion
  * where HQ offers them the Mate's record (`editRecord`). Each permission is read live, else false.
  */
@@ -59,7 +71,10 @@ export function birthOffersFor(
   person: { readonly addMate: boolean; readonly editRecord: boolean },
 ): ReadonlyArray<HqBirthOffer> {
   return offers.filter(
-    (offer) => offer === "continue" || (offer === "delete" ? person.addMate : person.editRecord),
+    (offer) =>
+      offer === "continue" ||
+      offer === "end" ||
+      (offer === "delete" ? person.addMate : person.editRecord),
   );
 }
 
@@ -71,9 +86,11 @@ export function birthOffersFor(
 export function birthDeleteHeld(
   birth: { readonly state: HqBirthState; readonly offers: ReadonlyArray<HqBirthOffer> },
   editRecord: boolean,
+  phase: BirthProgress["phase"],
 ): boolean {
   return (
     birth.state === "running" &&
+    phase !== "deleting-project" &&
     editRecord &&
     !birth.offers.includes("delete") &&
     !birth.offers.includes("delete_project")
@@ -101,7 +118,7 @@ export interface SharedBirth {
   readonly progress: BirthProgress;
   /** Its lifecycle state, HQ's. */
   readonly state: HqBirthState;
-  /** HQ's offers this person's live permission allows (`birthOffersFor`). */
+  /** HQ's Continue and End offers, and its Delete offers this person's live permission allows. */
   readonly offers: ReadonlyArray<HqBirthOffer>;
   /** Delete is drawn and not pressable until HQ offers it (`birthDeleteHeld`). */
   readonly deleteHeld?: true;
@@ -188,7 +205,9 @@ export const sharedBirths: Projection<
           progress,
           state: birth.state,
           offers: birthOffersFor(birth.offers, { addMate: authorized, editRecord }),
-          ...(birthDeleteHeld(birth, editRecord) ? { deleteHeld: true as const } : {}),
+          ...(birthDeleteHeld(birth, editRecord, progress.phase)
+            ? { deleteHeld: true as const }
+            : {}),
           ...(birth.operation.failure === undefined ? {} : { failure: birth.operation.failure }),
         };
       }),
@@ -206,6 +225,134 @@ export const sharedBirths: Projection<
   equals: sameValue,
 };
 
+/** Each stage's words for a running birth, a stopped birth and its detail page. */
+const BIRTH_STAGE: Record<
+  BirthProgress["phase"],
+  { going: string; stopped: string; detail: string }
+> = {
+  "creating-project": {
+    going: "Creating its project…",
+    stopped: "Setup stopped while creating its project",
+    detail: "Creating project",
+  },
+  "project-created": {
+    going: "Its project is made, setting it up…",
+    stopped: "Setup stopped after its project was created",
+    detail: "Project created",
+  },
+  "import-accepted": {
+    going: "Making its services…",
+    stopped: "Setup stopped while its services were being made",
+    detail: "Import accepted",
+  },
+  "container-starting": {
+    going: "Starting its computer…",
+    stopped: "Setup stopped while its computer was starting",
+    detail: "Container starting",
+  },
+  "deleting-project": {
+    going: "Deleting its project…",
+    stopped: "Setup stopped while deleting its project",
+    detail: "Deleting project",
+  },
+};
+
+const FAILURE_STEP: Record<NonNullable<SharedBirth["failure"]>["step"], string> = {
+  create: "Creating project",
+  watch: "Setting up project",
+  access: "Granting project access",
+  settings: "Updating project settings",
+  key: "Creating project key",
+  import: "Importing services",
+  restart: "Restarting the Mate service",
+  delete: "Deleting project",
+  prove: "Proving project deletion",
+  zerops: "Reaching Zerops",
+};
+
+/** The row, detail and actions of a birth, from HQ's state and offers and Zerops' evidence. */
+export function birthPresentation(birth: SharedBirth): {
+  readonly line: string;
+  readonly row: string;
+  readonly stopped: boolean;
+  readonly attention: boolean;
+  readonly actions: ReadonlyArray<"continue-operation" | "end-operation" | "delete">;
+  readonly waitsOnMaker: boolean;
+  readonly press: WaitingPress;
+} {
+  const { phase, next, reason } = birth.progress;
+  const stage = BIRTH_STAGE[phase];
+  const stopped = birthStopped(birth.state);
+  const continues = birth.offers.includes("continue");
+  const waits = birth.state === "waiting_for_maker";
+  const failure = birth.failure;
+  const platformError =
+    failure === undefined
+      ? null
+      : platformErrorLine(failure, waits ? (continues ? "continue" : "maker-continues") : "ended");
+  const waiting =
+    waits && failure?.code === "token_expired"
+      ? continues
+        ? "Its Zerops sign-in ran out before it finished."
+        : "Its maker can continue it."
+      : null;
+  const accessLost = waits && failure !== undefined ? accessLostLine(failure, continues) : null;
+  const cleanupRefused =
+    phase === "deleting-project" &&
+    birth.state === "failed" &&
+    failure?.origin === "zerops" &&
+    failure.step === "delete";
+  const failureWords =
+    platformError ??
+    accessLost ??
+    waiting ??
+    (failure === undefined
+      ? null
+      : cleanupRefused
+        ? `Mate could not delete the project${birth.intent?.projectName ? ` ${birth.intent.projectName}` : ""} it created: delete it in Zerops. ${operationFailureWords(failure)}`
+        : phase === "deleting-project" &&
+            (failure.code === "chief_already_registered" ||
+              failure.code === "another_persons_chief")
+          ? operationFailureWords(failure)
+          : `${FAILURE_STEP[failure.step]} · ${operationFailureWords(failure)}`);
+  const detail =
+    reason ??
+    (next.kind === "blocked"
+      ? "Zerops reported that the step failed or was canceled"
+      : {
+          hq: null,
+          "service-observation": "Waiting for Zerops service information",
+          service: "The Mate service has not appeared in Zerops",
+          "several-services": "Several Mate services are present in the project",
+          container: "Waiting for the Mate container to start",
+          hello: "Waiting for the Mate to link",
+        }[next.for]);
+  const attention =
+    stopped ||
+    reason !== null ||
+    next.kind === "blocked" ||
+    (next.kind === "wait" && next.for === "several-services");
+  return {
+    row: failureWords ?? (attention ? stage.stopped : stage.going),
+    line:
+      failureWords ??
+      (next.kind === "wait" && next.for === "hq"
+        ? stage.going
+        : [stage.detail, detail].filter((part) => part !== null).join(" · ")),
+    stopped,
+    attention,
+    waitsOnMaker: waits && !continues,
+    press: waitingWords(failure?.code ?? "").press,
+    actions: [
+      ...(continues ? ["continue-operation" as const] : []),
+      ...(birth.offers.includes("end") ? ["end-operation" as const] : []),
+      ...(birth.offers.includes("delete") || birth.offers.includes("delete_project")
+        ? ["delete" as const]
+        : []),
+    ],
+  };
+}
+
 const failureOf = (process: ProcessValue | undefined): string | null | undefined => {
   if (process?.status !== "FAILED" && process?.status !== "CANCELED") return undefined;
   return process.failReason ?? process.error?.message ?? null;
@@ -221,11 +368,15 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
   const { birth } = evidence;
   const operation = birth.operation;
   const operationPhase =
-    operation.phase === "accepted" || operation.phase === "project_requested"
-      ? "creating-project"
-      : operation.phase === "import_accepted"
-        ? "import-accepted"
-        : "project-created";
+    operation.phase === "delete_requested" ||
+    operation.phase === "delete_accepted" ||
+    operation.phase === "project_gone"
+      ? "deleting-project"
+      : operation.phase === "accepted" || operation.phase === "project_requested"
+        ? "creating-project"
+        : operation.phase === "import_accepted"
+          ? "import-accepted"
+          : "project-created";
   if (operationPhase !== "import-accepted")
     return { phase: operationPhase, next: { kind: "wait", for: "hq" }, reason: null };
 

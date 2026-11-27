@@ -289,6 +289,9 @@ export const HqBirthOperation = Schema.Struct({
     "import_requested",
     "import_accepted",
     "restart_requested",
+    "delete_requested",
+    "delete_accepted",
+    "project_gone",
   ]),
   at: Schema.String,
   acceptedAt: Schema.String,
@@ -303,6 +306,8 @@ export const HqBirthOperation = Schema.Struct({
         "key",
         "import",
         "restart",
+        "delete",
+        "prove",
         "zerops",
       ]),
     }),
@@ -325,10 +330,11 @@ export type HqBirthState = typeof HqBirthState.Type;
 
 /**
  * A request a birth's state lets its reader ask HQ for (navigation, `births[].offers`): `continue`
- * its operation, `delete` the birth alone, or `delete_project`, the Mate deletion of its project.
+ * its operation, `end` its waiting operation, `delete` the birth alone, or `delete_project`, the
+ * Mate deletion of its project.
  * An offer is no permission: HQ decides the reader's right again at the press.
  */
-export const HqBirthOffer = Schema.Literals(["continue", "delete", "delete_project"]);
+export const HqBirthOffer = Schema.Literals(["continue", "end", "delete", "delete_project"]);
 export type HqBirthOffer = typeof HqBirthOffer.Type;
 
 /**

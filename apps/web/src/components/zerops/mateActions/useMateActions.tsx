@@ -334,6 +334,13 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     readonly adopted: boolean;
     readonly name: string;
   } | null>(null);
+  const [endingBirth, setEndingBirth] = useState<{
+    readonly birthId: string;
+    readonly appId: string;
+    readonly orgId: string;
+    readonly key: string;
+    readonly name: string;
+  } | null>(null);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
   const [dialog, setDialog, captureDialogReply] = useProjectDialog(
     (open: MateDialog) => open.candidate.project.id,
@@ -1032,6 +1039,24 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             ]
           : []),
+        ...(orgId !== undefined && sharedBirthPresentation(birth).actions.includes("end-operation")
+          ? [
+              {
+                id: "end-operation",
+                label: "End",
+                variant: "destructive" as const,
+                disabled: busyKey === key,
+                onSelect: () =>
+                  setEndingBirth({
+                    birthId: birth.id,
+                    appId: birth.appId,
+                    orgId,
+                    key,
+                    name: birth.intent?.placement.name ?? "Mate",
+                  }),
+              },
+            ]
+          : []),
         // Which request Delete sends is HQ's offer: the birth alone, or its project's deletion.
         ...(birth.offers.includes("delete")
           ? [
@@ -1434,6 +1459,30 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           }}
           onOpenChange={(open) => {
             if (!open) close();
+          }}
+          open
+        />
+      ) : null}
+      {endingBirth !== null ? (
+        <ZeropsOperationEndDialog
+          kind="birth"
+          name={endingBirth.name}
+          onEnd={() => {
+            if (activeOrganization?.id !== endingBirth.orgId) return;
+            void write(endingBirth.key, async () => {
+              const { progress, evidence } = await operations.submit({
+                kind: "end-operation",
+                orgId: endingBirth.orgId,
+                id: endingBirth.birthId,
+                appId: endingBirth.appId,
+                birthId: endingBirth.birthId,
+              });
+              const trouble = writeTrouble(progress, evidence);
+              if (trouble !== null) throw new Error(trouble);
+            });
+          }}
+          onOpenChange={(open) => {
+            if (!open) setEndingBirth(null);
           }}
           open
         />

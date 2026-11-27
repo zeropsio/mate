@@ -1,4 +1,4 @@
-next: OP66
+next: OP67
 
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
@@ -38,3 +38,4 @@ next: OP66
 - OP63 — A lost answer to ending a production's removal is adopted only once HQ shows that removal ended or no longer shows it; breaks: an End HQ never took reads as done while the application stays held
 - OP64 — After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.
 - OP65 — An accepted Add is acknowledged as adding, and Stop adding finishes when HQ reopens that change; breaks: an active build is reported as a closed change or a stop acts on another change.
+- OP66 — A birth's End is sent once and a lost answer stays uncertain even when it disappears from navigation; a refusal keeps HQ's words; breaks: a cleanup the maker continued reads as ended or a refused End goes again

@@ -514,3 +514,62 @@ it("OP64: After a lost answer a Mate's deletion and an application's deletion ar
     }
   }
 });
+
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | if (intent.birthId !== undefined) return false; → if (false) return false;
+it.effect(
+  "OP66: A birth's End is sent once and a lost answer stays uncertain even when it disappears from navigation; a refusal keeps HQ's words; breaks: a cleanup the maker continued reads as ended or a refused End goes again",
+  () =>
+    Effect.gen(function* () {
+      const at = "2026-11-27T10:00:00.000Z";
+      const birth = {
+        id: "birth",
+        face: "rose:seal",
+        operation: { kind: "birth", phase: "delete_requested", at, acceptedAt: at },
+        state: "waiting_for_maker",
+        offers: ["end"],
+      } as const;
+      const intent = {
+        kind: "end-operation",
+        orgId: ORG,
+        id: birth.id,
+        appId: shop.id,
+        birthId: birth.id,
+      } as const;
+      const end = HQ_WRITE_KINDS.find((kind) => kind.kind === "end-operation");
+      const shows = (fact: unknown) =>
+        end?.reflected({ fact: () => fact } as never, intent as never, {} as never);
+      expect(shows({ kind: "unknown" })).toBe(false);
+      expect(shows({ kind: "known", value: {} })).toBe(false);
+      expect(shows({ kind: "known", value: { births: [birth] } })).toBe(false);
+      // An Admin stops seeing the unbound birth when its maker continues it, too.
+      expect(shows({ kind: "known", value: { births: [] } })).toBe(false);
+      const held = { ...shop, births: [birth] };
+      for (const outcome of ["lost", "refused", "hidden", "answered"] as const) {
+        const store = account({ structure: { apps: [held], ungrouped: [] } });
+        const calls: string[] = [];
+        const operations = operationsOf(store, {
+          endOperation: async (id) => {
+            calls.push(id);
+            if (outcome === "hidden") hqSays(store, [{ ...shop, births: [] }]);
+            if (outcome === "refused")
+              throw new HqError({
+                kind: "refused",
+                code: "conflict",
+                reason: "operation_not_waiting",
+                message: "This operation is no longer waiting.",
+              });
+            if (outcome !== "answered") throw lost;
+          },
+        });
+        yield* operations.submit(intent);
+        expect(calls).toEqual(["birth"]);
+        expect(progress(store, "r1")).toMatchObject(
+          outcome === "lost" || outcome === "hidden"
+            ? { stage: "uncertain" }
+            : outcome === "refused"
+              ? { stage: "refused", reason: "This operation is no longer waiting." }
+              : { stage: "done", outcome: "succeeded" },
+        );
+      }
+    }),
+);

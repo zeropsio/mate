@@ -45,7 +45,6 @@ next: MN123
 - MN37 — Approving a production-services proposal names to HQ only the asked services its plan still creates, under that plan's hash; breaks: HQ refuses the whole approval because one asked service already exists
 - MN39 — Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work
 - MN40 — A Mate's deletion takes its coming page while it runs, waits or failed, offering Continue only to the maker it waits for and Delete again after a failure only to a person HQ offers the record; breaks: the page of a Mate being deleted connects and hands over into a project that is going, or offers a press HQ refuses
-- MN41 — A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart
 - MN42 — A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it
 - MN43 — A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it
 - MN44 — The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears

@@ -1,4 +1,4 @@
-next: PJ159
+next: PJ162
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -143,3 +143,6 @@ next: PJ159
 - PJ156 — A Mate whose project shows its application's deletion running is being deleted, and waiting it waits with that deletion's id; breaks: a Mate held by its project's deletion opens and takes work the deletion then removes.
 - PJ158 — an app deletion waiting on the Mate's project keeps its kind, as does a Mate deletion; breaks: End describes the Mate's deletion while ending its whole application's.
 - PJ157 — An operation that ended failed is offered again only where HQ offers the reader its start again, and a running, waiting or decided one never is; breaks: a person is shown a Delete again or a Remove that HQ and Zerops refuse the same way, or the Owner who alone can finish is shown none.
+- PJ159 — A Chief cleanup reads each deletion phase and failure in one row and offers End exactly as HQ does; breaks: a refused cleanup hides its project, a proof refusal claims it was kept, or a person loses or gains End
+- PJ160 — An application's cleanup and ordinary birth both decode for every cleanup phase and failure step, while an unknown phase stays unreadable; breaks: one cleanup hides every birth of the application
+- PJ161 — A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart

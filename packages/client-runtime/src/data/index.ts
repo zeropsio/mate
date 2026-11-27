@@ -157,6 +157,7 @@ export { projectCreations } from "./projections/creation.ts";
 export { creationImports } from "./projections/creationImports.ts";
 export {
   birthStopped,
+  birthPresentation,
   sharedBirths,
   type SharedBirth,
   type SharedBirthState,

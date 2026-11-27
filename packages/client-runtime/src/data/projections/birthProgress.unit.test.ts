@@ -2,12 +2,21 @@ import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 import { AtomRegistry } from "effect/reactivity";
 import { HqBirthOffer, HqBirthOperation, type HqBirth } from "../../zerops/hq/client.ts";
+import { readBirthIntent } from "../../zerops/birthIntent.ts";
+import { hqAppFamily } from "../families/hqNavigation.ts";
 import { recorded } from "../__fixtures__/recorded.ts";
 import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { makeAccountStore } from "../store.ts";
-import { birthDeleteHeld, birthOffersFor, birthProgressOf, sharedBirths } from "./birthProgress.ts";
+import {
+  birthDeleteHeld,
+  birthOffersFor,
+  birthPresentation,
+  birthProgressOf,
+  sharedBirths,
+  type SharedBirth,
+} from "./birthProgress.ts";
 const plan = {
   projectName: "Shop - Ada",
   recipe: { kind: "none" },
@@ -51,6 +60,8 @@ it("PJ135: A birth offers Continue, Delete or its project's deletion only where 
   const examples = [
     // HQ names the reader in its Continue: kept whatever their permission.
     { offers: ["continue"], person: nobody, offered: ["continue"] },
+    { offers: ["end"], person: nobody, offered: ["end"] },
+    { offers: [], person: everyone, offered: [] },
     {
       offers: answeredOffers("running"),
       person: { addMate: true, editRecord: false },
@@ -87,15 +98,18 @@ it("PJ135: A birth offers Continue, Delete or its project's deletion only where 
 it("PJ144: A running birth HQ offers no Delete holds Delete, drawn and not pressable, for a person HQ offers its Mate's record and for nobody else; breaks: a new Mate has no menu while it comes up, or one that failed promises a Delete that never comes", () => {
   const examples = [
     { state: "running", offers: [], editRecord: true, held: true },
+    { state: "running", offers: [], editRecord: true, phase: "deleting-project", held: false },
     { state: "running", offers: [], editRecord: false, held: false },
     { state: "running", offers: ["delete"], editRecord: true, held: false },
     { state: "waiting_for_maker", offers: ["continue"], editRecord: true, held: false },
     { state: "failed", offers: [], editRecord: true, held: false },
     { state: "awaiting_link", offers: ["delete_project"], editRecord: true, held: false },
   ] as const;
-  expect(examples.map((birth) => birthDeleteHeld(birth, birth.editRecord))).toEqual(
-    examples.map(({ held }) => held),
-  );
+  expect(
+    examples.map((birth) =>
+      birthDeleteHeld(birth, birth.editRecord, "phase" in birth ? birth.phase : "creating-project"),
+    ),
+  ).toEqual(examples.map(({ held }) => held));
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | offer.edit.kind === "allowed" → offer.edit.kind !== "unknown"
@@ -269,4 +283,189 @@ it("PJ96: A birth offers Delete only while its person's role is read live and al
   stop();
   store.close();
   registry.dispose();
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | offer === "end" || → false ||
+it("PJ159: A Chief cleanup reads each deletion phase and failure in one row and offers End exactly as HQ does; breaks: a refused cleanup hides its project, a proof refusal claims it was kept, or a person loses or gains End", () => {
+  const phases = ["delete_requested", "delete_accepted", "project_gone"] as const;
+  const failureCases = [
+    { failure: undefined, row: "Deleting its project…" },
+    {
+      failure: {
+        step: "delete",
+        code: "forbidden",
+        at: failedAt,
+        origin: "zerops",
+        zerops: { words: "Deletion denied." },
+      },
+      row: "Mate could not delete the project Shop - Ada it created: delete it in Zerops. Zerops refused: Deletion denied.",
+    },
+    {
+      failure: {
+        step: "prove",
+        code: "forbidden",
+        at: failedAt,
+        origin: "zerops",
+        zerops: { words: "Proof denied." },
+      },
+      row: "Proving project deletion · Zerops refused: Proof denied.",
+    },
+    {
+      failure: { step: "create", code: "chief_already_registered", at: failedAt, origin: "hq" },
+      row: "You already have a Chief.",
+    },
+  ] as const;
+  const nobody = { addMate: false, editRecord: false };
+  for (const phase of phases) {
+    for (const { failure, row } of failureCases) {
+      for (const offered of [false, true]) {
+        const operation = {
+          ...running.operation,
+          phase,
+          ...(failure === undefined ? {} : { failure }),
+        };
+        const offers = birthOffersFor(offered ? ["end"] : [], nobody);
+        const birth: SharedBirth = {
+          id: "birth",
+          appId: "app",
+          appName: "Shop",
+          face: "rose:seal",
+          projectId: null,
+          importProcessId: null,
+          intent: readBirthIntent(plan),
+          startedAt: Date.parse(acceptedAt),
+          progress: birthProgressOf({ birth: { operation }, service: undefined }),
+          state: failure === undefined ? "running" : "failed",
+          offers,
+          ...(failure === undefined ? {} : { failure }),
+        };
+        const shown = birthPresentation(birth);
+        expect(
+          { row: shown.row, line: shown.line, actions: shown.actions },
+          `${phase}/${failure?.step ?? "none"}/${offered}`,
+        ).toEqual({
+          row,
+          line: row,
+          actions: offered ? ["end-operation"] : [],
+        });
+      }
+    }
+  }
+  const waiting: SharedBirth = {
+    id: "birth",
+    appId: "app",
+    appName: "Shop",
+    face: "rose:seal",
+    projectId: null,
+    importProcessId: null,
+    intent: readBirthIntent(plan),
+    startedAt: Date.parse(acceptedAt),
+    progress: { phase: "deleting-project", next: { kind: "wait", for: "hq" }, reason: null },
+    state: "waiting_for_maker",
+    offers: ["continue", "end"],
+    failure: { step: "delete", code: "token_expired", at: failedAt, origin: "hq" },
+  };
+  expect(birthPresentation(waiting)).toMatchObject({
+    row: "Its Zerops sign-in ran out before it finished.",
+    actions: ["continue-operation", "end-operation"],
+  });
+  expect(birthPresentation({ ...waiting, offers: ["end"] })).toMatchObject({
+    row: "Its maker can continue it.",
+    actions: ["end-operation"],
+    waitsOnMaker: true,
+  });
+});
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts |     "delete_requested", →     "unknown_requested",
+it("PJ160: An application's cleanup and ordinary birth both decode for every cleanup phase and failure step, while an unknown phase stays unreadable; breaks: one cleanup hides every birth of the application", () => {
+  const phases = ["delete_requested", "delete_accepted", "project_gone"] as const;
+  const steps = ["delete", "prove"] as const;
+  for (const phase of phases) {
+    for (const step of steps) {
+      const cleanup = {
+        ...running,
+        id: "cleanup",
+        startedAt: acceptedAt,
+        operation: {
+          ...running.operation,
+          phase,
+          failure: {
+            step,
+            code: "refused",
+            at: failedAt,
+            origin: "zerops",
+            zerops: { words: "No." },
+          },
+        },
+        state: "failed",
+        offers: ["end"],
+      };
+      const ordinary = { ...running, id: "ordinary", startedAt: acceptedAt };
+      const decode = (birth: unknown) =>
+        hqAppFamily.hq!.decode({ id: "app", name: "Shop", births: [birth, ordinary] }, "app");
+      expect(
+        decode(cleanup)?.births?.map(({ id }) => id),
+        `${phase}/${step}`,
+      ).toEqual(["cleanup", "ordinary"]);
+      expect(
+        decode({ ...cleanup, operation: { ...cleanup.operation, phase: "future_unknown" } })
+          ?.births,
+      ).toBeUndefined();
+    }
+  }
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | const stopped = birthStopped(birth.state); → const stopped = birthStopped(birth.state) || reason !== null;
+it("PJ161: A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart", () => {
+  const birth: SharedBirth = {
+    id: "birth-1",
+    appId: "shop",
+    appName: "Shop",
+    face: "slate:squircle",
+    madeBy: "maker",
+    projectId: "project-1",
+    importProcessId: null,
+    intent: undefined,
+    startedAt: Date.parse("2026-11-21T10:00:00Z"),
+    progress: { phase: "import-accepted", next: { kind: "wait", for: "container" }, reason: null },
+    state: "running",
+    offers: [],
+  };
+  const troubled = {
+    phase: "container-starting",
+    next: { kind: "wait", for: "container" },
+    reason: "Container failed.",
+  } as const;
+  // Each state with the offers HQ makes its maker in it (mate-hq spec/protocol.md, births).
+  const states = [
+    { state: "running", offers: [] },
+    { state: "waiting_for_maker", offers: ["continue", "delete_project"] },
+    { state: "failed", offers: ["delete_project"] },
+    { state: "awaiting_link", offers: ["delete_project"] },
+    { state: "awaiting_registration", offers: [] },
+  ] as const;
+  const examples = states.flatMap((held) =>
+    [false, true].map((trouble) => ({
+      ...birth,
+      ...held,
+      ...(trouble ? { progress: troubled } : {}),
+    })),
+  );
+  expect(
+    examples.map((example) => {
+      const { stopped, attention, actions } = birthPresentation(example);
+      return { stopped, attention, actions };
+    }),
+  ).toEqual([
+    { stopped: false, attention: false, actions: [] },
+    { stopped: false, attention: true, actions: [] },
+    { stopped: true, attention: true, actions: ["continue-operation", "delete"] },
+    { stopped: true, attention: true, actions: ["continue-operation", "delete"] },
+    { stopped: true, attention: true, actions: ["delete"] },
+    { stopped: true, attention: true, actions: ["delete"] },
+    { stopped: false, attention: false, actions: ["delete"] },
+    { stopped: false, attention: true, actions: ["delete"] },
+    { stopped: false, attention: false, actions: [] },
+    { stopped: false, attention: true, actions: [] },
+  ]);
 });

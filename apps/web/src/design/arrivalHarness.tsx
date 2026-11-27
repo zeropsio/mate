@@ -523,7 +523,7 @@ const STATES: ReadonlyArray<HarnessState> = [
   },
   voiceFixture("reconnecting", { kind: "reconnecting" }),
   {
-    id: "stopped",
+    id: "container-stopped-prompt",
     label: "0 Stopped · its container is not running",
     mate: { ...WREN, connected: false },
     phase: null,
@@ -670,6 +670,12 @@ const STATES: ReadonlyArray<HarnessState> = [
     id: "refused",
     label: "4 Stopped · Zerops refused its project",
     mate: { ...WREN, connected: false },
+    phase: null,
+  },
+  {
+    id: "cleanup-waiting",
+    label: "4 Stopped · Chief cleanup waiting",
+    mate: { ...WREN, connected: false, chief: true },
     phase: null,
   },
   {
@@ -934,12 +940,22 @@ const REFUSED_BIRTH: SharedBirth = {
   },
 };
 
+const WAITING_CLEANUP: SharedBirth = {
+  ...REFUSED_BIRTH,
+  chief: true,
+  progress: { phase: "deleting-project", next: { kind: "wait", for: "hq" }, reason: null },
+  state: "waiting_for_maker",
+  offers: ["continue", "end"],
+  failure: { step: "delete", code: "token_expired", at: "2026-11-09T11:04:31.000Z", origin: "hq" },
+};
+
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
-  if (state.id === "refused") {
+  if (state.id === "refused" || state.id === "cleanup-waiting") {
     // The stage as `SharedBirthStage` composes it, its actions without the Mate's action hook.
-    const presentation = sharedBirthPresentation(REFUSED_BIRTH);
+    const birth = state.id === "refused" ? REFUSED_BIRTH : WAITING_CLEANUP;
+    const presentation = sharedBirthPresentation(birth);
     const zeropsAnswer =
-      REFUSED_BIRTH.failure === undefined ? null : operationFailureDetails(REFUSED_BIRTH.failure);
+      birth.failure === undefined ? null : operationFailureDetails(birth.failure);
     return {
       kind: "failed",
       headline: state.mate.name,
@@ -950,7 +966,18 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
           {zeropsAnswer === null ? null : (
             <FailureDetails align="center">{zeropsAnswer}</FailureDetails>
           )}
-          <Button variant="destructive-ghost">Delete</Button>
+          {presentation.actions.map((action) => (
+            <Button
+              key={action}
+              variant={action === "continue-operation" ? "primary" : "destructive-ghost"}
+            >
+              {action === "continue-operation"
+                ? presentation.press
+                : action === "end-operation"
+                  ? "End"
+                  : "Delete"}
+            </Button>
+          ))}
         </div>
       ),
     };
