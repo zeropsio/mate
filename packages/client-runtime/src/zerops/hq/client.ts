@@ -128,7 +128,6 @@ import { fileSize } from "../gitBrowse/blob.ts";
 import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation, type ZeropsAccess, type ZeropsAccessAsk } from "../api.ts";
-import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { CanonicalHqEnvironment } from "./environments.ts";
 import {
   GIT_BOX_UNAVAILABLE,
@@ -939,13 +938,10 @@ export interface HqApi {
   readonly removeAiKey: (provider: string) => Promise<void>;
   /**
    * The integration tokens a member minted that keep Zerops refusing their removal, as HQ picks
-   * them for an Owner or Admin (`POST /api/members/:userId/take-over`). The request carries both
-   * the organization's integration tokens the person read and their current access token.
+   * them for an Owner or Admin (`POST /api/members/:userId/take-over`). HQ reads them with the
+   * person's current access token.
    */
-  readonly takeOverList: (
-    userId: string,
-    list: ReadonlyArray<ZeropsIntegrationToken>,
-  ) => Promise<HqTakeOverList>;
+  readonly takeOverList: (userId: string) => Promise<HqTakeOverList>;
   /**
    * Takes one of them over with the person's access token (`POST
    * /api/members/:userId/take-over/:tokenId`): `null` once HQ deleted one it no longer uses, else
@@ -1256,8 +1252,6 @@ const HQ_TAKING_LONG = "HQ is taking long to answer.";
  * way (F22).
  */
 const WRITE_TIMEOUT_MS = 45_000;
-/** HQ's limit on the complete JSON body of a member's take-over list read. */
-const TAKE_OVER_MAX_BYTES = 1_048_576;
 
 /** A session is renewed once it is this close to its end. */
 const RENEW_BEFORE_MS = 15 * 60_000;
@@ -2507,20 +2501,11 @@ export function makeHqApi(input: {
         true,
       );
     },
-    takeOverList: async (userId, list) => {
-      const body = JSON.stringify(await withAccess({ list }));
-      if (new TextEncoder().encode(body).byteLength > TAKE_OVER_MAX_BYTES) {
-        throw new HqError({
-          kind: "refused",
-          code: "too_large",
-          status: 413,
-          message: hqRefusalWords({ code: "too_large", reason: undefined }),
-        });
-      }
+    takeOverList: async (userId) => {
       return readTakeOverList(
         await authorized(`/api/members/${encodeURIComponent(userId)}/take-over`, {
           method: "POST",
-          body,
+          body: JSON.stringify(await withAccess({})),
         }),
       );
     },

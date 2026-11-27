@@ -139,7 +139,7 @@ next: ZV217
 - ZV166 — The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running
 - ZV167 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read
 - ZV168 — A take-over replace carries its operation id and the person's Zerops access token with its expiry beside HQ's session; breaks: HQ cannot start the operation that replaces the member's token
-- ZV169 — A take-over list read carries the person's Zerops list and access token under HQ's session; breaks: either HQ version cannot list the member's tokens
+- ZV169 — A take-over list read carries the person's access token under HQ's session and no browser token list; breaks: HQ cannot read the member's tokens
 - ZV170 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
 - ZV171 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
 - ZV172 — A stopped Mate's Start is one PUT that starts its own container's service, answered by the platform's process; breaks: Start asks the platform to start the project instead of the Mate's container
@@ -180,4 +180,3 @@ next: ZV217
 - ZV214 — Try it for a change offers only its own repository's part: Your app is that part's stage and the Draft that part's working copy, never another part's stage or dev; breaks: a change in a two-part project opens the other part's app or dev
 - ZV215 — A change's Draft carries the state zcp last wrote for its copy, and a state this build does not know draws as none; breaks: a person sees a stopped, failed or lost Draft as if it ran
 - ZV216 — An Add that came back unadded says why in words for every reason HQ gives, and a reason this build does not know reads as not added, never as HQ's code; breaks: the person reads a raw code such as github_main_diverged
-- ZV213 — A take-over list body of at most 1 MiB is sent and a larger UTF-8 body is refused before any HQ request; breaks: HQ receives a request it cannot accept

@@ -3,7 +3,7 @@ import { expect, it } from "vite-plus/test";
 import { invitationChange } from "./teamMember.logic.ts";
 
 // witness: apps/web/src/components/settings/teamMember.logic.ts | names: input.names, → names: undefined,
-it("TI+1: An invitation carries the typed names, membership and project grants to HQ, so HQ can invite an address without an existing account", () => {
+it("TI1: An invitation carries the typed names, membership and project grants to HQ, so HQ can invite an address without an existing account", () => {
   const names = { firstName: "Ada", lastName: "Lovelace" };
   const membership = {
     roleCode: "NO_ACCESS",

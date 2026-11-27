@@ -21,9 +21,7 @@ import type {
 import type { ZeropsProject } from "./api/project.ts";
 import type { ZeropsService } from "./api/service.ts";
 import type { ZeropsServiceEnvVar } from "./api/variables.ts";
-import { listIntegrationTokens } from "./api/integrationTokens.ts";
 import { isZcpService } from "./containerAddress.ts";
-import type { ZeropsIntegrationToken } from "./groupReach.ts";
 import { buildZcpDeploymentYaml } from "./newProject.ts";
 import {
   isUsableZeropsSession,
@@ -655,14 +653,6 @@ export class ZeropsApiClient {
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string, signal?: AbortSignal): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(`/project/${projectId}`, { signal: signal ?? null });
-  }
-
-  /** The organization's integration tokens as Zerops lists them to this account (`GET /client/{id}/integration-token/list`). */
-  integrationTokens(
-    clientId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsIntegrationToken>> {
-    return listIntegrationTokens(this.door, clientId, signal);
   }
 
   /**

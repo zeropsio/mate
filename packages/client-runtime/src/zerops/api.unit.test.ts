@@ -138,7 +138,7 @@ it("ZV15: A throttled Zerops answer tells its caller to wait as long as its Retr
       expiresIn: 432_000,
       userId: "user-1",
     });
-    const result = await client.integrationTokens("org-1").catch((error: unknown) => error);
+    const result = await client.fetchUser().catch((error: unknown) => error);
     expect(result).toBeInstanceOf(ZeropsApiError);
     expect(result).toMatchObject({ retryAfterMs });
   }
@@ -263,7 +263,7 @@ it("ZV105: The Zerops token is sent only to the configured API base", async () =
   client.restoreSession(session);
 
   await client.fetchUser();
-  await client.integrationTokens("org-1");
+  await client.fetchProject("p1");
 
   expect(platform.received.map((request) => [request.origin, request.authorization])).toEqual([
     ["https://api.app-fra1.zerops.io", "Bearer access-1"],

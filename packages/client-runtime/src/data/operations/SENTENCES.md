@@ -1,4 +1,4 @@
-next: OP68
+next: OP71
 
 - OP67 — A birth deletion sends its own id, follows its HQ navigation outcome and presents an unconfirmed-setup warning once before acknowledging it, staying ended afterward; breaks: an accepted start is mistaken for completion, another deletion is followed, the warning repeats, or an acknowledged deletion reopens
 - OP1 — A second retry press while its answer is pending sends no second write
@@ -40,6 +40,6 @@ next: OP68
 - OP64 — After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.
 - OP65 — An accepted Add is acknowledged as adding, and Stop adding finishes when HQ reopens that change; breaks: an active build is reported as a closed change or a stop acts on another change.
 - OP66 — A birth's End is sent once and a lost answer stays uncertain even when it disappears from navigation; a refusal keeps HQ's words; breaks: a cleanup the maker continued reads as ended or a refused End goes again
-- OP+1 — After a lost answer a service deletion adopts only a deletion running for that service
-- OP+2 — After a lost answer a canceled build is adopted only when its own process says it is canceling
-- OP+3 — After a lost answer opening a subdomain is adopted only when that service is open
+- OP68 — After a lost answer a service deletion adopts only a deletion running for that service
+- OP69 — After a lost answer a canceled build is adopted only when its own process says it is canceling
+- OP70 — After a lost answer opening a subdomain is adopted only when that service is open

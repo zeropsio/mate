@@ -61,7 +61,7 @@ const serviceRow = (store: AccountStore, id: string, subdomainAccess: boolean, v
 
 // witness: packages/client-runtime/src/data/operations/deleteService.ts | process.serviceStackIds.includes(intent.serviceId) → process.serviceStackIds.includes(intent.projectId)
 it.effect(
-  "OP+1: After a lost answer a service deletion adopts only a deletion running for that service",
+  "OP68: After a lost answer a service deletion adopts only a deletion running for that service",
   () =>
     Effect.gen(function* () {
       const store = accountOf(
@@ -92,7 +92,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/operations/cancelBuild.ts | new Set(["CANCELING", "CANCELED"]) → new Set(["CANCELED"])
 it.effect(
-  "OP+2: After a lost answer a canceled build is adopted only when its own process says it is canceling",
+  "OP69: After a lost answer a canceled build is adopted only when its own process says it is canceling",
   () =>
     Effect.gen(function* () {
       const store = accountOf(
@@ -124,7 +124,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/operations/enableSubdomainAccess.ts | service.value.subdomainAccess === true → service.value.subdomainAccess === false
 it.effect(
-  "OP+3: After a lost answer opening a subdomain is adopted only when that service is open",
+  "OP70: After a lost answer opening a subdomain is adopted only when that service is open",
   () =>
     Effect.gen(function* () {
       const store = accountOf(

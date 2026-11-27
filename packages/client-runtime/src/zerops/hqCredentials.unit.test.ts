@@ -428,50 +428,19 @@ it("ZV168: A take-over replace carries its operation id and the person's Zerops 
   });
 });
 
-// witness: packages/client-runtime/src/zerops/hq/client.ts | const body = JSON.stringify(await withAccess({ list })); → const body = JSON.stringify({ list });
-it("ZV169: A take-over list read carries the person's Zerops list and access token under HQ's session; breaks: either HQ version cannot list the member's tokens", async () => {
-  const cases = [
-    { list: [], token: "person-token", body: { list: [], accessToken: "person-token" } },
-    {
-      list: [{ id: "key-1", name: "A café key", createdByUser: "u2" }],
-      token: "another-token",
-      body: {
-        list: [{ id: "key-1", name: "A café key", createdByUser: "u2" }],
-        accessToken: "another-token",
-      },
-    },
-  ] as const;
-  for (const { list, token, body } of cases) {
+// witness: packages/client-runtime/src/zerops/hq/client.ts | body: JSON.stringify(await withAccess({})), → body: JSON.stringify({}),
+it("ZV169: A take-over list read carries the person's access token under HQ's session and no browser token list; breaks: HQ cannot read the member's tokens", async () => {
+  for (const token of ["person-token", "another-token"]) {
     const { api, sent } = sentTo(token);
-    expect(await api.takeOverList("u2", list)).toEqual({ items: [], otherTokens: 0 });
+    expect(await api.takeOverList("u2")).toEqual({ items: [], otherTokens: 0 });
     expect(sent.filter(({ call }) => call !== "POST /api/door")).toEqual([
       {
         call: "POST /api/members/u2/take-over",
         bearer: "Bearer session-1",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ accessToken: token }),
       },
     ]);
   }
-});
-
-// witness: packages/client-runtime/src/zerops/hq/client.ts | if (new TextEncoder().encode(body).byteLength > TAKE_OVER_MAX_BYTES) { → if (new TextEncoder().encode(body).byteLength > TAKE_OVER_MAX_BYTES + 1) {
-it("ZV213: A take-over list body of at most 1 MiB is sent and a larger UTF-8 body is refused before any HQ request; breaks: HQ receives a request it cannot accept", async () => {
-  const name = "a".repeat(1_048_514);
-  const within = sentTo();
-  expect(await within.api.takeOverList("u2", [{ id: "1", name: `${name}é` }])).toEqual({
-    items: [],
-    otherTokens: 0,
-  });
-  const over = sentTo();
-  const refusal: unknown = await over.api
-    .takeOverList("u2", [{ id: "1", name: `${name}€` }])
-    .catch((cause: unknown) => cause);
-  expect(refusal).toMatchObject({
-    kind: "refused",
-    code: "too_large",
-    status: 413,
-  });
-  expect(over.sent).toEqual([]);
 });
 
 /** One press through the real operations and HQ's executor over `sentTo`: the requests it sent. */

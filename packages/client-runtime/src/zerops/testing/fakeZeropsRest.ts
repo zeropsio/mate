@@ -1,6 +1,6 @@
 /**
  * The Zerops REST API as the account harness serves it (DESIGN §11.1): one
- * platform — people, organizations, projects, tokens — behind a `fetch` the
+ * platform — people, organizations and projects — behind a `fetch` the
  * real `ZeropsApiClient` calls.
  *
  * Every request that reaches it is logged with the bearer it carried, so a
@@ -9,7 +9,6 @@
 import type { FetchImplementation } from "../api.ts";
 import type { ZeropsProject } from "../api/project.ts";
 import type { ZeropsUser } from "../api/account.ts";
-import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { ZeropsSession } from "../session.ts";
 import type { HarnessTab } from "./browserTabs.ts";
 
@@ -35,13 +34,6 @@ export interface FakeZeropsRest {
     readonly totp?: string;
   }) => void;
   readonly addProject: (project: ZeropsProject) => void;
-  /** An integration token the organization holds, as its list and its own read answer it. */
-  readonly addIntegrationToken: (clientId: string, token: ZeropsIntegrationToken) => void;
-  /** The organization's token as the platform holds it now. */
-  readonly integrationToken: (
-    clientId: string,
-    tokenId: string,
-  ) => ZeropsIntegrationToken | undefined;
   /** A session the platform would have issued to this person, e.g. to seed storage. */
   readonly issueSession: (userId: string) => ZeropsSession;
   /** The access token answers 401 from now on; its refresh token still works. */
@@ -113,16 +105,6 @@ const failure = (status: number, code: string) => json(status, { error: { code }
 export function makeFakeZeropsRest(): FakeZeropsRest {
   const accounts = new Map<string, Account>();
   const projects = new Map<string, ZeropsProject>();
-  /** Each organization's tokens, by id. */
-  const tokens = new Map<string, Map<string, ZeropsIntegrationToken>>();
-  const tokensOf = (clientId: string) => {
-    let held = tokens.get(clientId);
-    if (held === undefined) {
-      held = new Map();
-      tokens.set(clientId, held);
-    }
-    return held;
-  };
   /** Access token → the person it authenticates and the refresh token issued with it. */
   const accessTokens = new Map<
     string,
@@ -260,23 +242,6 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
         ),
       });
     }
-    const tokenList = /^GET \/client\/([^/]+)\/integration-token\/list$/.exec(request.route);
-    if (tokenList !== null) {
-      if (bearer === undefined) return failure(401, "unauthorized");
-      if (!memberOf(bearer, tokenList[1])) return failure(403, "forbidden");
-      // The whole list, every time: the platform ignores `limit` and `offset` (measured 2026-10-03).
-      return json(200, { list: [...tokensOf(tokenList[1]!).values()] });
-    }
-    const tokenRecord = /^GET \/client\/([^/]+)\/integration-token\/([^/]+)$/.exec(request.route);
-    if (tokenRecord !== null) {
-      const [, clientId, tokenId] = tokenRecord;
-      if (bearer === undefined) return failure(401, "unauthorized");
-      if (!memberOf(bearer, clientId)) return failure(403, "forbidden");
-      const held = tokensOf(clientId!);
-      const current = held.get(tokenId!);
-      if (current === undefined) return failure(404, "integrationTokenNotFound");
-      return json(200, current);
-    }
     switch (request.route) {
       case "POST /auth/login": {
         const { email, password } = request.body as { email: string; password: string };
@@ -397,10 +362,6 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     addProject: (project) => {
       projects.set(project.id, project);
     },
-    addIntegrationToken: (clientId, token) => {
-      tokensOf(clientId).set(token.id, token);
-    },
-    integrationToken: (clientId, tokenId) => tokens.get(clientId)?.get(tokenId),
     issueSession,
     expireAccessToken: (accessToken) => {
       accessTokens.delete(accessToken);
