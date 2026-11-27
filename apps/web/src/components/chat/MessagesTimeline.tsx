@@ -21,6 +21,7 @@ const EMPTY_ORIGIN_ASKS: ReadonlyArray<OriginAskPlace> = [];
 const EMPTY_MIRROR_ASKS: ReadonlyArray<MirrorAskPlace> = [];
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import { type TimelineScrollDirection } from "@t3tools/client-runtime/zerops/timelineFollow";
+import { conversationBegins, historyAbove } from "@t3tools/client-runtime/zerops/timelineHistory";
 import {
   memo,
   use,
@@ -946,14 +947,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // Whether the conversation is seen, and when its rows joined it (`rooms`). What came in the draw
   // that showed it — the fill, or a kept list coming back — came with it, and is placed.
   const keptShown = kept?.shown !== false;
+  // Earlier turns read in above where the conversation began are history: placed, never entering.
+  const beganRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     const wasSeen = seenRef.current;
     seenRef.current = filled && keptShown;
     const inSight = wasSeen && seenRef.current;
+    beganRef.current ??= conversationBegins(rows);
+    const history = historyAbove(rows, beganRef.current);
     const joined = joinedAtRef.current;
     for (const row of rows) {
       if (!opensRoom(row) || joined.has(row.id)) continue;
-      joined.set(row.id, inSight ? performance.now() : Number.NEGATIVE_INFINITY);
+      joined.set(
+        row.id,
+        inSight && !history.has(row.id) ? performance.now() : Number.NEGATIVE_INFINITY,
+      );
     }
   }, [filled, keptShown, rows]);
   const paintedThread = useRef<string | null>(null);

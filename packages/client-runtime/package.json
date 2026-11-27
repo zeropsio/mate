@@ -255,6 +255,10 @@
       "types": "./src/zerops/timelineFollow.ts",
       "default": "./src/zerops/timelineFollow.ts"
     },
+    "./zerops/timelineHistory": {
+      "types": "./src/zerops/timelineHistory.ts",
+      "default": "./src/zerops/timelineHistory.ts"
+    },
     "./zerops/agentOwnership": {
       "types": "./src/zerops/agentOwnership.ts",
       "default": "./src/zerops/agentOwnership.ts"

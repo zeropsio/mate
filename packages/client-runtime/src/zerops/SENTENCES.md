@@ -176,3 +176,4 @@ next: ZV211
 - ZV208 — A failed addition and a handoff to a person are visible while the draft stays open; breaks: a person sees a build in progress after it failed or needs their help.
 - ZV209 — A newly accepted addition waits for its own result when the change stream still holds the previous one; breaks: an old failure is reported for the new attempt.
 - ZV210 — A page a run publishes again under its title shows once, as its newest publish, where that publish stands; breaks: a corrected page shows twice, or its first draft stands in place of the correction
+- ZV+1 — Rows read in above where a conversation began when it was shown, its first message and never a day's seam that moves up with its day, are its history; breaks: earlier turns read in open their cards as if they arrived, drawn over the rows the person reads
