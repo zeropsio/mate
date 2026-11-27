@@ -9,5 +9,5 @@ next: RV12
 - RV5 — A change waiting on its press promises its merge only to the stages whose deploy key works, names the first stage its key holds, and offers that key's renewal to whoever HQ's rule lets renew it and tells anyone else who does; a recipe change and a change no longer waiting say nothing of keys; breaks: a person merges on "Stage runs it" while the stage deploys nothing, or one who may renew is sent to look for an admin.
 - RV8 — A creation HQ refused is said as HQ's refusal in HQ's words, and one Zerops failed as Zerops'; breaks: the release sheet blames Zerops for HQ's decision and the person looks for the fault in the wrong place.
 - RV9 — A change's Preview opens only a running workspace on its branch and repository, and an unread workspace is not claimed stopped; breaks: a review opens another change's workspace.
-- RV10 — A Review build link opens a public stage only when its result passed at the change's head; breaks: a review offers a stage built for another commit.
+- RV10 — A Review build link opens a public stage only when its part passed at the change's head; breaks: a review offers a stage built for another commit.
 - RV11 — A ready, current change says its Review build result once, and stays quiet without one; breaks: a passing build is hidden under Ready to merge.

@@ -918,7 +918,7 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
   };
 }
 
-/** "Try it": the change's Preview and, when it passed, its Review build. */
+/** "Try it": the change's Preview and its Review build's passed public stages. */
 export function ReviewTry({
   previews,
   previewState,
@@ -955,15 +955,16 @@ export function ReviewTry({
         {builds.map((build) => (
           <Button
             className="max-w-full"
-            key={build.service}
+            key={`${build.service}:${build.url}`}
             render={<a href={build.url} rel="noreferrer" target="_blank" />}
             size="sm"
+            title={build.url}
             variant="secondary"
           >
             <GlobeIcon aria-hidden="true" />
             <span className="flex-none font-medium">Review build</span>
             <span className="min-w-0 truncate text-muted-foreground">
-              · {build.service} · {build.head.slice(0, 7)} ·{" "}
+              · {build.service} · {build.url} · {build.head.slice(0, 7)} ·{" "}
               <time dateTime={build.at}>{new Date(build.at).toLocaleString()}</time>
             </span>
             <ArrowUpRightIcon aria-hidden="true" />

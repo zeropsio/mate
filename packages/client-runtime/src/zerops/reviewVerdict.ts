@@ -46,6 +46,7 @@ import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
 import type { MovedCommits } from "./releaseCompare.ts";
+import { isBrowsableUrl } from "./mateParts.ts";
 import {
   GIT_PREFLIGHT_PENDING,
   RELEASE_CHECKING,
@@ -807,7 +808,11 @@ export function reviewBuildVerdict(
   now: number | undefined,
   givenUp?: true,
 ):
-  | { readonly state: "awaiting" | "passing" | "failing" | "unavailable"; readonly word: string }
+  | {
+      readonly state: "awaiting" | "passing" | "failing" | "unavailable";
+      readonly word: string;
+      readonly links?: ReadonlyArray<{ readonly setup: string; readonly url: string }>;
+    }
   | undefined {
   if (build === undefined) return undefined;
   const expired =
@@ -817,21 +822,38 @@ export function reviewBuildVerdict(
     now > Date.parse(build.until);
   const state = expired ? "unavailable" : build.state;
   const handoff = givenUp === true ? " · over to you" : "";
+  const links =
+    state === "awaiting"
+      ? []
+      : (build.parts ?? []).flatMap((part) => {
+          if (part.outcome !== "ok") return [];
+          // HQ reports a bare service hostname when the stage has no public address.
+          const publicHost =
+            /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/iu.test(
+              part.stage,
+            );
+          if (!publicHost) return [];
+          const url = part.probe?.url ?? `https://${part.stage}`;
+          return isBrowsableUrl(url) ? [{ setup: part.setup, url }] : [];
+        });
+  let word: string;
   switch (state) {
     case "awaiting":
-      return { state, word: `Awaiting Review build${handoff}` };
+      word = `Awaiting Review build${handoff}`;
+      break;
     case "passing":
-      return { state, word: `Review build passed${handoff}` };
+      word = `Review build passed${handoff}`;
+      break;
     case "failing":
-      return { state, word: `Review build failed${handoff}` };
+      word = `Review build failed${handoff}`;
+      break;
     case "unavailable": {
       const reason = expired ? "no result arrived" : build.reason;
-      return {
-        state,
-        word: `Review build unavailable${reason === undefined ? "" : ` (${reason})`}${handoff}`,
-      };
+      word = `Review build unavailable${reason === undefined ? "" : ` (${reason})`}${handoff}`;
+      break;
     }
   }
+  return { state, word, ...(links.length === 0 ? {} : { links }) };
 }
 
 /** What a change whose GitHub checks failed says of itself, in its review and on every row. */

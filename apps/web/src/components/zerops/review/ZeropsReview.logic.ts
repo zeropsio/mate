@@ -24,11 +24,8 @@ import {
 import { keyRenewedBy, stopKeyGap } from "@t3tools/client-runtime/zerops/flow";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import type { KeyRenewal } from "~/zerops/renewDeployKey.logic";
-import {
-  isBrowsableUrl,
-  mateParts,
-  poolWorkspaceLink,
-} from "@t3tools/client-runtime/zerops/mateParts";
+import { mateParts, poolWorkspaceLink } from "@t3tools/client-runtime/zerops/mateParts";
+import { reviewBuildVerdict } from "@t3tools/client-runtime/zerops/reviewVerdict";
 import { parseAttachmentUrl, repoOfUrl, type HqReviewBuild } from "@t3tools/shared/hqChanges";
 import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
 import { NO_ACCESS } from "~/zerops/hqRead.logic";
@@ -716,7 +713,7 @@ export function stageDeploysMerges(row: {
   );
 }
 
-/** The change's own workspace and the passing Review build's public stages. */
+/** The change's own workspace and its Review build's passed public stages. */
 export interface ReviewTryTargets {
   readonly previews: ReadonlyArray<{ readonly service: string; readonly url: string }>;
   readonly previewState: "reading" | "not-running" | "available";
@@ -728,7 +725,7 @@ export interface ReviewTryTargets {
   }>;
 }
 
-/** Select the branch's workspace and only a stage proven by a passing result at its head. */
+/** Select the branch's workspace and only stages proven by a result at its head. */
 export function tryItTargets(input: {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly hostnames: ReadonlyArray<string>;
@@ -793,16 +790,13 @@ export function tryItTargets(input: {
         (input.classicBranch === input.branch && input.classicServers === undefined)));
   const build = input.reviewBuild;
   const builds =
-    build?.state === "passing" && input.head !== undefined && build.head === input.head
-      ? (build.parts ?? []).flatMap((part) => {
-          if (part.outcome !== "ok") return [];
-          const route = input.routes.find(
-            (entry) => isBrowsableUrl(entry.url) && new URL(entry.url).hostname === part.stage,
-          );
-          return route === undefined
-            ? []
-            : [{ service: route.service, url: route.url, head: build.head, at: build.at }];
-        })
+    build !== undefined && input.head !== undefined && build.head === input.head
+      ? (reviewBuildVerdict(build, undefined)?.links ?? []).map(({ setup, url }) => ({
+          service: setup,
+          url,
+          head: build.head,
+          at: build.at,
+        }))
       : [];
   return {
     previews,

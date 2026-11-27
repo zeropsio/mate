@@ -158,6 +158,47 @@ it("ZV194: A Review build's take turns unavailable only after its deadline by th
   expect(reviewBuildVerdict(undefined, deadline)).toBeUndefined();
 });
 
+// witness: packages/client-runtime/src/zerops/reviewVerdict.ts | const url = part.probe?.url ?? `https://${part.stage}`; → const url = `https://${part.stage}`;
+it("ZV199: Each passed Review build part offers its probed public address, or its public stage hostname when unprobed; failed, unavailable and private parts offer none; breaks: a person cannot open a passed stage or is offered a stage that did not pass", () => {
+  const at = "2026-11-26T20:00:00Z";
+  const probed = {
+    setup: "web",
+    stage: "web.example",
+    outcome: "ok" as const,
+    probe: { url: "https://web.example/health", status: 200, at },
+  };
+  const fallback = { setup: "docs", stage: "docs.example", outcome: "ok" as const };
+  const failed = { ...probed, setup: "failed", outcome: "failed" as const };
+  const unavailable = { ...probed, setup: "unavailable", outcome: "unavailable" as const };
+  const privatePart = { setup: "private", stage: "worker", outcome: "ok" as const };
+  const privateProbed = { ...probed, setup: "private-probed", stage: "worker" };
+  const unsafe = { ...probed, setup: "unsafe", probe: { url: "javascript:alert(1)", at } };
+
+  expect(
+    reviewBuildVerdict({ state: "passing", head: HEAD, at, parts: [probed, fallback] }, undefined)
+      ?.links,
+  ).toEqual([
+    { setup: "web", url: "https://web.example/health" },
+    { setup: "docs", url: "https://docs.example" },
+  ]);
+  expect(
+    reviewBuildVerdict(
+      {
+        state: "failing",
+        head: HEAD,
+        at,
+        parts: [probed, failed, unavailable, privatePart, privateProbed, unsafe],
+      },
+      undefined,
+    )?.links,
+  ).toEqual([{ setup: "web", url: "https://web.example/health" }]);
+  for (const part of [failed, unavailable, privatePart, privateProbed, unsafe]) {
+    expect(
+      reviewBuildVerdict({ state: "unavailable", head: HEAD, at, parts: [part] }, undefined)?.links,
+    ).toBeUndefined();
+  }
+});
+
 // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (reviewBuild?.state === "awaiting" || reviewBuild?.state === "failing") { → if (reviewBuild?.state === "failing") {
 it("ZV195: The review leaves Merge available and plain while a Review build awaits, fails or is unavailable, recommends it when the build passes, and retains GitHub's checks; breaks: an awaiting build reads ready or Merge is recommended over a failed build", () => {
   const at = "2026-11-26T20:00:00Z";

@@ -337,15 +337,31 @@ it("RV9: A change's Preview opens only a running workspace on its branch and rep
 });
 
 // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | build.head === input.head → true
-it("RV10: A Review build link opens a public stage only when its result passed at the change's head; breaks: a review offers a stage built for another commit.", () => {
+it("RV10: A Review build link opens a public stage only when its part passed at the change's head; breaks: a review offers a stage built for another commit.", () => {
   const part = { setup: "web", stage: "stage.example", outcome: "ok" as const };
   const passing = { state: "passing" as const, head: previewHead, at: previewAt, parts: [part] };
   const cases = [
     { build: passing, head: previewHead, urls: ["https://stage.example"] },
     { build: passing, head: "b".repeat(40), urls: [] },
-    { build: { ...passing, state: "failing" as const }, head: previewHead, urls: [] },
+    {
+      build: {
+        ...passing,
+        state: "failing" as const,
+        parts: [part, { ...part, setup: "api", outcome: "failed" as const }],
+      },
+      head: previewHead,
+      urls: ["https://stage.example"],
+    },
     { build: { ...passing, state: "awaiting" as const }, head: previewHead, urls: [] },
-    { build: { ...passing, state: "unavailable" as const }, head: previewHead, urls: [] },
+    {
+      build: {
+        ...passing,
+        state: "unavailable" as const,
+        parts: [part, { ...part, setup: "api", outcome: "unavailable" as const }],
+      },
+      head: previewHead,
+      urls: ["https://stage.example"],
+    },
     {
       build: { ...passing, parts: [{ ...part, outcome: "failed" as const }] },
       head: previewHead,
@@ -360,7 +376,9 @@ it("RV10: A Review build link opens a public stage only when its result passed a
   ];
   for (const { build, head, urls } of cases) {
     expect(
-      tryItTargets({ ...previewInput, reviewBuild: build, head }).builds.map((entry) => entry.url),
+      tryItTargets({ ...previewInput, routes: [], reviewBuild: build, head }).builds.map(
+        (entry) => entry.url,
+      ),
     ).toEqual(urls);
   }
 });
