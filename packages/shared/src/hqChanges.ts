@@ -955,6 +955,17 @@ export const MERGE_REFUSALS = [
   "github_landing",
 ] as const;
 
+/**
+ * Why an Add came back unadded (`HqChange` `addingError` on an open change): any of
+ * {@link MERGE_REFUSALS}; GitHub's default branch and the project's main still differ after HQ
+ * followed GitHub; or the project's repository did not answer before the merge ran out of tries.
+ */
+export const ADDING_ERRORS = [
+  ...MERGE_REFUSALS,
+  "github_main_diverged",
+  "repo_unavailable",
+] as const;
+
 /** A merge's subject on `main`, as Gitea's squash wrote it: what a release reads as the task. */
 export function mergeSubject(title: string, number: number): string {
   return `${title} (#${String(number)})`;

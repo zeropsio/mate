@@ -18,7 +18,7 @@ import {
  *
  * @module hq/refusals
  */
-import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import type { ADDING_ERRORS, MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
 import { CHAT_LINK_NOT_FOUND } from "@t3tools/shared/hqChatLinks";
 import { HQ_MERGERS_MAX } from "@t3tools/shared/hqMergers";
 import { fileSize } from "../gitBrowse/blob.ts";
@@ -102,6 +102,27 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   github_wrong_base:
     "Its pull request on GitHub now merges into another branch, not the repository's default one, so Mate won't merge it. See the pull request on GitHub.",
 };
+
+type AddingError = (typeof ADDING_ERRORS)[number];
+
+/**
+ * Why an Add came back unadded (`ADDING_ERRORS`), in words: a merge's refusal as a merge says it,
+ * and the two only an addition meets. Kept apart from `hqRefusalWords`, whose codes these must not
+ * shadow. A reason left out does not compile.
+ */
+const ADDING_WORDS: { readonly [R in AddingError]: string } = {
+  ...MERGE_WORDS,
+  github_main_diverged:
+    "Nothing was added: GitHub's default branch and this project's main no longer match, and Mate could not bring them in line. Someone with access to the repository on GitHub has to reconcile them; then add it again.",
+  repo_unavailable: "The project's repository did not answer, so nothing was added. Try again.",
+};
+
+const isAddingError = (reason: string): reason is AddingError =>
+  Object.hasOwn(ADDING_WORDS, reason);
+
+/** An Add's error in words; one this build does not know (a newer HQ) is never shown raw. */
+export const addingErrorWords = (addingError: string): string =>
+  isAddingError(addingError) ? ADDING_WORDS[addingError] : "This change was not added. Try again.";
 
 /** HQ's code for a merge it refused before Git merged anything: a file in it is above its limit. */
 export const MERGE_TOO_LARGE = "too_large";

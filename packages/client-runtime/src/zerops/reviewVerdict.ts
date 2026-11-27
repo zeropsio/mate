@@ -41,7 +41,12 @@ import {
   TAKE_ASK_BACK,
   type ChangeStanding,
 } from "./changeStanding.ts";
-import { hqRefusalWords, MERGE_TOO_LARGE, mergeLimitWords } from "./hq/refusals.ts";
+import {
+  addingErrorWords,
+  hqRefusalWords,
+  MERGE_TOO_LARGE,
+  mergeLimitWords,
+} from "./hq/refusals.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
@@ -1374,7 +1379,7 @@ function changeReviewModelOfHead(
     (heldPress === undefined ||
       heldPress.kind === "idle" ||
       (heldPress.kind === "done" && heldPress.adding === true && heldPress.at !== pull.updatedAt))
-      ? { kind: "refused", reason: hqRefusalWords({ code: "conflict", reason: pull.addingError }) }
+      ? { kind: "refused", reason: addingErrorWords(pull.addingError) }
       : heldPress;
   const base = pull.baseBranch;
   const mergeLabel = pull.kind === "code" ? "Add to your app" : "Merge";

@@ -1,3 +1,4 @@
+import { ADDING_ERRORS } from "@t3tools/shared/hqChanges";
 import { expect, it } from "vite-plus/test";
 
 import {
@@ -227,6 +228,27 @@ it("ZV207: An addition in progress keeps the draft open and offers Stop adding o
   );
   expect(reopened.verdict.state).toBe("merge-refused");
   expect(reopened.primary?.enabled).toBe(true);
+});
+
+// witness: packages/client-runtime/src/zerops/reviewVerdict.ts | ? { kind: "refused", reason: addingErrorWords(pull.addingError) } → ? { kind: "refused", reason: hqRefusalWords({ code: "conflict", reason: pull.addingError }) }
+it("ZV216: An Add that came back unadded says why in words for every reason HQ gives, and a reason this build does not know reads as not added, never as HQ's code; breaks: the person reads a raw code such as github_main_diverged", () => {
+  const offered = { merge: true, close: true };
+  const why = (addingError: string) => {
+    const review = reviewOf({ ...openChange, state: "open", addingError }, "read", offered);
+    expect(review.verdict.state).toBe("merge-refused");
+    return review.verdict.why;
+  };
+  for (const addingError of ADDING_ERRORS) expect(why(addingError)).not.toContain("_");
+  expect(why("github_main_diverged")).toBe(
+    "Nothing was added: GitHub's default branch and this project's main no longer match, and Mate could not bring them in line. Someone with access to the repository on GitHub has to reconcile them; then add it again.",
+  );
+  expect(why("repo_unavailable")).toBe(
+    "The project's repository did not answer, so nothing was added. Try again.",
+  );
+  expect(why("future_reason")).toBe("This change was not added. Try again.");
+  expect(why("github_unreachable")).toBe(
+    "GitHub did not answer, so nothing was merged. Try again.",
+  );
 });
 
 // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | const failed = pull.state === "adding" && pull.reviewBuild?.state === "failing"; → const failed = pull.state === "adding" && pull.reviewBuild?.state === "passing";
