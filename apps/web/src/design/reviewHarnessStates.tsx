@@ -40,6 +40,8 @@ import {
   type ChangeReviewViewProps,
 } from "~/components/zerops/review/ZeropsChangeReview";
 import { Button } from "~/components/ui/button";
+import { DraftPaneView } from "~/components/zerops/DraftPanel";
+import { ReviewTry } from "~/components/zerops/review/ZeropsReviewSurface";
 import { CrewTaskReviewView } from "~/components/zerops/review/ZeropsCrewTaskReview";
 import {
   ReleaseReadingView,
@@ -94,6 +96,49 @@ function ChangeReviewView(props: Omit<ChangeReviewViewProps, "fileDiffs">) {
 const NOW = Date.now();
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const noop = () => {};
+
+/** The review and the pane's three opening outcomes, together at the reference viewport. */
+export function DraftLookStage() {
+  const copy = { kind: "service", hostname: "appdev", branch: "feature" } as const;
+  const look = { kind: "openable", copy } as const;
+  const title = "Clearer copy on the admin sign-in";
+  const frame = new URL("/draft-frame-fixture.html", window.location.href).href;
+  return (
+    <div className="grid h-screen grid-cols-4 gap-3 bg-muted p-3">
+      <div className="overflow-auto border bg-background p-4">
+        <h1 className="mb-6 font-semibold">{title}</h1>
+        <ReviewTry draft={look} onOpenDraft={noop} />
+      </div>
+      <div className="overflow-hidden border">
+        <DraftPaneView
+          title={title}
+          look={look}
+          state={{ kind: "opening", copy }}
+          onReload={noop}
+          onRetry={noop}
+        />
+      </div>
+      <div className="overflow-hidden border">
+        <DraftPaneView
+          title={title}
+          look={look}
+          state={{ kind: "showing", copy, url: frame }}
+          onReload={noop}
+          onRetry={noop}
+        />
+      </div>
+      <div className="overflow-hidden border">
+        <DraftPaneView
+          title={title}
+          look={look}
+          state={{ kind: "failed", copy, reason: "The draft's container is stopped." }}
+          onReload={noop}
+          onRetry={noop}
+        />
+      </div>
+    </div>
+  );
+}
 
 const DIFF = [
   "diff --git a/src/server/routes/status.ts b/src/server/routes/status.ts",
@@ -660,7 +705,9 @@ function Change({
       onAsk={async () => {}}
       onClose={noop}
       onOpenPage={frame === "page" ? undefined : noop}
-      previews={PREVIEWS}
+      draft={{ kind: "openable", copy: { kind: "service", hostname: "appdev", branch: "feature" } }}
+      onOpenDraft={noop}
+      reviewBuilds={PREVIEWS}
       project="Beviro"
       stages={
         stages ??
@@ -2998,7 +3045,12 @@ export function ReviewDialogTry({
             onOpenPage={() => {
               setOpen(false);
             }}
-            previews={PREVIEWS}
+            draft={{
+              kind: "openable",
+              copy: { kind: "service", hostname: "appdev", branch: "feature" },
+            }}
+            onOpenDraft={noop}
+            reviewBuilds={PREVIEWS}
             project="Beviro"
             stages={[{ name: "stage", gap: undefined }]}
             remarks={read ? remarksOf(TALKING) : []}

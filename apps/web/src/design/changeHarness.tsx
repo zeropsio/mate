@@ -31,6 +31,7 @@ import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsD
 import { SidebarProvider } from "~/components/ui/sidebar";
 import {
   REVIEW_STATES,
+  DraftLookStage,
   ReleaseDialogTry,
   ReviewDialogTry,
   ReviewPageStage,
@@ -63,6 +64,7 @@ const SHEET = new URLSearchParams(location.search).get("sheet");
 const SHEET_OPEN = SHEET !== null;
 
 function Harness() {
+  if (REVIEW === "draft") return <DraftLookStage />;
   const shown =
     REVIEW === "all" ? REVIEW_STATES : REVIEW_STATES.filter((entry) => entry.id === REVIEW);
   return (
