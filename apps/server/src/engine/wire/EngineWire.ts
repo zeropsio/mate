@@ -1208,11 +1208,16 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                         : { interactionMode: input.interactionMode }),
                       ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
                       ...(input.about === undefined ? {} : { about: input.about }),
-                      // A task the person took from the Board: its brief, drawn as its card, and
-                      // the conversation the task's from then on.
+                      // A task the person took from the Board: its brief, drawn as its card with
+                      // the brief as what its asker wrote (the putter saw and put it), and the
+                      // conversation the task's from then on.
                       ...(input.taken === undefined
                         ? {}
-                        : { task: input.taken.source, taskId: input.taken.taskId }),
+                        : {
+                            task: input.taken.source,
+                            taskId: input.taken.taskId,
+                            taskAsk: input.text,
+                          }),
                     }),
                   ),
             ),
