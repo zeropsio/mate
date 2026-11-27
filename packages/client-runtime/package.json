@@ -523,6 +523,10 @@
       "types": "./src/zerops/draftLook.ts",
       "default": "./src/zerops/draftLook.ts"
     },
+    "./zerops/partLook": {
+      "types": "./src/zerops/partLook.ts",
+      "default": "./src/zerops/partLook.ts"
+    },
     "./zerops/tryItTargets": {
       "types": "./src/zerops/tryItTargets.ts",
       "default": "./src/zerops/tryItTargets.ts"

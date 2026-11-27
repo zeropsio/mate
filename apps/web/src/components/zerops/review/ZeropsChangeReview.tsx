@@ -139,7 +139,7 @@ import {
 } from "../gitBrowser/GitBrowserLink";
 import { ReviewCommits } from "./ReviewCommits";
 import { mainStagesOf, useGroupName, useMatePreviews } from "./reviewReads";
-import type { ReviewTryTargets } from "@t3tools/client-runtime/zerops/tryItTargets";
+import type { PartLook } from "@t3tools/client-runtime/zerops/partLook";
 import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
 import { useOpenDraft } from "~/zerops/openInMatePanel";
 import { ReviewConversation } from "./ReviewConversation";
@@ -727,7 +727,7 @@ function ChangeReviewData({
           number: target.number,
         });
       }}
-      reviewBuilds={tryIt.builds}
+      reviewBuilds={tryIt.app}
       project={project}
       appId={target.groupId}
       stages={stages}
@@ -985,7 +985,7 @@ export interface ChangeReviewViewProps {
   /** The change's workspace and its app's routed addresses. */
   readonly draft?: DraftLook | undefined;
   readonly onOpenDraft?: (() => void) | undefined;
-  readonly reviewBuilds?: ReviewTryTargets["builds"] | undefined;
+  readonly reviewBuilds?: PartLook["app"] | undefined;
   readonly now: number;
   readonly titleId?: string | undefined;
   /** Files whose diff stands open from the start — the harness's. */

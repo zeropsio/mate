@@ -1,4 +1,5 @@
 import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
+import { draftStateLine } from "@t3tools/client-runtime/zerops/partLook";
 import { isField } from "./ZeropsReview.logic";
 /**
  * The review, drawn: every read already done and handed in, so a harness and a test can show
@@ -958,6 +959,11 @@ export function ReviewTry({
           </Button>
         ) : null}
       </div>
+      {draft.kind === "openable" && draftStateLine(draft.state) !== undefined ? (
+        <Text className="mt-1.5" render={<p />} variant="description">
+          Draft: {draftStateLine(draft.state)}
+        </Text>
+      ) : null}
       {builds.length === 0 ? (
         <Text className="mt-1.5" render={<p />} variant="description">
           App address not available yet.

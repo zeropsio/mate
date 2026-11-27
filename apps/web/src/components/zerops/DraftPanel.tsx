@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { makeDraftPreviewWire } from "@t3tools/client-runtime/data";
 import { isBrowsableUrl } from "@t3tools/client-runtime/zerops/mateParts";
 import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
+import { draftStateLine } from "@t3tools/client-runtime/zerops/partLook";
 import type { EnvironmentId, ZeropsDraftCopy } from "@t3tools/contracts";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import * as Effect from "effect/Effect";
@@ -70,7 +71,14 @@ export function DraftPaneView({
             Draft · {title}
             {ended ? null : " · not in your app yet"}
           </div>
-          {ended ? null : <Text variant="description">Only you see this, here in Mate.</Text>}
+          {ended ? null : (
+            <Text variant="description">
+              Only you see this, here in Mate.
+              {look.kind === "openable" && draftStateLine(look.state) !== undefined
+                ? ` ${draftStateLine(look.state)}`
+                : null}
+            </Text>
+          )}
         </div>
         <Button
           variant="ghost"

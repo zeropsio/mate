@@ -4,8 +4,7 @@
  */
 import { buildCanonicalGroupTree, flowChange } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { draftLook, type DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
-import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
+import { partLook, type PartLook } from "@t3tools/client-runtime/zerops/partLook";
 import { classicCopyRead } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useMemo, useState } from "react";
 import { useMatesLeases } from "~/zerops/useMatesLeases";
@@ -15,7 +14,6 @@ import { useHqAddress } from "~/zerops/projectFlows";
 import { useLinkedChange } from "~/zerops/useLinkedChange";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { stageDeploysMerges } from "./ZeropsReview.logic";
-import { tryItTargets, type ReviewTryTargets } from "@t3tools/client-runtime/zerops/tryItTargets";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 
 /** The project's name, as the menu names it. */
@@ -56,7 +54,7 @@ export function useDraftChange(change: {
   return current ?? held;
 }
 
-/** The part's app address and the open branch's draft. */
+/** Your app and the change's Draft, as `partLook` decides them for every surface. */
 export function useMatePreviews(
   appId: string,
   mateProjectId: string,
@@ -65,7 +63,7 @@ export function useMatePreviews(
   repositoryUrl: string | undefined,
   state: "open" | "adding" | "merging" | "merged" | "closed",
   branch: string | undefined,
-): ReviewTryTargets & { readonly draft: DraftLook } {
+): PartLook {
   const { listing } = useZeropsDetailCandidates();
   const appIds = useMemo(() => [appId], [appId]);
   const repo = useHqAppReleases(appIds)
@@ -78,61 +76,43 @@ export function useMatePreviews(
   const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
   const classic = classicCopyRead(repository, copies?.copies);
   const classicBranch = classic.branch;
-  return useMemo(() => {
-    const targets = tryItTargets({
-      routes: row?.routes ?? [],
-      hostnames: row?.services?.hostnames ?? [],
-      pools: row?.services?.pools,
-      controlPlane: row?.service?.name,
-      tier: mateTier,
+  const classicState = classic.copyState;
+  return useMemo(
+    () =>
+      partLook({
+        project:
+          row?.services === undefined
+            ? undefined
+            : {
+                routes: row.routes ?? [],
+                hostnames: row.services.hostnames,
+                pools: row.services.pools,
+                controlPlane: row.service?.name,
+              },
+        tier: mateTier,
+        repository,
+        repositoryUrl,
+        repositoryRemote,
+        poolPairs,
+        state,
+        branch,
+        leases,
+        classic: { branch: classicBranch, copyState: classicState },
+      }),
+    [
+      row,
+      mateTier,
       repository,
       repositoryUrl,
       repositoryRemote,
+      state,
+      branch,
+      leases,
       poolPairs,
-    });
-    const parts =
-      row?.services === undefined
-        ? undefined
-        : mateParts({
-            services: row.services.hostnames.map((hostname) => ({ hostname })),
-            routes: row.routes ?? [],
-            pools: row.services.pools,
-            controlPlane: row.service?.name,
-            tier: mateTier,
-            poolPairs,
-          }).parts;
-    const classicPart = parts?.find((part) => part.devService === repository && !part.pooled);
-    return {
-      ...targets,
-      draft: draftLook({
-        state,
-        branch,
-        repositoryUrl,
-        repositoryRemote,
-        leases,
-        classic:
-          parts === undefined
-            ? undefined
-            : classicPart === undefined
-              ? null
-              : {
-                  hostname: classicPart.devService,
-                  branch: classicBranch,
-                },
-      }),
-    };
-  }, [
-    row,
-    mateTier,
-    repository,
-    repositoryUrl,
-    repositoryRemote,
-    state,
-    branch,
-    leases,
-    poolPairs,
-    classicBranch,
-  ]);
+      classicBranch,
+      classicState,
+    ],
+  );
 }
 
 /**

@@ -2,10 +2,29 @@ import type { ZeropsDraftCopy, ZeropsLease } from "@t3tools/contracts";
 import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
 import { leaseMayBeOf, repoOfUrl } from "@t3tools/shared/hqChanges";
 
-/** Unavailable selects no copy; it does not describe the draft server's condition. */
+/** A copy's preview-server state as zcp, its one writer, last emitted it (zcp spec-mate §1.0a). */
+export type DraftState = "parked" | "starting" | "running" | "stopped" | "failed" | "unknown";
+const DRAFT_STATES: ReadonlyArray<DraftState> = [
+  "parked",
+  "starting",
+  "running",
+  "stopped",
+  "failed",
+  "unknown",
+];
+
+/**
+ * Unavailable selects no copy; it does not describe the draft server's condition. An openable
+ * copy carries zcp's state for it; none where zcp wrote none, or one this build does not know.
+ */
 export type DraftLook =
   | { readonly kind: "unavailable" | "added" | "discarded" }
-  | { readonly kind: "openable"; readonly copy: ZeropsDraftCopy };
+  | { readonly kind: "openable"; readonly copy: ZeropsDraftCopy; readonly state?: DraftState };
+
+const withState = (copyState: string | undefined): { readonly state?: DraftState } => {
+  const state = DRAFT_STATES.find((known) => known === copyState);
+  return state === undefined ? {} : { state };
+};
 
 /** A change's copy, from copy identities, never from a server's last observation. */
 export function draftLook(input: {
@@ -16,7 +35,11 @@ export function draftLook(input: {
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
   /** Null when no classic dev half exists, undefined while its topology is unread. */
   readonly classic:
-    | { readonly hostname: string; readonly branch: string | null | undefined }
+    | {
+        readonly hostname: string;
+        readonly branch: string | null | undefined;
+        readonly copyState?: string | undefined;
+      }
     | null
     | undefined;
 }): DraftLook {
@@ -52,12 +75,14 @@ export function draftLook(input: {
           acquiredAt: lease.acquiredAt,
           branch: input.branch,
         },
+        ...withState(lease.copyState),
       };
   }
   if (input.classic != null && input.classic.branch === input.branch)
     return {
       kind: "openable",
       copy: { kind: "service", hostname: input.classic.hostname, branch: input.branch },
+      ...withState(input.classic.copyState),
     };
   return { kind: "unavailable" };
 }
