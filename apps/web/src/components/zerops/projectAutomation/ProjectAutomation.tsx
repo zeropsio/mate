@@ -463,7 +463,7 @@ function useTaskBoard(
       offers === undefined
         ? undefined
         : {
-            offerOf: (taskId) => offers.tasks[taskId],
+            offerOf: (taskId) => offers.tasks?.[taskId],
             takeInto: offers.ownMates.map((projectId) => ({
               projectId,
               name: faces.get(projectId)?.name ?? "Your Mate",

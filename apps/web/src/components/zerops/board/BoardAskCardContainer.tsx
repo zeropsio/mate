@@ -200,7 +200,7 @@ function useFollowedTask(appId: string | null, taskId: string | null) {
     face: shown.holder === null ? undefined : faces.get(shown.holder.projectId),
     question: shown.lane === "waiting" ? record.detail : null,
     answer:
-      offers?.tasks[taskId]?.answer === true && writes !== null
+      offers?.tasks?.[taskId]?.answer === true && writes !== null
         ? { state: answerState, onSend: (text: string) => writes.answer(taskId, text) }
         : undefined,
     onOpenChange: (href: string) => {

@@ -39,8 +39,8 @@ export interface BoardOffers {
   readonly putFrom: ReadonlyArray<string>;
   /** The person's own Mates in the application, never an automated one: where a Take opens. */
   readonly ownMates: ReadonlyArray<string>;
-  /** Each task HQ answered, by its id. */
-  readonly tasks: Readonly<Record<string, BoardTaskOffer>>;
+  /** Each task HQ answered, by its id; `undefined` while the Board is not read. */
+  readonly tasks: Readonly<Record<string, BoardTaskOffer>> | undefined;
 }
 
 /** A queued task nobody put: whether a Mate is one a Take may open in at all. */
@@ -75,6 +75,7 @@ export const boardOffers: Projection<
           ],
     );
     const tasks = read.fact("hqAppTasks", settingId({ orgId, appId }));
+    const known = tasks.kind === "known";
     return decided(livePermissionFacts(read, orgId), projectIds, (facts) => ({
       putFrom: projectIds.filter(
         (projectId) => putTaskPermission(facts, projectIds, projectId).allow,
@@ -82,21 +83,23 @@ export const boardOffers: Projection<
       ownMates: mates
         .filter((mate) => takeTaskPermission(facts, QUEUED, [mate], mate.projectId).allow)
         .map((mate) => mate.projectId),
-      tasks: Object.fromEntries(
-        (tasks.kind === "known" ? tasks.value : []).map((task) => {
-          const board = boardTaskOf(task);
-          return [
-            task.id,
-            {
-              take: takeTaskPermission(facts, board, mates).allow,
-              release: releaseTaskPermission(facts, board).allow,
-              done: doneTaskPermission(facts, board).allow,
-              stop: stopTaskPermission(facts, board).allow,
-              answer: answerTaskPermission(facts, board).allow,
-            },
-          ];
-        }),
-      ),
+      tasks: !known
+        ? undefined
+        : Object.fromEntries(
+            tasks.value.map((task) => {
+              const board = boardTaskOf(task);
+              return [
+                task.id,
+                {
+                  take: takeTaskPermission(facts, board, mates).allow,
+                  release: releaseTaskPermission(facts, board).allow,
+                  done: doneTaskPermission(facts, board).allow,
+                  stop: stopTaskPermission(facts, board).allow,
+                  answer: answerTaskPermission(facts, board).allow,
+                },
+              ];
+            }),
+          ),
     }));
   },
   equals: sameValue,
@@ -116,7 +119,8 @@ export const boardRevision: Projection<
   derive: (read, { orgId, appId }) => {
     if (!read.members(hqAppsScope(orgId)).ids.includes(appId)) return undefined;
     const app = read.fact("hqApp", appId);
-    return app.kind === "known" ? app.value.boardRevision : undefined;
+    if (app.kind !== "known") return undefined;
+    return app.value.boardRevision;
   },
   equals: (a, b) => a === b,
 };

@@ -61,7 +61,7 @@ export function useTaskSession(
     current,
     working,
     record,
-    canStop: taskId !== null && offers?.tasks[taskId]?.stop === true,
+    canStop: taskId !== null && offers?.tasks?.[taskId]?.stop === true,
     stop,
   });
   // HQ's refusal of this stop, said once as it lands: one that stood before this view is not news.
@@ -72,7 +72,7 @@ export function useTaskSession(
     if (stop?.kind === "failed" || stop?.kind === "unresolved")
       toastManager.add({ type: "error", title: stop.words });
   }, [stop]);
-  const offer = taskId === null ? undefined : offers?.tasks[taskId];
+  const offer = taskId === null ? undefined : offers?.tasks?.[taskId];
   const writes = useBoardTaskWrites(appId);
   // A taken task's chat offers Done and Release; its Stop stays on the Board.
   const taken = offer?.done === true || offer?.release === true;
