@@ -17,6 +17,7 @@ import {
   withBuildersPlaced,
 } from "./crewHome.ts";
 import { crewFromAsk } from "./crewTemplates.ts";
+import { boardPutRequestId, boardTaskOf, type HqAppTask } from "./hqIntake.ts";
 import { hqOffer } from "./hqOffers.ts";
 import { leaseMayBeOf } from "./hqChanges.ts";
 import { KeyLinkDown, readLinkUp } from "./mateLink.ts";
@@ -35,9 +36,11 @@ import {
   deleteProjectPermission,
   deployPermission,
   detachPermission,
+  doneTaskPermission,
   mateRecordPermission,
   operateMatePermission,
   releasePermission,
+  releaseTaskPermission,
   stopTaskPermission,
   structurePermission,
   takeTaskPermission,
@@ -701,4 +704,61 @@ it("SH+2: Take is offered on a queued task only to a person with a Mate of their
     anaTaken: "task_not_queued",
     anaWorking: "task_not_queued",
   });
+});
+
+// witness: packages/shared/src/hqIntake.ts | task.state === "closed" && task.taker?.kind === "person" && task.takenAt != null → false
+it("SH+3: A task a person took whose every linked change closed unmerged is still theirs to release, finish or stop, though HQ shows it closed; a task that ended closed offers none of them; breaks: a taken task whose changes all closed is stranded on the Board, or an ended task is released back to the queue", () => {
+  const record = (patch: Partial<HqAppTask>): HqAppTask => ({
+    id: "t-1",
+    title: "Cache the menu",
+    label: "a conversation",
+    url: null,
+    state: "closed",
+    mate: null,
+    requestedBy: null,
+    createdAt: "2026-11-20T10:00:00Z",
+    startedAt: null,
+    endedAt: null,
+    spentUsd: null,
+    workedMs: null,
+    detail: null,
+    change: null,
+    pullRequest: null,
+    link: null,
+    ...patch,
+  });
+  const ben = boardMember("ben", "BASIC_USER");
+  const verbs = (task: HqAppTask) => {
+    const board = boardTaskOf(task);
+    return [
+      releaseTaskPermission(ben, board),
+      doneTaskPermission(ben, board),
+      stopTaskPermission(ben, board),
+    ].map((decision) => (decision.allow ? "allow" : decision.reason));
+  };
+  expect({
+    takenClosed: verbs(
+      record({
+        taker: { kind: "person", userId: "ben", mateProjectId: "mate-ben" },
+        takenAt: "2026-11-21T10:00:00Z",
+        changes: [{ repo: "kiln", number: 4 }],
+      }),
+    ),
+    poolClosed: verbs(record({ taker: { kind: "pool", mateProjectId: "pool-1" }, takenAt: null })),
+  }).toEqual({
+    takenClosed: ["allow", "allow", "allow"],
+    poolClosed: ["not_task_taker", "not_task_taker", "not_task_stopper"],
+  });
+});
+
+// witness: packages/shared/src/hqIntake.ts | `${from.mateProjectId}\n${from.conversationId}\n${card}` → `${from.mateProjectId}\n${from.conversationId}`
+it("SH+4: One card's Put on board names the same request on every send, from any tab or device, and no other card or chat shares it; breaks: a put sent again after a lost answer makes a second task, or a second card's put answers the first card's task", () => {
+  const ana = { mateProjectId: "mate-ana", conversationId: "chat-1" };
+  const first = boardPutRequestId(ana, "request-1");
+  expect({
+    again: boardPutRequestId({ ...ana }, "request-1") === first,
+    otherCard: boardPutRequestId(ana, "request-2") === first,
+    otherChat: boardPutRequestId({ ...ana, conversationId: "chat-2" }, "request-1") === first,
+    uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(first),
+  }).toEqual({ again: true, otherCard: false, otherChat: false, uuid: true });
 });
