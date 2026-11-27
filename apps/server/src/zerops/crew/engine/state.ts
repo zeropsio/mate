@@ -205,6 +205,11 @@ export interface TaskRecord {
   readonly check: (CrewCheck & { readonly tip: string | null }) | null;
   readonly landedCommit: string | null;
   readonly landedAt: number | null;
+  /**
+   * Whether its landing went out: its patch is on a branch of the copy's origin, as the Mate last
+   * read it (`CrewReads.shipped`), for the landing commit it read. Absent: never read.
+   */
+  readonly shipRead?: { readonly commit: string; readonly shipped: boolean };
   /** Admission refused to start it, in admission's words. */
   readonly cantStart: { readonly text: string; readonly at: number } | null;
   /** Standing `working` with no turn running: since when, and why its last turn ended. */

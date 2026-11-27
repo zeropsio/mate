@@ -1003,10 +1003,21 @@ export const crewRemoveUnlandedConfirm = (name: string, mateName: string): strin
   `Some of ${crewPossessive(name)} work isn't in ${crewPossessive(mateName)} code. Drop it and remove ${name}?`;
 
 /** The ask dialog's "what" line for shipping the crew's work. */
-export const crewShipWhat = (count: number): string =>
-  count === 1
-    ? "One piece of the crew's work isn't shipped yet."
-    : `${count} pieces of the crew's work aren't shipped yet.`;
+/**
+ * What *Ask Fen to ship them* says it asks for: the work read as not shipped, and, said as
+ * maybe, work not read yet (`landedUnread`).
+ */
+export const crewShipWhat = (notShipped: number, unread = 0): string => {
+  const count = notShipped + unread;
+  if (unread === 0) {
+    return count === 1
+      ? "One piece of the crew's work isn't shipped yet."
+      : `${count} pieces of the crew's work aren't shipped yet.`;
+  }
+  return count === 1
+    ? "One piece of the crew's work may not be shipped yet."
+    : `${count} pieces of the crew's work may not be shipped yet.`;
+};
 
 /* ------------------------------------------------------------ refusals */
 

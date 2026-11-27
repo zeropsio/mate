@@ -114,6 +114,18 @@ export type CrewInput =
       readonly outcome: EffectOutcome;
     }
   | { readonly _tag: "Recovered"; readonly bootId: BootId }
+  /**
+   * What the Mate read of landed tasks' landing commits on the copy's origin: whether each one's
+   * patch is on one of its branches (`CrewReads.shipped`).
+   */
+  | {
+      readonly _tag: "ShippedRead";
+      readonly read: ReadonlyArray<{
+        readonly taskId: string;
+        readonly commit: string;
+        readonly shipped: boolean;
+      }>;
+    }
   /** Zerops pushed a process of the project, or its socket (re)connected: frozen hosts read again. */
   | { readonly _tag: "ProcessesMoved" }
   /** The wiring's timing for the crew (tests shorten it). */

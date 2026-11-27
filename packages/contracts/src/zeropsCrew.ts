@@ -357,7 +357,10 @@ export const CrewTask = Schema.Struct({
    * code" by it; `null` before, and from an older server, which says nothing.
    */
   landedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
-  /** A landed task whose change has gone out with *Deliver*. */
+  /**
+   * A landed task whose landing went out: its patch is on a branch of the copy's origin, as the
+   * Mate last read it. `false` too while that was never read: see `landedNotDelivered`.
+   */
   delivered: Schema.Boolean,
 });
 export type CrewTask = typeof CrewTask.Type;
@@ -586,8 +589,16 @@ export const CrewSnapshot = Schema.Struct({
   operations: Schema.optional(Schema.Array(CrewOperation)),
   /** Where a writer's copy may live (the crewmate editor's *Service*); empty where crew mode is off. */
   devHosts: Schema.Array(CrewDevHost).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  /** Landed tasks whose change has not gone out with *Deliver* yet. */
+  /**
+   * Landed tasks the Mate read as not gone out yet (no branch of the copy's origin holds their
+   * patch); one never read counts here no more than in `delivered`.
+   */
   landedNotDelivered: NonNegativeInt,
+  /**
+   * Landed tasks the Mate reads for whether they went out and has not read yet: they claim
+   * neither. Absent from a Mate that does not say.
+   */
+  landedUnread: Schema.optionalKey(NonNegativeInt),
   /** The engine's last failure the section should show; `null` when none stands. */
   lastError: Schema.NullOr(Schema.String),
 });

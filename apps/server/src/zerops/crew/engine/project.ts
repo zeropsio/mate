@@ -35,6 +35,7 @@ import { CREW_OFF_SNAPSHOT } from "../crewSnapshot.ts";
 import { QUESTION_TO_PERSON_MS } from "./decide.tools.ts";
 import { UNATTENDED_MS } from "./decide.land.ts";
 import { attemptsOf } from "./decide.step.ts";
+import { landingsToRead } from "./shipReads.ts";
 import {
   hostFrozen,
   isOpenTask,
@@ -66,8 +67,6 @@ export interface CrewView {
   readonly memory: Readonly<Record<string, { readonly entries: number; readonly unfiled: number }>>;
   /** A crewmate's live context against its window, from the gauge. */
   readonly context: Readonly<Record<string, { readonly tokens: number; readonly window: number }>>;
-  /** Landed tasks whose commit your remote already has. */
-  readonly delivered: ReadonlySet<string>;
 }
 
 /** A crewmate's finished tasks the board keeps; older ones page through `crew.taskPage`. */
@@ -86,6 +85,17 @@ const firstLines = (text: string, count: number): string =>
     .join("\n");
 
 const FINISHED: ReadonlySet<string> = new Set(["landed", "discarded"]);
+
+/**
+ * Whether a landed task's landing went out, as the Mate last read its own landing commit on the
+ * copy's origin; `undefined` while that commit was never read, which claims nothing either way.
+ */
+const shipped = (task: TaskRecord): boolean | undefined =>
+  task.state !== "landed" ||
+  task.landedCommit === null ||
+  task.shipRead?.commit !== task.landedCommit
+    ? undefined
+    : task.shipRead.shipped;
 
 const devHostsOf = (view: CrewView): ReadonlyArray<CrewDevHost> =>
   Object.entries(view.devHosts)
@@ -107,7 +117,7 @@ const laneState = (
   return { state: "ready", detail: null };
 };
 
-const toTask = (state: CrewState, task: TaskRecord, view: CrewView): CrewTask => {
+const toTask = (state: CrewState, task: TaskRecord): CrewTask => {
   const stats = state.members[task.owner]?.lane?.stats ?? null;
   return {
     id: task.id,
@@ -136,7 +146,7 @@ const toTask = (state: CrewState, task: TaskRecord, view: CrewView): CrewTask =>
     review: task.review,
     landedCommit: task.landedCommit,
     landedAt: task.state === "landed" && task.landedAt !== null ? iso(task.landedAt) : null,
-    delivered: task.state === "landed" && view.delivered.has(task.id),
+    delivered: shipped(task) === true,
   };
 };
 
@@ -515,7 +525,7 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
           },
         };
       }),
-    board: { tasks: tasks.map((task) => toTask(state, task, view)) },
+    board: { tasks: tasks.map((task) => toTask(state, task)) },
     run: toRun(state, view.nowMs),
     attention: [
       ...all.flatMap((task) => taskAttention(state, task, view) ?? []),
@@ -525,10 +535,10 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
     ],
     operations: state.attention.flatMap((entry) => operationOf(state, entry) ?? []),
     devHosts: devHostsOf(view),
-    landedNotDelivered: all.filter(
-      (task) =>
-        task.state === "landed" && task.landedCommit !== null && !view.delivered.has(task.id),
-    ).length,
+    landedNotDelivered: all.filter((task) => shipped(task) === false).length,
+    landedUnread: [...landingsToRead(state, view.nowMs).values()]
+      .flat()
+      .filter((task) => shipped(task) === undefined).length,
     lastError: state.lastError,
   };
 };
@@ -537,11 +547,7 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
  * A crewmate's finished work, newest first, before a cursor: what the board no longer carries.
  * The cursor is the last task's `#N`, opaque to the client.
  */
-export const crewTaskPage = (
-  state: CrewState,
-  input: CrewTaskPageInput,
-  view: CrewView,
-): CrewTaskPage => {
+export const crewTaskPage = (state: CrewState, input: CrewTaskPageInput): CrewTaskPage => {
   const before = input.before === null ? Number.POSITIVE_INFINITY : Number(input.before);
   const limit = input.limit ?? TASK_PAGE_DEFAULT;
   const finished = tasksInOrder(state)
@@ -550,7 +556,7 @@ export const crewTaskPage = (
     .toReversed();
   const page = finished.slice(0, limit);
   return {
-    tasks: page.map((task) => toTask(state, task, view)),
+    tasks: page.map((task) => toTask(state, task)),
     next: finished.length > limit ? String(page.at(-1)!.number) : null,
   };
 };
