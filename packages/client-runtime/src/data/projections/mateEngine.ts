@@ -73,6 +73,7 @@ import {
   type MateMessageSent,
 } from "../../zerops/model/mateMessage.ts";
 import { sameValue } from "./equal.ts";
+import { liveRunActivity } from "../liveRunActivity.ts";
 
 const iso = (ms: number | null | undefined) =>
   DateTime.formatIso(DateTime.makeUnsafe(ms === null || ms === undefined ? 0 : ms));
@@ -1232,9 +1233,20 @@ export function engineThreadOf(
   };
 }
 
+/** What the active run's open call says on its card. */
+export interface EngineLiveCall {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly title?: string;
+  readonly words: string | null;
+  readonly toolName: string;
+}
+
 /** A card's typed runs, and the conversation verdict when the row names that card. */
 export interface EngineRunCard {
   readonly runs: ReadonlyArray<RunRecord>;
+  /** Calls the active run is waiting on, straight from its open items. */
+  readonly liveCalls: ReadonlyArray<EngineLiveCall>;
   readonly openerMessageId?: string;
   /** Its message, refused before anything of it ran: the words go back to the composer. */
   readonly refused?: { readonly messageId: string; readonly text: string };
@@ -1254,7 +1266,7 @@ export interface EngineCardWait {
   readonly commands: number;
 }
 
-/** The typed records on each card, in source order; joining identity decides no run state. */
+/** The typed runs and the active run's open calls, joined to their card. */
 export const engineRunCards: Projection<
   EngineConversationKey,
   Readonly<Record<string, EngineRunCard>> | null
@@ -1264,12 +1276,15 @@ export const engineRunCards: Projection<
   equals: sameValue,
   derive: (read, key) => {
     const id = engineConversationId(key);
-    if (read.fact("mateEngineConversation", id).kind !== "known") return null;
+    const conversation = read.fact("mateEngineConversation", id);
+    if (conversation.kind !== "known") return null;
+    const activeRunId = conversation.value.header.activeRunId;
     const { runs, cardOf } = cardsOf(read, id);
     const cards: Record<
       string,
       {
         runs: RunRecord[];
+        liveCalls: EngineLiveCall[];
         openerMessageId?: string;
         refused?: { messageId: string; text: string };
         state?: ConversationRow["state"];
@@ -1277,19 +1292,23 @@ export const engineRunCards: Projection<
         waitsOn?: EngineCardWait;
       }
     > = {};
-    for (const run of runs) (cards[cardOf(run.id) ?? run.id] ??= { runs: [] }).runs.push(run);
+    for (const run of runs)
+      (cards[cardOf(run.id) ?? run.id] ??= { runs: [], liveCalls: [] }).runs.push(run);
     for (const card of Object.values(cards)) {
       // What its runs left running in the background, once they are over (a monitor watches for
       // hours: never waited on).
       let helpers = 0;
       let commands = 0;
+      const liveItems: Item[] = [];
       for (const run of card.runs)
         for (const itemId of read.index(
           "engineItemsOfRun",
           engineFactId(key.environmentId, run.id),
         )) {
           const item = read.fact("mateEngineItem", itemId);
-          if (item.kind !== "known" || item.value.kind !== "work") continue;
+          if (item.kind !== "known") continue;
+          if (run.id === activeRunId && item.value.by.kind !== "helper") liveItems.push(item.value);
+          if (item.value.kind !== "work") continue;
           card.holdsWork = true;
           // What runs, or waits on the person, as the server's row reads it (`WORK_ALIVE`): an idle
           // helper rests, resumable, so its card closes (the helpers' surface says Idle).
@@ -1299,6 +1318,18 @@ export const engineRunCards: Projection<
           if (item.value.workKind === "helper" || item.value.by.kind === "helper") helpers += 1;
           else commands += 1;
         }
+      const live = liveRunActivity(
+        liveItems.sort((a, b) => a.seq - b.seq),
+        () => null,
+      );
+      if (live.kind === "calls")
+        card.liveCalls = live.calls.map((call) => ({
+          id: call.id,
+          startedAt: iso(call.at),
+          ...(call.presentation?.title === undefined ? {} : { title: call.presentation.title }),
+          words: call.words,
+          toolName: call.tool.name,
+        }));
       if (card.runs.at(-1)?.state === "ended" && helpers + commands > 0)
         card.waitsOn = { helpers, commands };
       const first = card.runs[0];

@@ -3,7 +3,9 @@ import { use, useState, type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { MateFace } from "../zerops/primitives";
 import { Spinner } from "../ui/spinner";
+import { Text } from "../ui/text";
 import { TimelineRowCtx } from "./timelineContext";
+import { ElapsedSince } from "./ConversationRows";
 
 /** What kind of thing a bubble is, in the muted ink: the mark it wears in the Mate's column. */
 export function DidMark({ icon: Icon }: { readonly icon: LucideIcon }) {
@@ -39,12 +41,14 @@ export function StepMark({
 }
 
 /**
- * A call running in the working row, at its line's end: a spinner, the one
- * thing in the card that turns. Its time is the run's, on the card's head (K3).
+ * A call running in the working row, with its own elapsed time and spinner.
  */
-export function RunsNow() {
+export function RunsNow({ since }: { readonly since: string }) {
   return (
-    <span className="flex h-[1lh] shrink-0 items-center ps-2" data-runs-now>
+    <span className="flex h-[1lh] shrink-0 items-center gap-1.5 ps-2" data-runs-now>
+      <Text variant="remark">
+        <ElapsedSince since={since} />
+      </Text>
       <Spinner aria-hidden="true" role="presentation" size="xs" tone="muted" />
     </span>
   );

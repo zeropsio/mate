@@ -1,6 +1,7 @@
 import {
   type EngineCardPaging,
   type EngineCardWait,
+  type EngineLiveCall,
   type EngineRunCard,
   type MateLimit,
 } from "@t3tools/client-runtime/data";
@@ -15,7 +16,11 @@ import {
   type LiveBatch,
 } from "@t3tools/shared/liveBatch";
 import type { ChangeLandedEvent, ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
-import { sentToName, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  humanizeToolName,
+  sentToName,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   type CallResultPage,
@@ -1580,44 +1585,40 @@ function stretchBatch(
 }
 
 /**
- * What the Mate's hands are on: waiting for an answer, the calls it waits on
- * — the newest batch's still open, never one an older batch left marked open
- * (`stretchBatch`) — the thought it is thinking, or its words on their way. A
- * thought with a returned call after it is over: the Mate is between steps,
- * and the thought is the record's.
+ * What the Mate's hands are on: waiting for an answer, the engine run's open
+ * calls, the thought it is thinking, or its words on their way. A pre-engine
+ * run reads its calls from the newest batch (`stretchBatch`). A thought with a
+ * returned call after it is over: the Mate is between steps.
  */
 function liveActivity(
   stretch: Stretch,
   writing: MessageEntry | null,
   tracked: TrackedCommands,
   batch: LiveBatch<BatchEntry>,
+  engineCalls: ReadonlyArray<EngineLiveCall> | undefined,
 ): TurnHeaderActivity {
   const asked = pendingQuestion(stretch);
   if (asked !== null) return { kind: "waiting", on: "answer", key: `question:${asked.id}` };
   // An operation whose call returned runs on in the band; one whose session's
   // follow-up the Mate waits on (`openedAt`) stands in the slot, a line of
   // its own apart from the session's in the record (`liveCallItem`).
-  const open = new Set<TimelineEntry>(
-    batch.open.filter(
-      (entry) =>
-        entry.kind !== "operation" ||
-        entry.operation.returnedAt === undefined ||
-        entry.operation.openedAt !== undefined,
-    ),
+  const open = batch.open.filter(
+    (entry) =>
+      entry.kind !== "operation" ||
+      entry.operation.returnedAt === undefined ||
+      entry.operation.openedAt !== undefined,
   );
-  /** The open calls of the batch up to `index`, oldest first, as the slot shows them. */
-  const callsTo = (index: number): LiveCall[] =>
-    stretch.entries.slice(0, index + 1).flatMap((call): LiveCall[] => {
-      if (!open.has(call)) return [];
+  /** The open calls, oldest first, as the slot shows them. */
+  const callsOf = (entries: ReadonlyArray<BatchEntry>): LiveCall[] =>
+    entries.flatMap((call): LiveCall[] => {
       if (call.kind === "operation") return [{ kind: "operation", operation: call.operation }];
-      if (call.kind !== "work" && call.kind !== "generic-call") return [];
       if (isQuestionToolCall(call.entry)) return [];
       return [{ kind: "step", step: stepOf(call.entry, tracked, true) }];
     });
   const approval = approvalPending(stretch);
   if (approval !== null) {
     // What it asks to run: the call it waits on, else what the request names.
-    const calls = callsTo(stretch.entries.length - 1);
+    const calls = callsOf(open);
     const named = approval.entry.command ?? approval.entry.detail;
     const asking: ReadonlyArray<LiveCall> =
       calls.length > 0
@@ -1629,60 +1630,83 @@ function liveActivity(
       ? { kind: "waiting", on: "approval", asked: asking }
       : { kind: "waiting", on: "approval" };
   }
-  if (writing !== null && stretch.entries.includes(writing)) {
-    return { kind: "writing", note: { key: `note:${writing.id}`, message: writing.message } };
-  }
-  let passed = false;
-  for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
-    const entry = stretch.entries[index]!;
-    if (open.has(entry)) {
-      if (
-        (entry.kind === "work" || entry.kind === "generic-call") &&
-        isQuestionToolCall(entry.entry)
-      ) {
-        return { kind: "waiting", on: "answer" };
-      }
-      // Every call of the batch is the slot's, operations too: none of them
-      // is in the record until it returns.
-      const calls = callsTo(index);
-      const newest = calls.at(-1);
-      const others = calls.slice(0, -1);
-      if (newest === undefined) continue;
-      const rest = others.length > 0 ? { others } : {};
-      return newest.kind === "step"
-        ? { kind: "step", step: newest.step, ...rest }
-        : { kind: "operation", operation: newest.operation, ...rest };
+  const other = (): TurnHeaderActivity => {
+    if (writing !== null && stretch.entries.includes(writing)) {
+      return { kind: "writing", note: { key: `note:${writing.id}`, message: writing.message } };
     }
-    if (entry.kind === "message") {
-      // A call that started at the instant the message was stamped is no
-      // older than it, whichever the record files first: an open one is what
-      // the Mate's hands are on (run 12: a note and a command's start at
-      // 14:40:20.255Z read "Thinking" through the whole command).
-      const instant = Date.parse(entry.createdAt);
-      if (
-        stretch.entries
-          .slice(0, index)
-          .some((earlier) => open.has(earlier) && Date.parse(earlier.createdAt) === instant)
-      ) {
-        continue;
+    let passed = false;
+    for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
+      const entry = stretch.entries[index]!;
+      if (entry.kind === "message") {
+        if (entry.message.role !== "reasoning" || passed) {
+          return { kind: "thinking", key: null, messages: [] };
+        }
+        const messages: ChatMessage[] = [];
+        let start: TimelineEntry = entry;
+        for (let back = index; back >= 0; back -= 1) {
+          const candidate = stretch.entries[back]!;
+          if (candidate.kind !== "message" || candidate.message.role !== "reasoning") break;
+          messages.unshift(candidate.message);
+          start = candidate;
+        }
+        return { kind: "thinking", key: `thought:${start.id}`, messages };
       }
-      if (entry.message.role !== "reasoning" || passed) {
-        return { kind: "thinking", key: null, messages: [] };
-      }
-      // The thought it is thinking: the thinking that closes the stretch.
-      const messages: ChatMessage[] = [];
-      let start: TimelineEntry = entry;
-      for (let back = index; back >= 0; back -= 1) {
-        const candidate = stretch.entries[back]!;
-        if (candidate.kind !== "message" || candidate.message.role !== "reasoning") break;
-        messages.unshift(candidate.message);
-        start = candidate;
-      }
-      return { kind: "thinking", key: `thought:${start.id}`, messages };
+      passed = true;
     }
-    passed = true;
+    return { kind: "thinking", key: null, messages: [] };
+  };
+  let calls: LiveCall[];
+  if (engineCalls !== undefined) {
+    calls = engineCalls.map((call): LiveCall => {
+      const match = open.find((entry) =>
+        entry.kind === "operation"
+          ? entry.operation.callIds.includes(call.id)
+          : entry.entry.toolCallId === call.id,
+      );
+      const title = call.title ?? call.words ?? humanizeToolName(call.toolName);
+      if (match?.kind === "operation") {
+        return {
+          kind: "operation",
+          operation: {
+            ...match.operation,
+            phase: "running",
+            openedAt: call.startedAt,
+            liveCallTitle: title,
+          },
+        };
+      }
+      const entry: WorkLogEntry = match?.entry ?? {
+        id: `${call.id}#started`,
+        createdAt: call.startedAt,
+        startedAt: call.startedAt,
+        turnId: null,
+        label: title,
+        tone: "tool",
+        itemType: "mcp_tool_call",
+        toolCallId: call.id,
+        toolLifecycleStatus: "inProgress",
+        callInput: { description: title },
+      };
+      const step = stepOf(entry, tracked, true);
+      return {
+        kind: "step",
+        step: call.title === undefined ? step : { ...step, words: call.title, phrase: null },
+      };
+    });
+  } else {
+    const latest = open.at(-1);
+    if (latest !== undefined && latest.kind !== "operation" && isQuestionToolCall(latest.entry)) {
+      return { kind: "waiting", on: "answer" };
+    }
+    calls = callsOf(open);
   }
-  return { kind: "thinking", key: null, messages: [] };
+  if (calls.length === 0) return other();
+  const newest = calls.at(-1)!;
+  const others = calls.slice(0, -1);
+  const rest = others.length > 0 ? { others } : {};
+  return newest.kind === "step"
+    ? { kind: "step", step: newest.step, ...rest }
+    : { kind: "operation", operation: newest.operation, ...rest };
 }
 
 /**
@@ -1880,6 +1904,9 @@ function stretchRecord(input: {
         : [],
     ),
   );
+  const openCalls = new Set(
+    input.batch.open.flatMap((item) => (item.kind === "operation" ? [] : [item.entry])),
+  );
   let activity: WorkLogEntry[] = [];
   let reasoning: ChatMessage[] = [];
   let reasoningStart: TimelineEntry | null = null;
@@ -1889,9 +1916,7 @@ function stretchRecord(input: {
   let thinkingFrom = stretch.startedAt;
   const flushActivity = () => {
     if (activity.length === 0) return;
-    // While the run goes on, a call still running in a part the person's
-    // message closed is a running line at that part's end; only the one the
-    // Mate is making now stands beside its face.
+    // The current batch stands in the live slot even if the person wrote into the run.
     const entries = omitSupersededLifecycleMarkers(
       // A call that never returned stays: live, the now line's or stale; settled, "No result".
       activity.filter(
@@ -1922,7 +1947,7 @@ function stretchRecord(input: {
           });
           continue;
         }
-        if (stretch.live) continue;
+        if (stretch.live || openCalls.has(last)) continue;
       }
       const call = step.entries[0]!;
       const at =
@@ -2043,7 +2068,12 @@ function stretchRecord(input: {
             break;
           }
           // Taken now, it is the now line's; it joins where it ended.
-          if (stretch.live && op.phase === "running") break;
+          if (
+            op.phase === "running" &&
+            (stretch.live ||
+              (runLive && op.returnedAt === undefined && input.batch.open.includes(entry)))
+          )
+            break;
           joinCheck(
             op,
             joinedAt(
@@ -2074,7 +2104,12 @@ function stretchRecord(input: {
           });
           break;
         }
-        if (runLive && op.phase === "running" && op.returnedAt === undefined && stretch.live) {
+        if (
+          runLive &&
+          op.phase === "running" &&
+          op.returnedAt === undefined &&
+          (stretch.live || input.batch.open.includes(entry))
+        ) {
           break;
         }
         // The run is over without it: no result.
@@ -3211,7 +3246,11 @@ export function deriveMessagesTimelineRows(input: {
     // drawn as it will settle: a result that woke the Mate and was answered in
     // one breath flashed a card for a frame, and the answer jumped up as it
     // went (Nova, 2026-09-26).
-    const answeredAlone = turn.live && !hasRecord && answer !== null;
+    const answeredAlone =
+      turn.live &&
+      !hasRecord &&
+      answer !== null &&
+      (engineCard?.liveCalls.length ?? batch.open.length) === 0;
     // Its turns over, what it started goes on: the card stays open on it.
     const waiting = turn.waiting;
     const working = (last.live && !answeredAlone) || waiting;
@@ -3408,9 +3447,9 @@ export function deriveMessagesTimelineRows(input: {
                     kind: "after" as const,
                     ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
                   }
-                : working && answer === null
+                : working
                   ? starting === null
-                    ? liveActivity(last, turn.writing, tracked, batch)
+                    ? liveActivity(last, turn.writing, tracked, batch, engineCard?.liveCalls)
                     : { kind: "starting" as const, on: starting }
                   : null;
         const source = {

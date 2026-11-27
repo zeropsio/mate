@@ -733,7 +733,9 @@ export function nowLineOf(input: {
     return { kind: "paused", provider: status.paused.provider ?? null };
   if (status.away !== undefined) return { kind: "away", words: status.away };
   if (input.compacting) return { kind: "condensing" };
-  if (input.answering) return { kind: "writing" };
+  if (input.answering && now?.kind !== "step" && now?.kind !== "operation") {
+    return { kind: "writing" };
+  }
   if (now === null) return { kind: "thinking", thought: null };
   switch (now.kind) {
     case "waiting":
@@ -859,7 +861,12 @@ export function slotModelOf(input: {
       filler: thinking.filler,
     };
   }
-  if (input.answering || now?.kind === "writing") return { live: [], filler: { kind: "writing" } };
+  if (
+    (input.answering && now?.kind !== "step" && now?.kind !== "operation") ||
+    now?.kind === "writing"
+  ) {
+    return { live: [], filler: { kind: "writing" } };
+  }
   if (now === null) return thinking;
   switch (now.kind) {
     case "after":

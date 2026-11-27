@@ -355,6 +355,8 @@ export interface ZeropsOperation {
    * call, not its founder's — absent while it waits on none.
    */
   readonly openedAt?: string;
+  /** The open call's own title, when a live row presents this operation. */
+  readonly liveCallTitle?: string;
   /**
    * The model response of its call the Mate waits on, else of the call that
    * started it; absent where the provider names none.

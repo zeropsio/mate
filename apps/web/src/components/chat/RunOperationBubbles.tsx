@@ -13,7 +13,7 @@ import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import { FixAction } from "./FixAction";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { Bubble, ROW, rises } from "./RunBubble";
-import { DidMark, type Failure, FailedMark } from "./RunMarks";
+import { DidMark, type Failure, FailedMark, RunsNow } from "./RunMarks";
 import { RunShimmer } from "./RunShimmer";
 import { DisclosureButton, Headline, useDisclosure } from "./RunDisclosure";
 import { CallRow } from "./RunCallRow";
@@ -313,7 +313,11 @@ function OperationLine({
   // Settled, a bar only where it says what the line does not (`settledOperationBar`).
   const settled = batch ? [] : settledOperationBar(operation, undone, inSlot ? "slot" : "log");
   const words =
-    noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
+    noResult === undefined
+      ? running
+        ? (operation.liveCallTitle ?? operationLineWords(operation))
+        : operationLineWords(operation)
+      : operationUnreturnedWords(operation);
   // A deploy's steps are its progress, under its name: the line holds its
   // name and its time alone — no bar, no step word, no reason (the owner,
   // 2026-10-05: "it should be steps, but they should be visible").
@@ -335,6 +339,7 @@ function OperationLine({
   const head = (
     <Headline
       column
+      now={running ? <RunsNow since={operation.openedAt ?? operation.anchorAt} /> : null}
       opens={opens}
       time={
         noResult === undefined ? operationTime(operation) : noResult === "closed" ? NO_RESULT : null
@@ -506,15 +511,17 @@ export function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStrip
   const pages = [...new Set(strip.checks.map(browserCheckCaption))];
   const hosts = new Set(strip.checks.map((check) => checkHost(check.subject)));
   // As the now line said it while it ran: "Checking /status in the browser".
-  const words = `${
-    running
-      ? `Checking ${browserPageWords(browserCheckCaption(latest))}`
-      : strip.views === 1
-        ? `Checked ${browserPageWords(browserCheckCaption(latest))}`
-        : strip.views === 2 && pages.length === 2 && hosts.size === 1
-          ? `Checked ${browserPageWords(pages[0]!)} and ${browserPageWords(pages[1]!)}`
-          : `Checked ${strip.views} pages`
-  } in the browser`;
+  const words =
+    (running ? latest.liveCallTitle : undefined) ??
+    `${
+      running
+        ? `Checking ${browserPageWords(browserCheckCaption(latest))}`
+        : strip.views === 1
+          ? `Checked ${browserPageWords(browserCheckCaption(latest))}`
+          : strip.views === 2 && pages.length === 2 && hosts.size === 1
+            ? `Checked ${browserPageWords(pages[0]!)} and ${browserPageWords(pages[1]!)}`
+            : `Checked ${strip.views} pages`
+    } in the browser`;
   const verdict = checksVerdict(strip);
   const startedMs = Date.parse(strip.checks[0]!.anchorAt);
   const endedMs = Date.parse(latest.settledAt ?? latest.anchorAt);
@@ -545,7 +552,13 @@ export function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStrip
     ).length,
   });
   const head = (
-    <Headline column opens={opens} time={time} timeTone={failed ? "failed" : "muted"}>
+    <Headline
+      column
+      now={running ? <RunsNow since={latest.openedAt ?? latest.anchorAt} /> : null}
+      opens={opens}
+      time={time}
+      timeTone={failed ? "failed" : "muted"}
+    >
       <span>
         <span className="text-foreground/75">{words}</span>
         {verdict === null ? null : (

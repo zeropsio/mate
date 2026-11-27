@@ -216,7 +216,7 @@ function CommandCode({
  * it was for, then one line of its code; pressed, the row opens its code
  * whole in place, and what it printed under it. In the working row it stands
  * with its body — its code, six lines of it — and a spinner at its line's
- * end; the run's one clock stays the head's (K3).
+ * end, with the call's elapsed time.
  */
 export function StepBubble({
   step,
@@ -250,7 +250,7 @@ export function StepBubble({
   const headline = (
     <Headline
       column
-      now={running ? <RunsNow /> : null}
+      now={running ? <RunsNow since={step.startedAt} /> : null}
       opens={opens}
       running={running}
       time={failure !== null ? "Failed" : step.state === "stopped" ? "Stopped" : time}

@@ -838,7 +838,11 @@ export function stepOf(
   const code = unwrapped === null ? null : commandShown(unwrapped);
   const script = unwrapped === null ? null : commandWhole(unwrapped);
   const look = kind === "look" ? lookedAt(entry) : null;
-  const described = entry.callInput?.description ?? track?.description ?? null;
+  const presented = kind === "tool" && running ? entry.toolPresentation?.title : undefined;
+  const described =
+    presented === undefined
+      ? (entry.callInput?.description ?? track?.description ?? null)
+      : `Using ${presented}`;
   const ofJob =
     kind === "read" && described === null ? spilledReadPhrase(entry, tracked, running) : null;
   return {

@@ -1,5 +1,6 @@
-next: ST83
+next: ST84
 
+- ST83 — A run's open call takes its live row ahead of a streaming thought, but a closed call does not
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
 - ST3 — A fact is deleted only on proof: transport events and absence keep it

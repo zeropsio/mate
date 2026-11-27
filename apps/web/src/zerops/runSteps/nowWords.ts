@@ -46,6 +46,7 @@ export function stepNowWords(step: WorkStep): string {
 
 /** A platform operation as the now line says it: a check names its page. */
 export function operationNowWords(operation: ZeropsOperation): string {
+  if (operation.liveCallTitle !== undefined) return operation.liveCallTitle;
   return operation.kind === "browser"
     ? `Checking ${browserPageWords(browserCheckCaption(operation))} in the browser`
     : operationLineWords(operation);

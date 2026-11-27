@@ -269,8 +269,7 @@ export function Headline({
   readonly running?: boolean;
 }) {
   const listed = use(ListedContext);
-  // In the slot a row has no time of its own: it gets it when it lands, and the run's one clock
-  // stands on the card's foot.
+  // The working row draws its running indicator and elapsed time in `now`.
   if (use(InSlotContext)) {
     return (
       <span className={cn("flex min-w-0 items-start gap-2 font-medium", ROW)}>

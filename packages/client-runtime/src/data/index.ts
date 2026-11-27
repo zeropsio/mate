@@ -587,6 +587,7 @@ export {
   type EngineCardCounts,
   type EngineCardWait,
   type EngineCardPaging,
+  type EngineLiveCall,
   type EngineRunCard,
 } from "./projections/mateEngine.ts";
 
