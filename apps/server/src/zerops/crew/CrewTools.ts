@@ -156,6 +156,12 @@ const ProposedTask = Schema.Struct({
         "Tasks that must land first: titles of tasks in this plan, or #N of tasks already on the board.",
     }),
   ),
+  reviews: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "For a reader's task: the writer's task it reviews, a title in this plan or #N on the board. It starts once that task is in review, and the reader's verdict comes to you before yours.",
+    }),
+  ),
 });
 const ProposeInput = Schema.Struct({
   tasks: Schema.Array(ProposedTask)
@@ -182,7 +188,8 @@ const ReviewInput = Schema.Struct({
 });
 const review: CrewToolDefinition<typeof ReviewInput.Type> = {
   name: "crew_review",
-  description: "Your verdict on a task in review. Read its changes with crew_diff first.",
+  description:
+    "Your verdict on a task in review. Read its changes with crew_diff first. The lead's verdict decides; a reader gives its verdict only on the task its own task reviews, and the lead acts on it.",
   input: ReviewInput,
   run: (host, member, input) => host.review(member, input),
 };

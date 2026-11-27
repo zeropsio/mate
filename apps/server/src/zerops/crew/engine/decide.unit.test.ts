@@ -585,3 +585,83 @@ it("CD26: Remove the crew is refused while a run is on or a crewmate's copy hold
   expect(w.rejection()).toBe("unlanded-commits");
   expect(w.state).toBe(before);
 });
+
+/** The lead plans a reader's review of a writer's task, and the person starts it. */
+const reviewPlanned = (w: CrewWorld, reviews: string) => {
+  w.tool("lead", {
+    tool: "propose",
+    plan: [{ owner: "reviewer", title: `Review ${reviews}`, brief: "Check it.", reviews }],
+  });
+  const review = Object.values(w.state.tasks).find((task) => task.owner === "reviewer")!;
+  w.press({ _tag: "planAccept", taskIds: [review.id] });
+};
+
+/** A writer's #1 in the lead's review, and a reader at work on #2, which reviews it. */
+const underReview = () => {
+  const w = new CrewWorld();
+  w.apply(home(lead(), writer("backend"), reader("reviewer")));
+  w.press({ _tag: "start", ...LEAD_LANDS }, OTHER);
+  w.quiet();
+  newTask(w, "backend", "First");
+  w.start("backend");
+  finish(w, "backend");
+  reviewPlanned(w, "#1");
+  w.run("reviewer");
+  return w;
+};
+
+const lands = (w: CrewWorld, handle: string) => w.pending("crew.land", handle) !== undefined;
+
+// witness: apps/server/src/zerops/crew/engine/decide.tools.ts | if (member.kind !== "lead") return readerVerdict(b, member, task, call.input); → if (member.kind === "writer") return readerVerdict(b, member, task, call.input);
+it("CD+1: A reader's verdict lands nothing: it waits on the reader's own task for the lead, and only the lead's accept lands the task it reviews", () => {
+  const w = underReview();
+  w.tool("reviewer", { tool: "review", input: { task: 1, verdict: "accept", note: "Checked." } });
+  const after = [w.task(1).state, lands(w, "backend"), w.task(2).verdict];
+  w.tool("lead", { tool: "review", input: { task: 1, verdict: "accept", note: "" } });
+  expect([...after, lands(w, "backend")]).toEqual([
+    "review",
+    false,
+    { verdict: "accept", note: "Checked." },
+    true,
+  ]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.tools.ts | if (given.id !== task.id) { → if (given.id === task.id) {
+it("CD+2: A reader gives its verdict only on the task its own task reviews: one on another task is refused and changes nothing", () => {
+  const w = new CrewWorld();
+  w.apply(home(lead(), writer("ada"), writer("bob"), reader("reviewer")));
+  w.press({ _tag: "start", ...LEAD_LANDS }, OTHER);
+  w.quiet();
+  newTask(w, "ada", "Menu");
+  newTask(w, "bob", "Score");
+  w.start("ada");
+  w.start("bob");
+  finish(w, "ada");
+  finish(w, "bob");
+  reviewPlanned(w, "#1");
+  w.run("reviewer");
+  w.tool("reviewer", { tool: "review", input: { task: 2, verdict: "reject", note: "No." } });
+  expect([w.reply()?.isError, w.task(2).state, w.task(3).verdict]).toEqual([
+    true,
+    "review",
+    undefined,
+  ]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.advance.ts | (task.reviews === undefined || b.state.tasks[task.reviews]?.state === "review"), → true,
+it("CD+3: A reader's task that reviews another starts only once that task is in review, and the lead is woken for that task only once the reader reported", () => {
+  const w = new CrewWorld();
+  w.apply(home(lead(), writer("backend"), reader("reviewer")));
+  w.press({ _tag: "start", ...LEAD_LANDS }, OTHER);
+  w.quiet();
+  newTask(w, "backend", "First");
+  w.start("backend");
+  reviewPlanned(w, "#1");
+  const early = w.turns("reviewer").length;
+  finish(w, "backend");
+  w.run("reviewer");
+  const beforeReport = w.turns("lead").length;
+  w.tool("reviewer", { tool: "report", input: { status: "done", summary: "Looks right." } });
+  w.end("reviewer");
+  expect([early, beforeReport, w.turns("lead")]).toEqual([0, 0, ["review"]]);
+});

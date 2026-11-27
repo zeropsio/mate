@@ -4,7 +4,7 @@
  * @module crew/engine/decide.tools
  */
 import { initialTaskState } from "../crewMachines.ts";
-import type { CrewProposedTask, CrewReportInput } from "../crewSeams.ts";
+import type { CrewProposedTask, CrewReportInput, CrewReviewInput } from "../crewSeams.ts";
 import { type CrewToolCall } from "./command.ts";
 import {
   openTaskOf,
@@ -39,9 +39,8 @@ export const tool = (b: Builder, handle: string, call: CrewToolCall): void => {
     case "review": {
       const task = tasksInOrder(b.state).find((row) => row.number === call.input.task);
       if (task === undefined) return replyError(b, `There is no #${call.input.task} on the board.`);
-      if (task.state !== "review") {
-        return replyError(b, `#${task.number} is not in review (${task.state}).`);
-      }
+      if (member.kind !== "lead") return readerVerdict(b, member, task, call.input);
+      if (task.state !== "review") return notInReview(b, task);
       reviewTask(b, task, call.input.verdict, call.input.note, member.handle);
       if (call.input.verdict === "reject") {
         return replyText(b, `#${task.number} goes back to @${task.owner} with your note.`);
@@ -86,6 +85,40 @@ export const tool = (b: Builder, handle: string, call: CrewToolCall): void => {
       b.emit({ _tag: "MemoryChanged", handle, op: call.op });
       return replyText(b, "Noted.");
   }
+};
+
+const notInReview = (b: Builder, task: TaskRecord): void =>
+  replyError(b, `#${task.number} is not in review (${task.state}).`);
+
+/**
+ * A reader's `crew_review` decides nothing: its verdict is kept on its own task, which the lead
+ * reviews with it, and it is taken only on the task that task reviews.
+ */
+const readerVerdict = (
+  b: Builder,
+  member: MemberRecord,
+  task: TaskRecord,
+  input: CrewReviewInput,
+): void => {
+  const own = openTaskOf(b.state, member.handle);
+  const given = own?.reviews === undefined ? undefined : b.state.tasks[own.reviews];
+  if (own === undefined || given === undefined) {
+    return replyError(b, "Your task reviews no task: say what you found with crew_report.");
+  }
+  if (given.id !== task.id) {
+    return replyError(b, `You review only #${given.number}, the task you were given.`);
+  }
+  if (task.state !== "review") return notInReview(b, task);
+  b.emit({
+    _tag: "TaskUpdated",
+    taskId: own.id,
+    set: { verdict: { verdict: input.verdict, note: input.note } },
+  });
+  replyText(
+    b,
+    `Your verdict on #${task.number} goes to the lead with your task; the lead's verdict decides. ` +
+      "Report your task done with crew_report.",
+  );
 };
 
 /** `crew_report`: done starts the merge-in at the turn's end; blocked asks the lead or the person. */
@@ -175,15 +208,28 @@ const propose = (b: Builder, plan: ReadonlyArray<CrewProposedTask>): void => {
   const titles = plan.map((task) => task.title);
   const problems = plan.flatMap((task, index) => {
     const owner = b.state.members[task.owner.replace(/^@/u, "")];
-    const unknown = (task.dependsOn ?? []).filter(
-      (ref) =>
-        !plan.some((other) => other.title === ref) &&
-        !board.some((row) => `#${row.number}` === ref.trim()),
-    );
+    const known = (ref: string) =>
+      plan.some((other) => other.title === ref) ||
+      board.some((row) => `#${row.number}` === ref.trim());
+    const unknown = [
+      ...(task.dependsOn ?? []),
+      ...(task.reviews === undefined ? [] : [task.reviews]),
+    ].filter((ref) => !known(ref));
+    const reviewed =
+      task.reviews === undefined || !known(task.reviews)
+        ? undefined
+        : (plan.find((other) => other.title === task.reviews)?.owner ??
+          board.find((row) => `#${row.number}` === task.reviews!.trim())!.owner);
     return [
       ...(owner === undefined ? [`${task.title}: there is no crewmate @${task.owner}`] : []),
       ...(owner?.kind === "lead" ? [`${task.title}: the lead takes no tasks`] : []),
       ...unknown.map((ref) => `${task.title}: no task "${ref}" in the plan or on the board`),
+      ...(task.reviews !== undefined && owner !== undefined && owner.kind !== "reader"
+        ? [`${task.title}: only a reader's task reviews another`]
+        : []),
+      ...(reviewed !== undefined && b.state.members[reviewed.replace(/^@/u, "")]?.kind !== "writer"
+        ? [`${task.title}: "${task.reviews}" is not a writer's task`]
+        : []),
       ...(titles.indexOf(task.title) === index
         ? []
         : [`${task.title}: two tasks share this title`]),
@@ -214,10 +260,13 @@ const propose = (b: Builder, plan: ReadonlyArray<CrewProposedTask>): void => {
   }
   for (const task of plan) {
     const row = created.get(task.title)!;
-    const dependsOn = (task.dependsOn ?? []).map(
-      (ref) => created.get(ref)?.id ?? board.find((other) => `#${other.number}` === ref.trim())!.id,
-    );
+    const idOf = (ref: string) =>
+      created.get(ref)?.id ?? board.find((other) => `#${other.number}` === ref.trim())!.id;
+    const dependsOn = (task.dependsOn ?? []).map(idOf);
     if (dependsOn.length > 0) b.emit({ _tag: "TaskUpdated", taskId: row.id, set: { dependsOn } });
+    if (task.reviews !== undefined) {
+      b.emit({ _tag: "TaskUpdated", taskId: row.id, set: { reviews: idOf(task.reviews) } });
+    }
   }
   const listed = [...created.values()]
     .map((row) => `#${row.number} ${row.title} (@${row.owner})`)
@@ -226,6 +275,6 @@ const propose = (b: Builder, plan: ReadonlyArray<CrewProposedTask>): void => {
     b,
     state === "proposed"
       ? `Proposed ${listed}. They wait for the person to start them.`
-      : `Queued ${listed}. Each starts when its crewmate is free and what it depends on has landed.`,
+      : `Queued ${listed}. Each starts when its crewmate is free and what it depends on has landed; a review once the task it reviews is in review.`,
   );
 };

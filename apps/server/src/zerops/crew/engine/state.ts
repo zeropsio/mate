@@ -189,6 +189,10 @@ export interface TaskRecord {
   /** When its crewmate asked its open question. */
   readonly askedAt: number | null;
   readonly review: CrewReview | null;
+  /** The task this reader's task reviews: the lead's plan names it. */
+  readonly reviews?: string;
+  /** This reader's verdict on the task it reviews: it decides nothing, the lead acts on it. */
+  readonly verdict?: { readonly verdict: CrewReview["verdict"]; readonly note: string };
   readonly check: (CrewCheck & { readonly tip: string | null }) | null;
   readonly landedCommit: string | null;
   readonly landedAt: number | null;
@@ -489,6 +493,25 @@ export const isOpenTask = (state: CrewTaskState): boolean => !NOT_OPEN.has(state
 
 export const tasksInOrder = (state: CrewState): ReadonlyArray<TaskRecord> =>
   Object.values(state.tasks).toSorted((a, b) => a.number - b.number);
+
+/** A reader's task before its report: its verdict is not in yet. */
+const REVIEW_UNDER_WAY: ReadonlySet<CrewTaskState> = new Set([
+  "proposed",
+  "queued",
+  "working",
+  "rework",
+  "blocked",
+  "merging",
+  "checking",
+]);
+
+/** The readers' tasks that review `task`, in board order. */
+export const reviewsOf = (state: CrewState, task: TaskRecord): ReadonlyArray<TaskRecord> =>
+  tasksInOrder(state).filter((other) => other.reviews === task.id);
+
+/** A reader still reviews `task`: the lead's verdict waits for theirs. */
+export const reviewUnderWay = (state: CrewState, task: TaskRecord): boolean =>
+  reviewsOf(state, task).some((other) => REVIEW_UNDER_WAY.has(other.state));
 
 export const tasksOf = (state: CrewState, handle: string): ReadonlyArray<TaskRecord> =>
   tasksInOrder(state).filter((task) => task.owner === handle);
