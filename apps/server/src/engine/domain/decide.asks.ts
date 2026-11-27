@@ -308,6 +308,8 @@ const answerOnCard = (
     readonly summary: string;
     readonly wake: string;
     readonly text: string;
+    /** A board ask put: the task it became, which its card follows. */
+    readonly taskId?: string;
   },
 ): void => {
   b.emit({
@@ -316,6 +318,7 @@ const answerOnCard = (
     requestId: request.id,
     by: b.envelope.principal,
     summary: ended.summary,
+    ...(ended.taskId === undefined ? {} : { taskId: ended.taskId }),
   });
   if (ended.declined) {
     b.emit({
@@ -469,6 +472,7 @@ export const answerBoard = (
     summary: outcome.kind === "put" ? "On the board" : "Not put on the board",
     wake: BOARD_ANSWER_WAKE,
     text: boardAnswerWords(request.board, outcome),
+    ...(outcome.kind === "put" ? { taskId: outcome.taskId } : {}),
   });
 };
 

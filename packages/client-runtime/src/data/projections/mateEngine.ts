@@ -896,6 +896,8 @@ export interface BoardAskActivityPayload {
   readonly brief: string;
   readonly state: "open" | "put" | "declined" | "closed";
   readonly answer: { readonly by: Principal; readonly at: number } | null;
+  /** Put: HQ's id of the task it became, which the card follows; `null` before, or not recorded. */
+  readonly taskId: string | null;
 }
 
 const BOARD_ASK_STATES: Readonly<Record<string, BoardAskActivityPayload["state"]>> = {
@@ -915,6 +917,7 @@ function boardAskActivity(
     brief: ask.brief,
     state: BOARD_ASK_STATES[request.state] ?? "closed",
     answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
+    taskId: request.answer?.taskId ?? null,
   };
   return activity(
     `${request.id}#board`,

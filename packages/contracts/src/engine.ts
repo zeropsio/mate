@@ -864,6 +864,8 @@ export const Request = Schema.Struct({
       answers: Schema.optionalKey(ProviderUserInputAnswers),
       /** The pictures attached to each question's answer, by reference. */
       attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
+      /** Work proposed for the Board, put: HQ's id of the task, which its card follows. */
+      taskId: Schema.optionalKey(Schema.String),
     }),
   ),
   principal: Principal,
@@ -1212,6 +1214,8 @@ export const RequestAnswered = event("RequestAnswered", {
   /** A question's answer, by question id, and the pictures attached to each: what the record shows. */
   answers: Schema.optionalKey(ProviderUserInputAnswers),
   attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
+  /** Work proposed for the Board, put: HQ's id of the task the person's client put there. */
+  taskId: Schema.optionalKey(Schema.String),
 });
 /** An answer the provider failed to take: the request is open again for the person. */
 export const RequestReopened = event("RequestReopened", {

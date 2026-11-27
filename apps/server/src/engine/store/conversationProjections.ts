@@ -119,6 +119,7 @@ const projectWith = (
             ...(event.attachmentsByQuestionId === undefined
               ? {}
               : { attachmentsByQuestionId: event.attachmentsByQuestionId }),
+            ...(event.taskId === undefined ? {} : { taskId: event.taskId }),
           })}
         WHERE request_id = ${event.requestId}
       `.pipe(Effect.asVoid);
