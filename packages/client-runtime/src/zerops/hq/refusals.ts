@@ -76,6 +76,9 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   not_task_stopper:
     "Only the person who put this task on the Board, the person who took it, or an owner or admin stops it.",
   not_pool_held: "No automated Mate is on this task now.",
+  not_need_dropper:
+    "Only the person who put this task on the Board, or an owner or admin, drops what it waits for.",
+  task_not_held: "This task waits for no other task now.",
 };
 
 /**

@@ -262,6 +262,20 @@ export const HqTaskTaker = Schema.Union([
 ]);
 export type HqTaskTaker = typeof HqTaskTaker.Type;
 
+/**
+ * One task another task needs, as the needing task reads it: `waiting` while the needed task is
+ * not over; `met` once it ended done with every change linked to it merged; `broken` once it ended
+ * any other way (failed, stopped, dropped, or done with a linked change closed unmerged). A task
+ * with a need not met is `held`; one broken waits for a person to drop that need or stop the task.
+ */
+export const HqTaskNeed = Schema.Struct({
+  taskId: Schema.String,
+  state: Schema.Literals(["waiting", "met", "broken"]),
+  /** The needed task's title, also once it ended out of the Board's read. */
+  title: Schema.optionalKey(Schema.String),
+});
+export type HqTaskNeed = typeof HqTaskNeed.Type;
+
 /** One task of an application, as its Board lists it. */
 export const HqAppTask = Schema.Struct({
   id: Schema.String,
@@ -270,10 +284,12 @@ export const HqAppTask = Schema.Struct({
   label: Schema.String,
   url: Schema.NullOr(Schema.String),
   /**
-   * Where it stands: `stopping` is live with a person's stop taken, until its Mate stops; `merged`
-   * and `closed` are done with its change merged or closed unmerged.
+   * Where it stands: `held` waits for the tasks it needs (`needs`), handed out and taken by nobody;
+   * `stopping` is live with a person's stop taken, until its Mate stops; `merged` and `closed` are
+   * done with its change merged or closed unmerged.
    */
   state: Schema.Literals([
+    "held",
     "queued",
     "taken",
     "assigned",
@@ -331,6 +347,12 @@ export const HqAppTask = Schema.Struct({
   changes: Schema.optionalKey(
     Schema.Array(Schema.Struct({ repo: Schema.String, number: Schema.Int })),
   ),
+  /**
+   * The tasks of the application it needs, each with where that need stands (`HqTaskNeed`);
+   * answered, with the `held` state, only to a read that opts in to needs too (`HQ_BOARD_READ`).
+   * Absent: it needs none.
+   */
+  needs: Schema.optionalKey(Schema.Array(HqTaskNeed)),
 });
 export type HqAppTask = typeof HqAppTask.Type;
 
@@ -390,11 +412,11 @@ export const HqPutTaskRequest = Schema.Struct({
 export type HqPutTaskRequest = typeof HqPutTaskRequest.Type;
 
 /**
- * The request id a Put on board is sent under (`HqPutTaskRequest.requestId`): one per card — the
- * board ask's request in its chat of its Mate, or a New task's draft on the Board (no `from`) —
- * the same on every send of it, from any tab or device, so HQ answers a repeated put with the task
- * the first made. A UUID (version 8) of a 128-bit hash of them; HQ scopes it to the application
- * and the person.
+ * The request id a Put on board is sent under (`HqPutTaskRequest.requestId`, a plan's
+ * `HqPlanTasksRequest.requestId`): one per card — the board ask's request in its chat of its Mate,
+ * or a New task's draft on the Board (no `from`) — the same on every send of it, from any tab or
+ * device, so HQ answers a repeated put with the task (or a plan's tasks) the first made. A UUID
+ * (version 8) of a 128-bit hash of them; HQ scopes it to the application and the person.
  */
 export function boardPutRequestId(
   from: { readonly mateProjectId: string; readonly conversationId: string } | undefined,
@@ -433,6 +455,44 @@ function hash128(text: string): string {
   return [h1, h2, h3, h4].map((lane) => (lane >>> 0).toString(16).padStart(8, "0")).join("");
 }
 
+/** The most tasks one plan puts on the Board (`HqPlanTasksRequest`). */
+export const BOARD_PLAN_MAX = 20;
+
+/**
+ * One task of a plan: its plan-local `key`, title and brief, and what it needs — other tasks of the
+ * plan by their keys, or tasks already on the application's Board by their ids.
+ */
+export const HqPlanTask = Schema.Struct({
+  key: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  title: TrimmedNonEmptyString.check(Schema.isMaxLength(BOARD_TITLE_MAX)),
+  brief: TrimmedNonEmptyString.check(Schema.isMaxLength(BOARD_BRIEF_MAX)),
+  needs: Schema.optionalKey(
+    Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(BOARD_PLAN_MAX)),
+  ),
+});
+export type HqPlanTask = typeof HqPlanTask.Type;
+
+/**
+ * `POST /api/apps/:appId/tasks/plan` (a signed-in person): a plan put on the Board in one write,
+ * all or nothing — its tasks, in order, from one of the person's conversations (`from`; absent, put
+ * on the Board itself, as a New task is), under the card's
+ * request id (`boardPutRequestId`), so a repeat answers the same tasks. HQ answers `201`
+ * {@link HqPlanAnswer} (`200` for a repeat); it refuses a cycle (`invalid/plan_cycle`), a need on
+ * no key of the plan nor a task of the application (`invalid/plan_key`), one on another
+ * application's task (`forbidden/need_other_app`) and more than {@link BOARD_PLAN_MAX} tasks
+ * (`invalid/too_many`).
+ */
+export const HqPlanTasksRequest = Schema.Struct({
+  requestId: TrimmedNonEmptyString,
+  from: HqPutTaskRequest.fields.from,
+  tasks: Schema.Array(HqPlanTask).check(Schema.isMinLength(1), Schema.isMaxLength(BOARD_PLAN_MAX)),
+});
+export type HqPlanTasksRequest = typeof HqPlanTasksRequest.Type;
+
+/** A plan's tasks as HQ put them, in the plan's order. */
+export const HqPlanAnswer = Schema.Struct({ tasks: Schema.Array(HqAppTask) });
+export type HqPlanAnswer = typeof HqPlanAnswer.Type;
+
 /**
  * `POST /api/apps/:appId/tasks/:taskId/take` `{mateProjectId}`: a queued task taken for one of the
  * person's own Mates in the application; `taken`, its taker that person and Mate.
@@ -442,7 +502,9 @@ export type HqTakeTaskRequest = typeof HqTakeTaskRequest.Type;
 
 /**
  * The task as it stands after a person's write to it: `POST …/tasks` (`201`), `…/take`,
- * `…/release` (`taken` → `queued`) and `…/done` (`taken` → `done`), each `200`.
+ * `…/release` (`taken` → `queued`), `…/done` (`taken` → `done`) and
+ * `…/needs/:neededId/drop` (a held task no longer held by that need; `queued` if it was the last),
+ * each `200`.
  */
 export const HqTaskAnswer = Schema.Struct({ task: HqAppTask });
 export type HqTaskAnswer = typeof HqTaskAnswer.Type;

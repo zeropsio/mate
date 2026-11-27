@@ -38,6 +38,7 @@ import {
   deployPermission,
   detachPermission,
   doneTaskPermission,
+  dropNeedPermission,
   mateRecordPermission,
   operateMatePermission,
   releasePermission,
@@ -858,4 +859,39 @@ it("SH22: A New task on the Board names one request per draft, the same on every
       first,
     uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(first),
   }).toEqual({ again: true, otherDraft: false, card: false, uuid: true });
+});
+
+// witness: packages/shared/src/zeropsPermissions.ts | if (!writer(member) && !puts(member, task)) return refuse("not_need_dropper"); → if (!writer(member)) return refuse("not_need_dropper");
+it("SH+1: A held task's need is dropped by the person who put it or by an owner or admin, by no other member and on no task that is not held; breaks: a putter cannot free their own task from a need that broke, or any member drops what another's task waits for", () => {
+  const task = (state: string): BoardTask => ({
+    stored: state,
+    putBy: "ana",
+    protocol: 1,
+    taker: null,
+  });
+  const who = [
+    ["owner", boardMember("olga", "OWNER")],
+    ["admin", boardMember("adam", "ADMIN")],
+    ["putter", boardMember("ana", "BASIC_USER")],
+    ["colleague", boardMember("cyril", "BASIC_USER")],
+  ] as const;
+  const answers = (state: string) =>
+    who.map(([name, facts]) => {
+      const decision = dropNeedPermission(facts, task(state));
+      return [name, decision.allow ? "allow" : decision.reason];
+    });
+  expect({ held: answers("held"), queued: answers("queued") }).toEqual({
+    held: [
+      ["owner", "allow"],
+      ["admin", "allow"],
+      ["putter", "allow"],
+      ["colleague", "not_need_dropper"],
+    ],
+    queued: [
+      ["owner", "task_not_held"],
+      ["admin", "task_not_held"],
+      ["putter", "task_not_held"],
+      ["colleague", "not_need_dropper"],
+    ],
+  });
 });

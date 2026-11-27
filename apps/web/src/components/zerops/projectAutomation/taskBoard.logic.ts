@@ -48,6 +48,7 @@ export const LANES: ReadonlyArray<{ readonly id: Lane; readonly name: string }> 
 /** The lane a status stands in. */
 export function laneOf(status: TaskStatus): Lane {
   switch (status) {
+    case "held":
     case "queued":
       return "queued";
     case "taken":
@@ -336,6 +337,7 @@ function stateOf(
     case "done":
     case "stopped":
       return { state: TASK_STATUS_WORDS[status], tone: null };
+    case "held":
     case "queued":
     case "working":
       return { state: null, tone: null };

@@ -8,6 +8,7 @@
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 
 export type TaskStatus =
+  | "held"
   | "queued"
   | "taken"
   | "starting"
@@ -23,6 +24,7 @@ export type TaskStatus =
 
 /** Each status in a word or two, as every surface says it beside its dot. */
 export const TASK_STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
+  held: "Waits for other tasks",
   queued: "Queued",
   taken: "Taken",
   starting: "Starting",
@@ -41,6 +43,7 @@ export const TASK_STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
 export type TaskTone = "working" | "needs" | "review" | "finished" | "failed" | "quiet";
 
 const TASK_STATUS_TONE: Readonly<Record<TaskStatus, TaskTone>> = {
+  held: "quiet",
   queued: "quiet",
   taken: "working",
   starting: "quiet",
@@ -60,6 +63,7 @@ export const taskStatusTone = (status: TaskStatus): TaskTone => TASK_STATUS_TONE
 
 /** A task not over yet: HQ can stop it, and it is on the board's At work or Queued. */
 export const isLiveStatus = (status: TaskStatus): boolean =>
+  status === "held" ||
   status === "queued" ||
   status === "taken" ||
   status === "starting" ||

@@ -57,6 +57,8 @@ const REASONS = [
   "not_task_putter",
   "not_task_stopper",
   "not_pool_held",
+  "not_need_dropper",
+  "task_not_held",
 ] as const;
 
 export type Reason = (typeof REASONS)[number];
@@ -381,8 +383,9 @@ export interface BoardMate {
   readonly boardProtocol: number;
 }
 
-/** A task still on the Board: queued, handed out, at work, waiting on a person, or taken. */
+/** A task still on the Board: held, queued, handed out, at work, waiting on a person, or taken. */
 const LIVE_TASK: ReadonlySet<string> = new Set([
+  "held",
   "queued",
   "assigned",
   "working",
@@ -462,6 +465,17 @@ export function stopTaskPermission(facts: PermissionFacts, task: BoardTask): Dec
   if (!writer(member) && !puts(member, task) && !takes(member, task))
     return refuse("not_task_stopper");
   return LIVE_TASK.has(task.stored) ? ALLOW : refuse("task_not_live");
+}
+
+/**
+ * Dropping one of a held task's needs (`drop_need`): its putter, or an owner or admin. A need
+ * dropped no longer holds it; the last, and it is queued.
+ */
+export function dropNeedPermission(facts: PermissionFacts, task: BoardTask): Decision {
+  const member = activeMember(facts.member);
+  if (member === undefined) return refuse("not_active_member");
+  if (!writer(member) && !puts(member, task)) return refuse("not_need_dropper");
+  return task.stored === "held" ? ALLOW : refuse("task_not_held");
 }
 
 /**
