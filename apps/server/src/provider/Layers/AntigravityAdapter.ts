@@ -886,11 +886,19 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
           });
           // Workspace file access requested through the client fs
           // capability. The agent gates each write behind
-          // `session/request_permission`, so only path containment is
-          // checked here.
+          // `session/request_permission`; a read asks nothing, so a profiled
+          // thread's read is put to its gate here, past path containment.
           const allowedRoots = [cwd, serverConfig.attachmentsDir];
           yield* runtime.handleReadTextFile((request) =>
-            readClientTextFile({ fileSystem, path, allowedRoots, request }),
+            Effect.gen(function* () {
+              const refusal = profileSetup
+                ? yield* profileSetup.refuseRead(request.path)
+                : undefined;
+              if (refusal !== undefined) {
+                return yield* EffectAcpErrors.AcpRequestError.invalidParams(refusal);
+              }
+              return yield* readClientTextFile({ fileSystem, path, allowedRoots, request });
+            }),
           );
           yield* runtime.handleWriteTextFile((request) =>
             writeClientTextFile({ fileSystem, path, allowedRoots, request }),

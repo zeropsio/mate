@@ -12,7 +12,7 @@ import {
 } from "../../spi/claudeThreadProfile.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { crewLane } from "./CrewDefinition.ts";
-import { decideCrewTool, crewRefusedRoots, type LiveGateContext } from "./CrewPolicy.ts";
+import { decideCrewTool, type LiveGateContext } from "./CrewPolicy.ts";
 import { CrewThreadDirectory, type CrewThreadMember, CrewToolHost } from "./crewSeams.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import { crewThreadTools } from "./CrewTools.ts";
@@ -30,7 +30,7 @@ const gate: LiveGateContext = {
   kind: "live",
   member: { handle: "backend", kind: "writer", lane, crewPort: 3001, env: {} },
   foreignMigrations: [],
-  refusedRoots: crewRefusedRoots({ workspaceRoot: "/var/www", home: "/home/zerops" }),
+  codeRoot: "/var/www",
   realpath: (path) => path,
   workspaceRoot: "/var/www",
   turn: "work",

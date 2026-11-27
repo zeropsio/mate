@@ -16,7 +16,9 @@ import { rotationDecision, type RotationMoment, type RotationReason } from "../r
 import { carriedCard, taskCard, type SentCard } from "./cards.ts";
 import { type DeliverCommand, taskAssignment } from "./command.ts";
 import {
+  appAddressOf,
   openTaskOf,
+  reviewedWorkOf,
   tasksInOrder,
   turnOf,
   type DeliveryPurpose,
@@ -281,7 +283,18 @@ export const startTask = (
     );
     return;
   }
-  sendTurn(b, member, taskCard(b.task(task.id), null), principal, "task", task.id, attachments);
+  const started = b.task(task.id);
+  const reviewed = reviewedWorkOf(b.state, started);
+  const reviews =
+    reviewed === undefined
+      ? undefined
+      : {
+          number: reviewed.task.number,
+          title: reviewed.task.title,
+          owner: reviewed.owner.handle,
+          app: appAddressOf(reviewed.owner),
+        };
+  sendTurn(b, member, taskCard(started, null, reviews), principal, "task", task.id, attachments);
 };
 
 /**
