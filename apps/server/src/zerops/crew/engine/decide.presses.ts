@@ -461,19 +461,15 @@ const continueOperation = (b: Builder, row: AttentionRecord, as: Principal): voi
   }
   const member = row.handle === null ? undefined : b.state.members[row.handle];
   if (facts?.turn === undefined || member === undefined) return;
+  // Sent again as it went: its card, or a person's own words.
+  const sent = { text: facts.turn.text, card: facts.turn.card };
   if (task !== undefined && isOpenTask(task.state)) {
-    continueTask(
-      b,
-      task,
-      facts.turn.principal ?? as,
-      { text: facts.turn.text, card: null },
-      "continue",
-    );
+    continueTask(b, task, facts.turn.principal ?? as, sent, "continue");
   } else if (task === undefined) {
     sendTurn(
       b,
       member,
-      { text: facts.turn.text, card: null },
+      sent,
       facts.turn.principal,
       member.kind === "lead" ? "lead-message" : "message",
       null,

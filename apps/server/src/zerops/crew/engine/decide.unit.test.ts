@@ -801,3 +801,20 @@ it("CD86: A reader opens only the app of the writer whose task its own task revi
     "refusal" in appToOpen(w.state, reviewer, "bob"),
   ]).toEqual([true, { host: "appdev", port: 3001 }, true]);
 });
+
+// witness: apps/server/src/zerops/crew/engine/decide.presses.ts | const sent = { text: facts.turn.text, card: facts.turn.card }; → const sent = { text: facts.turn.text, card: null };
+it("CD+1: Continue on a card turn a restart could not carry on sends the card again, never its words as the person's own message; breaks: the crew's words show in the crewmate's conversation as the person's", () => {
+  const w = new CrewWorld();
+  w.apply(home(reader("reviewer")));
+  newTask(w, "reviewer", "Read it");
+  w.run("reviewer");
+  w.end("reviewer", CUT);
+  restarted(w);
+  w.refuse("reviewer", "The login is signed out.");
+  w.press({
+    _tag: "operationContinue",
+    handle: "reviewer",
+    operationId: `interrupted:${w.task(1).id}`,
+  });
+  expect(w.turns("reviewer")).toEqual(["task", "continue", "continue"]);
+});

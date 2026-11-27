@@ -392,8 +392,12 @@ export interface OperationFacts {
   readonly row: boolean;
   /** The effect *Continue* asks again, as it was asked. */
   readonly redo?: { readonly kind: string };
-  /** The turn *Continue* sends again. */
-  readonly turn?: { readonly text: string; readonly principal: Principal };
+  /** The turn *Continue* sends again: its words, its card (`null`: a person's own words). */
+  readonly turn?: {
+    readonly text: string;
+    readonly card: CrewCard | null;
+    readonly principal: Principal;
+  };
 }
 
 export interface AppliedCrew {
