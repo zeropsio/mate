@@ -638,17 +638,13 @@ export const mateCopiesRead = (copies: Known<ZeropsMateCopies>) => ({
   standIns: standInsOf(copies),
 });
 
-/** A classic copy's last branch and server observations; undefined means not read. */
+/** A classic copy's last branch and state observations; undefined means not read. */
 export const classicCopyRead = (hostname: string, copies: Known<ZeropsMateCopies> | undefined) => {
-  if (copies?.state !== "known")
-    return { branch: undefined, copyState: undefined, devServers: undefined };
+  if (copies?.state !== "known") return { branch: undefined, copyState: undefined };
   const classic = copies.value.devServices?.find((copy) => copy.hostname === hostname);
   return {
     branch: classic?.branch,
     copyState: classic?.copyState,
-    devServers:
-      classic?.devServers ??
-      copies.value.services?.find((service) => service.hostname === hostname)?.devServers,
   };
 };
 

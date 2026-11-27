@@ -1,4 +1,4 @@
-next: AD93
+next: AD94
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -92,3 +92,4 @@ next: AD93
 - AD90 — A report HQ refuses, cannot take or has no account for changes nothing: no error reaches the caller and nothing is retried; breaks: a rate-limited or unreachable HQ breaks opening a Mate, or reports loop
 - AD91 — The report's request names the project, the kind and this client's build, and nothing else; breaks: a browser's text or address reaches the operator's history
 - AD92 — A navigation read asked after a write waits for HQ's new snapshot to be committed, even when an earlier subscription or retry is still answering; breaks: a completed deletion is mistaken for the state before it started
+- AD93 — A draft that cannot open says whether its Mate lacks the method, its socket is unavailable, or the opening failed; breaks: a person is told a Mate is offline or too old when the opening itself failed

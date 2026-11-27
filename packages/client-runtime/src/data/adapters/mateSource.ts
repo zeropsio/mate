@@ -6,6 +6,8 @@ import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { EnvironmentNotRegisteredError } from "../../connection/registry.ts";
+import { EnvironmentRpcUnavailableError } from "../../rpc/client.ts";
 import type { LinkKey, ScopeKey } from "../model.ts";
 import { streamOf, type Row } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
@@ -20,9 +22,22 @@ type MateSourceEvent<Value> =
 /** What an older server answers for a method it does not have (effect `RpcServer`). */
 const UNKNOWN_REQUEST_TAG = "Unknown request tag";
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
+const isUnavailable = Schema.is(EnvironmentRpcUnavailableError);
+const isUnregistered = Schema.is(EnvironmentNotRegisteredError);
 
 const defectText = (defect: unknown): string =>
   typeof defect === "string" ? defect : defect instanceof Error ? defect.message : String(defect);
+
+/** The wire's own unsupported-method and missing-session reasons. */
+export function classifyMateSourceReason(
+  reason: Cause.Cause<unknown>["reasons"][number],
+): "unsupported" | "not-connected" | undefined {
+  if (Cause.isDieReason(reason) && defectText(reason.defect).startsWith(UNKNOWN_REQUEST_TAG))
+    return "unsupported";
+  if (Cause.isFailReason(reason) && (isUnavailable(reason.error) || isUnregistered(reason.error)))
+    return "not-connected";
+  return undefined;
+}
 
 /** How the wire's failure classifies: a Mate without the method, a refusal, or a transient. */
 function classifyMateSourceFailure(
@@ -30,8 +45,7 @@ function classifyMateSourceFailure(
   label: string,
 ): StreamFault | "unsupported" {
   for (const reason of cause.reasons) {
-    if (Cause.isDieReason(reason) && defectText(reason.defect).startsWith(UNKNOWN_REQUEST_TAG))
-      return "unsupported";
+    if (classifyMateSourceReason(reason) === "unsupported") return "unsupported";
     if (Cause.isFailReason(reason) && isAuthorizationError(reason.error))
       return { outcome: "definitive-refusal", message: reason.error.message };
   }

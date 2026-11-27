@@ -789,7 +789,7 @@ const UNJUDGED = detail({ mergeability: "unknown" });
 /** Pushed ten seconds ago: HQ's merge check is still within its usual time. */
 const JUST_PUSHED = () => new Date(NOW - 10_000).toISOString();
 
-/** The Mate's preview, its pair's stage half: what "Try it" opens. */
+/** Stage addresses passed to the review's builds. */
 const PREVIEWS = [
   {
     service: "app",

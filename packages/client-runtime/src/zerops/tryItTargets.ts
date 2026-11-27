@@ -5,7 +5,7 @@ import { mateParts } from "./mateParts.ts";
 import { recipeTierRepositories } from "./recipeTier.ts";
 import type { PoolPair } from "./servicePairs.ts";
 
-/** The change's own workspace and its parts' public stages. */
+/** The change's parts' public build stages. */
 export interface ReviewTryTargets {
   readonly builds: ReadonlyArray<{
     readonly service: string;
@@ -13,7 +13,7 @@ export interface ReviewTryTargets {
   }>;
 }
 
-/** Select the branch's live workspace and public stages that belong to its repository. */
+/** Select public build stages that belong to the change's repository. */
 export function tryItTargets(input: {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly hostnames: ReadonlyArray<string>;

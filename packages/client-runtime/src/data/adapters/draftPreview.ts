@@ -5,11 +5,11 @@ import {
   type ZeropsDraftCopy,
   type ZeropsDraftPreview,
 } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { request } from "../../rpc/client.ts";
+import { classifyMateSourceReason } from "./mateSource.ts";
 
 export function makeDraftPreviewWire(registry: EnvironmentRegistry["Service"]) {
   return (environmentId: EnvironmentId, copy: ZeropsDraftCopy): Promise<ZeropsDraftPreview> =>
@@ -25,12 +25,13 @@ async function openDraft(
     Effect.result(
       registry.run(environmentId, request(WS_METHODS.zeropsDraftPreview, copy)).pipe(
         Effect.catchCause((cause) => {
-          const error = Cause.squash(cause);
-          const message = error instanceof Error ? error.message : String(error);
+          const failure = cause.reasons
+            .map(classifyMateSourceReason)
+            .find((value) => value !== undefined);
           return Effect.fail(
-            message.includes("Unknown request tag")
+            failure === "unsupported"
               ? "This Mate does not support opening drafts yet."
-              : message.includes("not connected") || message.includes("not registered")
+              : failure === "not-connected"
                 ? "The Mate's socket is not connected."
                 : "The draft could not be opened.",
           );
