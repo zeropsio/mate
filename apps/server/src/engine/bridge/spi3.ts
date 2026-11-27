@@ -372,6 +372,12 @@ export interface DriverCapabilities {
   readonly compaction: { readonly reported: boolean; readonly automatic: "reported" | Unknown };
   readonly responses: "tool-calls" | "none";
   readonly resume: "session-id" | "thread-resume" | "acp-load" | "acp-resume" | "session-get";
+  /**
+   * How a fresh session hears the packet it starts from (a rotation's seed): Claude's own
+   * `SessionStart` hook tells it as the session starts; any other agent hears it before its next
+   * message, as a brief.
+   */
+  readonly startContext: "hook" | "message";
   /** How a turn cut by a restart can go on: an empty native turn, or a prompt. */
   readonly continuation: "native" | "prompted";
   /**

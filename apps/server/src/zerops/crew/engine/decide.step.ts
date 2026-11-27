@@ -38,6 +38,7 @@ import {
 export const ON_DEV = "its copy shows on dev; take it back to your tree first";
 
 export const ROTATED_TOO_OFTEN = "its conversation outgrew its context too often";
+export const NEVER_RESUMED = "its agent could not resume its conversation, twice";
 
 /** The board's words for the machine's own reasons to park; the crew's are words already. */
 const PARK_WORDS: Readonly<Record<string, string>> = {

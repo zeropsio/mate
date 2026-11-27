@@ -106,7 +106,7 @@ it("ED33: A request makes its run wait, and an answer, or the provider closing t
   ).toBe("running");
 });
 
-// witness: apps/server/src/engine/domain/decide.effects.ts | endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect"); → endRun(b, run, { kind: "failed", reason: failure, next: null }, "agent");
+// witness: apps/server/src/engine/domain/decide.effects.ts | endRun(b, run, end, "inferred-from-effect", undefined, facts); → endRun(b, run, end, "agent", undefined, facts);
 it("ED34: A run ends completed when the agent ends its turn, failed said by the agent when the turn fails, and failed inferred when its session cannot open or its send fails", () => {
   expect(play([...running, turnEnded]).state.runs[r(1)]).toMatchObject({
     end: { kind: "completed" },

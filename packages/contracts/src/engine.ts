@@ -1034,6 +1034,8 @@ export const EffectOutcome = forwardCompatibleUnion({
        * new session), `false` it did, `"unknown"` nobody can tell.
        */
       undelivered: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Literal("unknown")])),
+      /** A session's open that resumed the agent's own thread: the agent may no longer hold it. */
+      resumed: Schema.optionalKey(Schema.Boolean),
     }),
     Schema.Struct({ kind: Schema.Literal("cut"), reason: Schema.String }),
     /**
@@ -1098,10 +1100,16 @@ export const RunStopAsked = event("RunStopAsked", {
   effectId: Schema.NullOr(EffectId),
 });
 /**
- * What a run's end says beyond its kind: it outgrew its context, the provider broke it off, or it
- * was refused (admission's sentence in `refusal`).
+ * What a run's end says beyond its kind: it outgrew its context, the provider broke it off, it
+ * was refused (admission's sentence in `refusal`), or its session did not open resuming the
+ * agent's own thread.
  */
-export const RunEndDetail = forwardCompatibleLiterals(["overflow", "provider-error", "refused"]);
+export const RunEndDetail = forwardCompatibleLiterals([
+  "overflow",
+  "provider-error",
+  "refused",
+  "resume-failed",
+]);
 export type RunEndDetail = typeof RunEndDetail.Type;
 
 export const RunEnded = event("RunEnded", {
@@ -1205,9 +1213,10 @@ export const SessionOpened = event("SessionOpened", {
   /** The runtime mode it opened with: a session fits only the conversation's. */
   runtimeMode: Schema.optionalKey(RuntimeMode),
   /**
-   * The brief read from the record as it opened, when another agent took the conversation over
-   * (`AgentAssigned.brief`): it goes before the next message the agent is sent (`BriefGiven`).
-   * Empty: the record held nothing to tell.
+   * What goes before the next message the agent is sent (`BriefGiven`): the brief read from the
+   * record as it opened, when another agent took the conversation over (`AgentAssigned.brief`),
+   * and a fresh session's seed on an agent whose session start does not tell it. Empty: the
+   * record held nothing to tell.
    */
   brief: Schema.optionalKey(Schema.String),
 });

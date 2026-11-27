@@ -17,6 +17,7 @@ import { carriedCard, taskCard, type SentCard } from "./cards.ts";
 import { type DeliverCommand, taskAssignment } from "./command.ts";
 import {
   appAddressOf,
+  isTurnPurpose,
   openTaskOf,
   reviewedWorkOf,
   tasksInOrder,
@@ -27,6 +28,7 @@ import {
   type TaskRecord,
 } from "./state.ts";
 import {
+  NEVER_RESUMED,
   ROTATED_TOO_OFTEN,
   type Builder,
   userOf,
@@ -214,6 +216,7 @@ const rotateIfDue = (
   moment: RotationMoment,
   task: TaskRecord | undefined,
   principal: Principal,
+  resumeFailed = false,
 ): false | { readonly fresh: string | null } => {
   const applied = b.state.applied;
   if (applied === null) return { fresh: null };
@@ -222,7 +225,7 @@ const rotateIfDue = (
   const decision = rotationDecision({
     moment,
     transcriptMissing: false,
-    resumeFailed: false,
+    resumeFailed,
     compactions: member.session.compactions,
     rotateAfter: member.rotateAfter,
     // A session serves whoever's work comes to it: no principal rotation (V1's rule).
@@ -238,7 +241,9 @@ const rotateIfDue = (
     rotationsThisAttempt: task?.counters.rotations ?? 0,
   });
   if (decision.kind === "park") {
-    if (task !== undefined) park(b, task, ROTATED_TOO_OFTEN);
+    if (task !== undefined) {
+      park(b, task, decision.reason === "resume-failed" ? NEVER_RESUMED : ROTATED_TOO_OFTEN);
+    }
     return false;
   }
   if (decision.kind !== "rotate") return { fresh: null };
@@ -295,6 +300,32 @@ export const startTask = (
           app: appAddressOf(reviewed.owner),
         };
   sendTurn(b, member, taskCard(started, null, reviews), principal, "task", task.id, attachments);
+};
+
+/**
+ * A turn whose session could not resume the agent's own thread never reached the agent: the same
+ * turn goes again on a new session, which starts from the crewmate's packet. The rotation counts
+ * toward the task's attempt, so an agent that never resumes parks it instead of looping.
+ */
+export const sendOnNewSession = (
+  b: Builder,
+  member: MemberRecord,
+  delivery: DeliveryRecord & { readonly text: string },
+): void => {
+  const task = delivery.taskId === null ? undefined : b.state.tasks[delivery.taskId];
+  const rotated = rotateIfDue(b, member, "turn-start", task, delivery.principal, true);
+  if (rotated === false) return;
+  const sent = { text: delivery.text, card: delivery.card };
+  sendTurn(
+    b,
+    b.member(member.handle),
+    task !== undefined && rotated.fresh !== null && sent.card === null
+      ? carriedCard(task, rotated.fresh, sent.text)
+      : sent,
+    delivery.principal,
+    isTurnPurpose(delivery.purpose) ? delivery.purpose : "continue",
+    delivery.taskId,
+  );
 };
 
 /**

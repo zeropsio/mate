@@ -27,6 +27,7 @@ import {
   RESTART_CUT,
   NEW_SESSION,
   checkpoint,
+  sendOnNewSession,
   sendTurn,
   rotateSession,
 } from "./decide.turns.ts";
@@ -462,6 +463,13 @@ const runEnded = (
       // A task its restart could not carry on: it waits on the person, Continue or Drop it.
       interrupted(b, member, task, words, delivery);
     }
+    return;
+  }
+
+  // Its session did not open resuming the agent's own thread, so the turn never reached it: it
+  // goes again on a new session, with nobody pressing anything.
+  if (event.detail === "resume-failed" && delivery?.text != null) {
+    sendOnNewSession(b, b.state.members[member.handle]!, { ...delivery, text: delivery.text });
     return;
   }
 

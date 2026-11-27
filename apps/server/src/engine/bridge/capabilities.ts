@@ -19,6 +19,7 @@ const ACP_HOLDS_THE_TURN = {
   continuation: "prompted",
   // apply*AcpModelSelection on every send.
   modelOptions: "per-turn",
+  startContext: "message",
 } as const;
 
 export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabilities>> = {
@@ -40,6 +41,8 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     continuation: "prompted",
     // Effort through applyFlagSettings on the next send; fast mode and thinking need a session.
     modelOptions: "adapter",
+    // The crew's SessionStart hook (`claudeThreadProfile`) adds the state packet.
+    startContext: "hook",
   },
   codex: {
     sendReturns: "on-accept",
@@ -62,6 +65,7 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     continuation: "native",
     // Reasoning and routing go per turn; contextWindow needs thread configuration.
     modelOptions: "adapter",
+    startContext: "message",
   },
   cursor: {
     ...ACP_HOLDS_THE_TURN,
@@ -120,6 +124,7 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     continuation: "prompted",
     // agent and variant are read per prompt.
     modelOptions: "per-turn",
+    startContext: "message",
   },
 };
 

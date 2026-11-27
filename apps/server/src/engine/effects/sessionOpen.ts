@@ -177,7 +177,8 @@ export const makeSessionOpen = Effect.gen(function* () {
             const words = wordsOf(started.cause);
             yield* host.record({ kind: "start-failed", words });
             yield* host.discard(session);
-            return failed(words);
+            // An agent that no longer holds the thread it resumed fails it as any other open.
+            return failed(words, resumeCursor === undefined ? {} : { resumed: true });
           }
           const startedSession = Option.getOrThrow(started.value);
           opened = startedSession;
@@ -204,6 +205,13 @@ export const makeSessionOpen = Effect.gen(function* () {
           // An adopted session runs the mode it was started with.
           runtimeMode: live?.runtimeMode ?? runtimeMode,
           ...(brief === undefined ? {} : { brief }),
+          // A fresh session's packet, on an agent whose session start does not tell it itself.
+          ...(live === undefined &&
+          payload.fresh === true &&
+          payload.seed != null &&
+          DRIVER_CAPABILITIES[driver].startContext === "message"
+            ? { seed: payload.seed }
+            : {}),
         };
         const outcome: EffectOutcome = { kind: "ok", value };
         // Committed before the gate opens: the session's boundaries never meet an actor that has

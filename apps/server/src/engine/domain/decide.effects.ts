@@ -45,6 +45,11 @@ export interface SessionOpenedValue {
   readonly runtimeMode?: RuntimeMode;
   /** The brief it read from the record, when the open was asked for one. */
   readonly brief?: string;
+  /**
+   * The rotation's seed, for an agent that hears it before its next message: told as a brief
+   * is, and already in the record since the rotation.
+   */
+  readonly seed?: string;
 }
 
 /** What a `run.prepare` effect read for the run. */
@@ -145,7 +150,11 @@ export const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutco
         return;
       }
       if (failure !== null) {
-        endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect");
+        // The agent may no longer hold the thread it resumed: the run's end says so.
+        const resumed = outcome.kind === "failed" && outcome.resumed === true;
+        const facts = resumed ? { detail: "resume-failed" as const } : {};
+        const end = { kind: "failed", reason: failure, next: null } as const;
+        endRun(b, run, end, "inferred-from-effect", undefined, facts);
         admitNext(b);
         return;
       }
@@ -341,6 +350,10 @@ const openSession = (b: StepBuilder, value: unknown): void => {
   if (previous !== null && previous.id !== opened.sessionId) {
     sessionClosed(b, previous.id, "model");
   }
+  // What goes before the next message: the record's brief, then the rotation's seed.
+  const told = [opened.brief, opened.seed]
+    .filter((text) => text !== undefined && text !== "")
+    .join("\n\n");
   b.emit({
     _tag: "SessionOpened",
     sessionId: opened.sessionId,
@@ -355,7 +368,7 @@ const openSession = (b: StepBuilder, value: unknown): void => {
     capabilities: opened.capabilities,
     rotatedFrom:
       previous !== null && previous.id !== opened.sessionId ? previous.id : b.state.rotatingFrom,
-    ...(opened.brief === undefined ? {} : { brief: opened.brief }),
+    ...(opened.brief === undefined && opened.seed === undefined ? {} : { brief: told }),
   });
   // What the new agent is told of the conversation so far is in the record (rule 9).
   if (opened.brief !== undefined && opened.brief !== "") {
