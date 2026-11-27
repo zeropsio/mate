@@ -1,4 +1,4 @@
-next: MN115
+next: MN116
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -109,3 +109,4 @@ next: MN115
 - MN109 — End on a Mate's row names the project for a project's deletion, and the Mate for its own deletion or restart; breaks: a person ends the whole project deletion thinking only the Mate's ends.
 - MN113 — A task's row reads its own change's Review build and the given-up decision even without a pull request, and an overdue take becomes unavailable by the reader's clock; breaks: a failed build reads up for review or never reaches its task row
 - MN114 — Sites lists a pool part's stage address but never its leased workspaces; breaks: a person keeps a pool address that ends when the lease does.
+- MN115 — A Mate's row whose latest ask is another Mate's message leads it with that Mate's name alone, never with the person as its asker, while the person's own ask is still led by them; breaks: the row reads "You: <Mate>: …" as if the person had written another Mate's words

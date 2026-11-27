@@ -1,3 +1,5 @@
+import { ConversationRow, EnvironmentId } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 import {
   initialContainer,
@@ -6,8 +8,12 @@ import {
   type ContainerMachine,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
+import { rowAgentActivity } from "../../zerops/agentActivity.ts";
 import { mateRestartSaid } from "../../zerops/mateMoments.logic.ts";
 import {
+  mateAsker,
+  mateRowAskLine,
+  mateRowView,
   mateRowLife,
   mateRowSecond,
   sidebarMateVerbs,
@@ -165,4 +171,42 @@ it("MN113: A task's row reads its own change's Review build and the given-up dec
   expect(mateAutomatedLine(both!, "idle", { now: Date.parse(until) }).text).toBe(
     "Fix checkout · PR #7 checks failing · Review build passed · over to you",
   );
+});
+
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | const by = view.askedByMate === true ? undefined : input.asker; → const by = input.asker;
+it("MN115: A Mate's row whose latest ask is another Mate's message leads it with that Mate's name alone, never with the person as its asker, while the person's own ask is still led by them; breaks: the row reads \"You: <Mate>: …\" as if the person had written another Mate's words", () => {
+  const rowOf = (said: { subject: string; from?: string }) =>
+    Schema.decodeUnknownSync(ConversationRow)({
+      conversationId: "main",
+      agent: null,
+      revision: { environmentId: "env-1", epoch: 1, seq: 4 },
+      state: { kind: "idle" },
+      activeRunId: null,
+      latestRun: null,
+      subject: said.subject,
+      ...(said.from === undefined
+        ? {}
+        : { subjectFrom: { projectId: "project-2", mateName: said.from } }),
+      snippet: null,
+      at: 1_000,
+      askedAt: null,
+    });
+  const askLineOf = (row: ConversationRow) =>
+    mateRowAskLine({
+      view: mateRowView(rowAgentActivity(row, EnvironmentId.make("env-1"), undefined), "idle"),
+      signIn: undefined,
+      draft: undefined,
+      sent: undefined,
+      deleting: false,
+      read: true,
+      asker: mateAsker({ called: "Ana", isViewer: true }),
+    });
+  expect(askLineOf(rowOf({ subject: "Berry: Thanks, the build is green", from: "Berry" }))).toEqual(
+    { kind: "ask", text: "Berry: Thanks, the build is green", by: undefined },
+  );
+  expect(askLineOf(rowOf({ subject: "Ship the fix" }))).toEqual({
+    kind: "ask",
+    text: "Ship the fix",
+    by: "You",
+  });
 });

@@ -315,6 +315,8 @@ export interface MateRowView {
   readonly strongName: boolean;
   /** The second line: the person's last ask, whatever step the Mate is on. */
   readonly ask: string | undefined;
+  /** The ask is another Mate's message, led by its name (`askedByMate`): nobody asks it as theirs. */
+  readonly askedByMate?: true;
   readonly reply: MateRowReply;
   /** Still coming up, or never came (`mateComing`): its one line says so, in its place. */
   readonly coming?: MateComing;
@@ -400,6 +402,7 @@ export function mateRowView(
     unseen,
     strongName: unseen,
     ask,
+    ...(ask !== undefined && activity.askedByMate === true ? { askedByMate: true as const } : {}),
     reply: ask === undefined ? undefined : reply,
   });
   const held = lastKnownMateWords(activity, name, timestampFormat);
@@ -653,6 +656,7 @@ export type MateRowAskLine =
  * | a draft typed                          | *Draft* and its words, over the ask if any   |
  * | just sent, its conversation behind     | what was sent, as You                        |
  * | asked                                  | the ask, as its person's (`mateAsker`)       |
+ * | asked by another Mate                  | the ask, led by that Mate's name alone       |
  * | never asked, its conversations read    | "Nothing asked yet"                          |
  * | never asked, not read, or a step below | nothing                                      |
  *
@@ -665,6 +669,7 @@ export type MateRowAskLine =
 export function mateRowAskLine(input: {
   readonly view: {
     readonly ask: string | undefined;
+    readonly askedByMate?: true | undefined;
     readonly reply: MateRowReply;
     readonly coming?: MateComing | undefined;
   };
@@ -686,8 +691,10 @@ export function mateRowAskLine(input: {
 }): MateRowAskLine {
   const { view } = input;
   if (view.coming !== undefined) return undefined;
+  // Another Mate's message names its sender in its own words: nobody asks it as the person's.
+  const by = view.askedByMate === true ? undefined : input.asker;
   if (input.deleting) {
-    return view.ask === undefined ? undefined : { kind: "ask", text: view.ask, by: input.asker };
+    return view.ask === undefined ? undefined : { kind: "ask", text: view.ask, by };
   }
   if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
   if (input.drafting === true) return { kind: "draft", text: undefined, ask: view.ask };
@@ -698,7 +705,7 @@ export function mateRowAskLine(input: {
   const sent = input.sent === undefined ? null : messagePreviewText(input.sent);
   // This browser sent it: the viewer's words, whoever HQ says owns the Mate.
   if (sent !== null) return { kind: "ask", text: sent, by: YOU };
-  if (view.ask !== undefined) return { kind: "ask", text: view.ask, by: input.asker };
+  if (view.ask !== undefined) return { kind: "ask", text: view.ask, by };
   return view.reply === undefined && input.read ? { kind: "nothing-asked" } : undefined;
 }
 
