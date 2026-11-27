@@ -12,8 +12,8 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   sentence check, guard ledgers and the repository guards run on every diff. Other stages run when
   the diff touches their inputs: these include workflow schema, lockfile policy, release smoke,
   typecheck, the runtime cycle ratchet, the web build and the server pack. The web build takes the
-  switches of the `prod` setup in `zerops.yml`, including the service worker, and fails if they are
-  missing. CI runs the stages against its clean checkout.
+  switches of the `prod` setup in `zerops.yml`, including the service worker and the design
+  harness, and fails if they are missing. CI runs the stages against its clean checkout.
 
 - Unit files are `*.unit.test.ts` directly beside a `SENTENCES.md`. `scripts/check-sentences.ts`,
   always in the gate, holds the list's format, the mapping of ids to cases, witness lines and

@@ -75,6 +75,58 @@ it("GA3: a diff that changes a stage's definition selects that stage", () => {
   }
 });
 
+// witness: scripts/gate-changed.ts | const deployedBuildSwitches = ["VITE_APP_SHELL_WORKER", "VITE_DESIGN_HARNESS"] as const; → const deployedBuildSwitches = ["VITE_APP_SHELL_WORKER"] as const;
+it("GA6: a diff touching a design harness page builds the web client with the harness beside it, as prod does", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gate-harness-"));
+  try {
+    for (const directory of ["apps/web", "packages", "infra", "docs"])
+      NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
+    NodeFS.writeFileSync(
+      NodePath.join(root, "apps/web/package.json"),
+      JSON.stringify({ name: "@t3tools/web", scripts: { build: "vp build" } }),
+    );
+    NodeFS.writeFileSync(NodePath.join(root, "apps/web/design-board.html"), "<html></html>");
+    NodeFS.writeFileSync(NodePath.join(root, "docs/notes.md"), "# Notes\n");
+    NodeFS.writeFileSync(
+      NodePath.join(root, "zerops.yml"),
+      [
+        "zerops:",
+        "  - setup: prod",
+        "    build:",
+        "      envVariables:",
+        "        VITE_APP_SHELL_WORKER: app-shell",
+        "        VITE_DESIGN_HARNESS: beside",
+        "        VITE_HQ_URL: https://hq.example",
+        "",
+      ].join("\n"),
+    );
+    const graph = buildGateGraph(root);
+    const existing = [
+      "apps/web/package.json",
+      "apps/web/design-board.html",
+      "docs/notes.md",
+      "zerops.yml",
+    ];
+    const select = (paths: string[]) =>
+      selectGateSteps(graph, {
+        comparison: "base",
+        existing,
+        paths,
+        tests: false,
+        inputs: stageInputSets(root, [...existing, ...paths], graph),
+        build: true,
+      }).steps;
+
+    const web = select(["apps/web/design-board.html"]).find(
+      (stage) => stage.name === "build web client",
+    );
+    expect(web?.env).toEqual({ VITE_APP_SHELL_WORKER: "app-shell", VITE_DESIGN_HARNESS: "beside" });
+    expect(select(["docs/notes.md"]).map((stage) => stage.name)).not.toContain("build web client");
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // witness: scripts/gate/stage-reuse.ts | hash.update(bytes); → hash.update(Buffer.alloc(0));
 it("GA4: a passing guard stage is reused only while its identified inputs match", () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gate-guard-"));

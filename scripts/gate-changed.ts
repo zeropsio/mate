@@ -1402,10 +1402,11 @@ const deployFile = "zerops.yml";
 const deploySetup = "prod";
 /**
  * The variables of the `prod` build that change which entries and plugins are built: the app-shell
- * worker adds the service-worker build and `sw.js`. The setup's other `VITE_*` values are
- * constants baked into the output, which the gate's build leaves out.
+ * worker adds the service-worker build and `sw.js`; the design harness adds its pass, which builds
+ * every `design*.html` page beside the app. The setup's other `VITE_*` values are constants baked
+ * into the output, which the gate's build leaves out.
  */
-const deployedBuildSwitches = ["VITE_APP_SHELL_WORKER"] as const;
+const deployedBuildSwitches = ["VITE_APP_SHELL_WORKER", "VITE_DESIGN_HARNESS"] as const;
 
 /**
  * The stage built the way the `prod` setup builds it, its switches read from the deploy file; a
