@@ -169,3 +169,21 @@ it("ED+3: A change the agent opened is read off zcp's `open-change` answer as th
   for (const [body, change] of rows)
     expect(changeOpenedOfCall(body, { action: "open-change" })).toEqual(change);
 });
+// witness: apps/server/src/engine/pump/changeOpened.ts | if (args.action !== CHANGE_OPEN_ACTION) return null; → if (args.action === "close-change") return null;
+it("ED+4: Only the agent's `open-change` call links a change to a taken task: its `describe-change`, a call without its action, or any other action naming the same change in the same fields links nothing; breaks: describing or closing a change links it to the task again, or a closed change is linked as if opened", () => {
+  const answer = {
+    service: "appdev",
+    branch: "menu-cache",
+    pullRequest: 4,
+    pullRequestUrl: "https://hq.example.invalid/changes/app-1/kiln/4",
+  };
+  const body = zcpCall(answer, "zerops_workflow");
+  const rows: ReadonlyArray<readonly [unknown, unknown]> = [
+    [{ action: "open-change" }, { repo: "kiln", number: 4 }],
+    [{ action: "describe-change" }, null],
+    [{ action: "update-change" }, null],
+    [{}, null],
+    [undefined, null],
+  ];
+  for (const [args, change] of rows) expect(changeOpenedOfCall(body, args)).toEqual(change);
+});
