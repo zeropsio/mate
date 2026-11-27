@@ -23,6 +23,11 @@
  * fixture crew; a view (setup, goal, job) is the real view in the same frame,
  * over fixture crew files.
  *
+ * The conversation column draws Fen's own chat at the same phase — the crew
+ * card it drew, proposed while no crew stands and set up once its crew does —
+ * or, with `&chat=<handle>`, that crewmate's chat with the task cards the
+ * crew sent it (`crewHarnessChats.tsx`).
+ *
  * Add `&pool=1` for a Mate with only tinypool. Its job view opens a new builder.
  * Add `&places=2` for a Mate with two dev services: the setup's draft has one
  * builder on the service its card named and the others still to place.
@@ -66,6 +71,7 @@ import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import { readCrewThread, type CrewRead } from "~/zerops/crew/useCrew";
 import type { UseCrewCommand } from "~/zerops/crew/useCrewCommand";
 import "../index.css";
+import { CrewChat, crewCardFence } from "./crewHarnessChats";
 
 const params = new URLSearchParams(location.search);
 const pooled = params.get("pool") === "1";
@@ -74,6 +80,8 @@ const writerPlace = pooled ? { pool: "tinypool" } : { host: "appdev" };
 /** Two dev services: nothing places a builder by itself, so the person picks each one's. */
 const SEVERAL = params.get("places") === "2";
 const STATE = params.get("state") ?? "idle";
+/** Whose chat the conversation column shows: Fen's own, or a crewmate's by its handle. */
+const CHAT = params.get("chat") ?? "fen";
 
 /** Who looks: the person who runs the crew's agent, or — `&viewer=` — somebody who may not. */
 const VIEWERS: Readonly<Record<string, CrewLockOwnership>> = {
@@ -618,6 +626,9 @@ const STATES: Readonly<Record<string, CrewState>> = {
   },
 };
 
+/** The crew card Fen drew in its chat; the standing crew is the one it set up. */
+const CARD = crewCardFence(SEATS, GOAL.body, pooled ? "tinypool" : "appdev");
+
 function snapshotOf(state: CrewState): CrewSnapshot {
   return {
     status: "applied",
@@ -627,6 +638,7 @@ function snapshotOf(state: CrewState): CrewSnapshot {
       briefTitle: GOAL.title,
       briefVersion: 1,
       briefExcerpt: GOAL.body.split("\n")[0] ?? "",
+      ask: CARD.key,
     },
     crewmates: SEATS.map((seat) => crewmateOf(seat, state.tasks)),
     hosts: pooled
@@ -860,7 +872,19 @@ function Harness() {
   return (
     <div className="flex h-screen bg-background text-foreground">
       <div className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU }} />
-      <div className={MAXIMIZED ? "w-0 flex-none" : "min-w-0 flex-1"} />
+      {MAXIMIZED ? (
+        <div className="w-0 flex-none" />
+      ) : (
+        <CrewChat
+          chat={CHAT}
+          crew={crewRead()}
+          environmentId={ENVIRONMENT}
+          fence={CARD.code}
+          mate={FEN}
+          seats={SEATS}
+          threads={COLUMN.threads}
+        />
+      )}
       <RightPanelTabs
         activeSurfaceId="crew"
         availability={resolveRightPanelAvailability({

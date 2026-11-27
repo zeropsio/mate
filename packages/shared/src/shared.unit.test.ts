@@ -577,7 +577,7 @@ it("SH13: A crew drafted before the Mate's dev services are read keeps every cre
 });
 
 // witness: packages/shared/src/crewHome.ts | if (places.devHosts.length + pools.length !== 1) return null; → if (places.devHosts.length + pools.length === 0) return null;
-it("SH+1: Among several dev services and dev pools a crew's builder is placed only where its crew card or the person named it, a named pool as a pool, and never by itself: it stays unplaced until the person picks; breaks: a builder starts on a service nobody chose, or a card's pool is taken for a service", () => {
+it("SH14: Among several dev services and dev pools a crew's builder is placed only where its crew card or the person named it, a named pool as a pool, and never by itself: it stays unplaced until the person picks; breaks: a builder starts on a service nobody chose, or a card's pool is taken for a service", () => {
   const places = { devHosts: ["appdev", "apidev"], pools: ["tinypool"] };
   const drafted = crewFromAsk({
     crew: "crew",

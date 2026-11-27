@@ -1,4 +1,4 @@
-next: SH14
+next: SH15
 
 - SH1 — A link frame from a newer HQ or Mate is read by the keys this build knows, a frame of an unknown type is passed by, and a known type whose body does not decode is refused
 - SH2 — Projects may be created by Zerops' own flag on the account or by an owner's or admin's role, and by no other role
@@ -12,4 +12,4 @@ next: SH14
 - SH10 — Among a Mate's conversations a change's own is the chat bound to a lease of its branch in its repository, the more primary of two; a lease of another repository at the same HQ, another branch or no branch is not it
 - SH11 — OpenCode stands in for a person's sign-in only on a model key they set or once they chose it as the Mate's default model, never on its free models alone; breaks: a new Mate starts on a free model before its person signs in
 - SH13 — A crew drafted before the Mate's dev services are read keeps every crewmate, and its builder is placed on the only dev service, sharing the database it reaches, before Apply admits it; breaks: a crew card pressed on a Mate with a new dev service saves nobody, or a builder starts with nowhere for its copy
-- SH+1 — Among several dev services and dev pools a crew's builder is placed only where its crew card or the person named it, a named pool as a pool, and never by itself: it stays unplaced until the person picks; breaks: a builder starts on a service nobody chose, or a card's pool is taken for a service
+- SH14 — Among several dev services and dev pools a crew's builder is placed only where its crew card or the person named it, a named pool as a pool, and never by itself: it stays unplaced until the person picks; breaks: a builder starts on a service nobody chose, or a card's pool is taken for a service
