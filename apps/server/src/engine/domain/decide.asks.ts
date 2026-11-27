@@ -44,6 +44,14 @@ export type BoardOutcome =
   | { readonly kind: "put"; readonly taskId: string }
   | { readonly kind: "declined" };
 
+/**
+ * How a plan proposed for the Board ended: `put`, with HQ's ids of its tasks in the plan's order,
+ * one per task; `declined`, not put.
+ */
+export type BoardPlanOutcome =
+  | { readonly kind: "put"; readonly taskIds: ReadonlyArray<string> }
+  | { readonly kind: "declined" };
+
 /** An answer that says only how it ended (`{ outcome }`), as one of `outcomes`; anything more is none. */
 const cardOutcome = <Outcome extends string>(
   answer: unknown,
@@ -310,6 +318,8 @@ const answerOnCard = (
     readonly text: string;
     /** A board ask put: the task it became, which its card follows. */
     readonly taskId?: string;
+    /** A plan put: the tasks it became, in its order, which its card follows. */
+    readonly taskIds?: ReadonlyArray<string>;
   },
 ): void => {
   b.emit({
@@ -319,6 +329,7 @@ const answerOnCard = (
     by: b.envelope.principal,
     summary: ended.summary,
     ...(ended.taskId === undefined ? {} : { taskId: ended.taskId }),
+    ...(ended.taskIds === undefined ? {} : { taskIds: ended.taskIds }),
   });
   if (ended.declined) {
     b.emit({
@@ -438,8 +449,38 @@ export const boardAnswerWords = (ask: Pick<BoardAsk, "title">, outcome: BoardOut
     ? `The person put "${ask.title}" on the Board as task ${outcome.taskId}. Leave it there: whoever takes it does the work.`
     : `The person did not put "${ask.title}" on the Board.`;
 
+/** The agent's line on a plan it proposed for the Board: the tasks it became, or that it was not put. */
+export const boardPlanAnswerWords = (
+  titles: ReadonlyArray<string>,
+  outcome: BoardPlanOutcome,
+): string =>
+  outcome.kind === "put"
+    ? `The person put your plan on the Board: ${titles
+        .map((title, at) => `"${title}" as task ${outcome.taskIds[at] ?? "?"}`)
+        .join(
+          ", ",
+        )}. Each waits for the tasks it needs. Leave them there: whoever takes each does the work.`
+    : `The person did not put your plan on the Board.`;
+
 /** The longest task id the agent's line carries (as `EngineAnswer`'s). */
 const TASK_ID_MAX = 128;
+
+/**
+ * A plan's answer (`{ outcome: "put", taskIds }`, an id per task of the plan, or
+ * `{ outcome: "declined" }`); anything more, or ids that are not one per task, is none.
+ */
+const boardPlanOutcome = (answer: unknown, tasks: number): BoardPlanOutcome | null => {
+  if (cardOutcome(answer, ["declined"]) === "declined") return { kind: "declined" };
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
+  const { outcome, taskIds, ...rest } = answer as Record<string, unknown>;
+  if (outcome !== "put" || !Array.isArray(taskIds) || Object.keys(rest).length > 0) return null;
+  const ids = taskIds.flatMap((id) =>
+    typeof id === "string" && id.trim() !== "" && id.length <= TASK_ID_MAX ? [id.trim()] : [],
+  );
+  return ids.length === taskIds.length && ids.length === tasks && new Set(ids).size === tasks
+    ? { kind: "put", taskIds: ids }
+    : null;
+};
 
 /** A board ask's answer (`{ outcome: "put", taskId }` or `{ outcome: "declined" }`); anything more is none. */
 const boardOutcome = (answer: unknown): BoardOutcome | null => {
@@ -460,6 +501,8 @@ export const answerBoard = (
   request: OpenRequest,
   command: Extract<Command, { _tag: "Answer" }>,
 ): void => {
+  if (request.boardPlan !== undefined)
+    return answerBoardPlan(b, request, request.boardPlan, command);
   const outcome = boardOutcome(command.answer);
   if (outcome === null || request.board === undefined) {
     throw new Rejected(
@@ -473,6 +516,27 @@ export const answerBoard = (
     wake: BOARD_ANSWER_WAKE,
     text: boardAnswerWords(request.board, outcome),
     ...(outcome.kind === "put" ? { taskId: outcome.taskId } : {}),
+  });
+};
+
+const answerBoardPlan = (
+  b: StepBuilder,
+  request: OpenRequest,
+  plan: NonNullable<OpenRequest["boardPlan"]>,
+  command: Extract<Command, { _tag: "Answer" }>,
+): void => {
+  const outcome = boardPlanOutcome(command.answer, plan.titles.length);
+  if (outcome === null)
+    throw new Rejected(
+      "not-answerable",
+      "A plan proposed for the Board is answered put, with an id for each of its tasks, or declined.",
+    );
+  answerOnCard(b, request, {
+    declined: outcome.kind === "declined",
+    summary: outcome.kind === "put" ? "On the board" : "Not put on the board",
+    wake: BOARD_ANSWER_WAKE,
+    text: boardPlanAnswerWords(plan.titles, outcome),
+    ...(outcome.kind === "put" ? { taskIds: outcome.taskIds } : {}),
   });
 };
 

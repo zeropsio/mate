@@ -96,6 +96,8 @@ const askWords = (request: ViewRequest): string | null => {
       return rowText(ask.reason ?? `Connect ${ask.repo} to GitHub`);
     case "board":
       return rowText(`Put on board: ${ask.title}`);
+    case "board-plan":
+      return rowText(`Put a plan on the board: ${ask.tasks.map((task) => task.title).join(", ")}`);
     default:
       return null;
   }
@@ -177,8 +179,10 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
     };
   }
   const card = cardAsk(view);
-  if (card !== undefined && waitsOn(card.ask.kind)) {
-    return { kind: "waiting", on: card.ask.kind, words: askWords(card) };
+  // A plan for the Board waits on the person as a board ask does: older readers know that word.
+  const cardOn = card?.ask.kind === "board-plan" ? "board" : card?.ask.kind;
+  if (card !== undefined && cardOn !== undefined && waitsOn(cardOn)) {
+    return { kind: "waiting", on: cardOn, words: askWords(card) };
   }
   if (view.pausedUntil !== null) {
     return { kind: "paused", resetsAt: view.pausedUntil === "unknown" ? null : view.pausedUntil };

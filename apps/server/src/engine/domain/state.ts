@@ -216,6 +216,8 @@ export interface OpenRequest {
   readonly mirror?: Pick<MirrorAsk, "repo">;
   /** Work proposed for the Board: its title as proposed, to word the agent's line. */
   readonly board?: Pick<BoardAsk, "title">;
+  /** A plan proposed for the Board: its tasks' titles as proposed, in order, for the agent's line. */
+  readonly boardPlan?: { readonly titles: ReadonlyArray<string> };
 }
 
 /**
@@ -240,6 +242,7 @@ export type SecretAsk = Extract<RequestAsk, { readonly kind: "secret" }>;
 export type OriginAsk = Extract<RequestAsk, { readonly kind: "origin" }>;
 export type MirrorAsk = Extract<RequestAsk, { readonly kind: "mirror" }>;
 export type BoardAsk = Extract<RequestAsk, { readonly kind: "board" }>;
+export type BoardPlanAsk = Extract<RequestAsk, { readonly kind: "board-plan" }>;
 
 export interface ArmedWake {
   readonly id: WakeId;

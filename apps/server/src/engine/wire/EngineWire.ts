@@ -1299,6 +1299,9 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                             ? {
                                 outcome: answer.outcome,
                                 ...(answer.taskId === undefined ? {} : { taskId: answer.taskId }),
+                                ...(answer.taskIds === undefined
+                                  ? {}
+                                  : { taskIds: answer.taskIds }),
                               }
                             : null,
               // A card's record is worded by the engine: the client's words never reach it.

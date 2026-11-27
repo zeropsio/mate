@@ -32,7 +32,7 @@ const zcpCall = (answer: unknown, toolName = "zerops_board_propose"): ItemBody =
   result: { toolName, resultText: JSON.stringify(answer) },
 });
 
-// witness: apps/server/src/engine/pump/boardAsk.ts | if (said.title === "" || said.brief === "") return null; → if (said.title === "") return null;
+// witness: apps/server/src/engine/pump/boardAsk.ts | return cut.title === "" || cut.brief === "" ? null : cut; → return cut.title === "" ? null : cut;
 it("ED146: A zcp call proposes work for the Board only from `zerops_board_propose` answering a title and a brief, both trimmed and cut to what HQ takes; an answer missing either, or any other tool's, asks nothing", () => {
   const proposed = (board: Record<string, unknown>) => ({
     proposed: { board },
@@ -54,6 +54,36 @@ it("ED146: A zcp call proposes work for the Board only from `zerops_board_propos
     [zcpCall(proposed({ title: "Cache the menu", brief: "Why." }), "zerops_mirror"), null],
   ];
   for (const [body, ask] of rows) expect(boardAskOfCall(body)).toEqual(ask);
+});
+
+// witness: apps/server/src/engine/pump/boardAsk.ts | typeof need === "string" && need.trim() !== "" && need.trim() !== key → typeof need === "string" && need.trim() !== ""
+it("ED+1: A plan zcp proposes for the Board opens one plan ask with its tasks in its order, each keeping its key and needing only others, each once; a plan of one task is a single task's ask, and one with two tasks under one key, or more tasks than HQ takes, asks nothing; breaks: a plan's task names itself among its needs and HQ refuses the whole plan as a cycle, or a plan HQ refuses reaches the person's card", () => {
+  const plan = (tasks: ReadonlyArray<unknown>) =>
+    zcpCall({ proposed: { board: { plan: tasks } }, nextActions: "Say it in one sentence." });
+  const task = (key: string, needs?: ReadonlyArray<string>) => ({
+    key,
+    title: ` Step ${key} `,
+    brief: `Do ${key}.`,
+    ...(needs === undefined ? {} : { needs }),
+  });
+  expect({
+    ordered: boardAskOfCall(plan([task("a"), task("b", ["a", "b", "a"]), task("c", ["b"])])),
+    one: boardAskOfCall(plan([task("a")])),
+    twice: boardAskOfCall(plan([task("a"), task("a")])),
+    tooMany: boardAskOfCall(plan(Array.from({ length: 21 }, (_, at) => task(`k${String(at)}`)))),
+  }).toEqual({
+    ordered: {
+      kind: "board-plan",
+      tasks: [
+        { key: "a", title: "Step a", brief: "Do a.", needs: [] },
+        { key: "b", title: "Step b", brief: "Do b.", needs: ["a"] },
+        { key: "c", title: "Step c", brief: "Do c.", needs: ["b"] },
+      ],
+    },
+    one: { kind: "board", title: "Step a", brief: "Do a." },
+    twice: null,
+    tooMany: null,
+  });
 });
 
 const settled = (cause: string, kind: string, value?: unknown): Command => ({

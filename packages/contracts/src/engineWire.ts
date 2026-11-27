@@ -547,12 +547,19 @@ export const EngineAnswer = forwardCompatibleUnion({
     }),
     /**
      * Work proposed for the Board (a `board` request): `put`, with HQ's id of the task the person's
-     * client put on the Board as them; `declined`, not put. Never the brief.
+     * client put on the Board as them; `declined`, not put. A plan (a `board-plan` request) is
+     * answered the same way, put with its tasks' ids. Never a brief.
      */
     Schema.Struct({
       kind: Schema.Literal("board"),
       outcome: Schema.Literals(["put", "declined"]),
       taskId: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(128))),
+      /** A `board-plan` request, put: HQ's ids of its tasks, in the plan's order (at most 20). */
+      taskIds: Schema.optionalKey(
+        Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(128))).check(
+          Schema.isMaxLength(20),
+        ),
+      ),
     }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),

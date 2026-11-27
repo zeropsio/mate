@@ -747,6 +747,7 @@ export const RequestAsk = forwardCompatibleUnion({
     "origin",
     "mirror",
     "board",
+    "board-plan",
     "plan",
     "unknown",
   ],
@@ -830,6 +831,23 @@ export const RequestAsk = forwardCompatibleUnion({
       title: Schema.String,
       brief: Schema.String,
     }),
+    /**
+     * A plan the agent proposes to put on its application's Board in one go
+     * (`zerops_board_propose` with `tasks`): its tasks in order, each with a plan-local key, a
+     * title, a brief and the keys of the plan's tasks it needs. The person may edit each title and
+     * brief on its card; their client puts the whole plan, all or nothing, as them.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("board-plan"),
+      tasks: Schema.Array(
+        Schema.Struct({
+          key: Schema.String,
+          title: Schema.String,
+          brief: Schema.String,
+          needs: Schema.Array(Schema.String),
+        }),
+      ),
+    }),
     Schema.Struct({ kind: Schema.Literal("plan"), planItemId: ItemId }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),
@@ -839,7 +857,7 @@ export type RequestAsk = typeof RequestAsk.Type;
 
 /**
  * Asked of the person on a card — a value, an origin to connect, a repository to connect to
- * GitHub, or work to put on the Board: it outlives the turn that
+ * GitHub, or work or a plan to put on the Board: it outlives the turn that
  * asked, holds no run, no session and no update, and is answered with how it ended, never with
  * the value or a token. Takes an ask's kind, as a request or a row's `on` names it.
  */
@@ -848,7 +866,8 @@ export const isCardAsk = (kind: string | undefined): boolean =>
   kind === "secret" ||
   kind === "origin" ||
   kind === "mirror" ||
-  kind === "board";
+  kind === "board" ||
+  kind === "board-plan";
 
 /** `expired`: answered, but the driver could no longer take an answer (its callback was gone). */
 const REQUEST_STATES = ["open", "answered", "declined", "dismissed", "lapsed", "expired"] as const;
@@ -880,6 +899,8 @@ export const Request = Schema.Struct({
       attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
       /** Work proposed for the Board, put: HQ's id of the task, which its card follows. */
       taskId: Schema.optionalKey(Schema.String),
+      /** A plan proposed for the Board, put: HQ's ids of its tasks, in the plan's order. */
+      taskIds: Schema.optionalKey(Schema.Array(Schema.String)),
     }),
   ),
   principal: Principal,
@@ -1230,6 +1251,8 @@ export const RequestAnswered = event("RequestAnswered", {
   attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
   /** Work proposed for the Board, put: HQ's id of the task the person's client put there. */
   taskId: Schema.optionalKey(Schema.String),
+  /** A plan proposed for the Board, put: HQ's ids of its tasks, in the plan's order. */
+  taskIds: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 /** An answer the provider failed to take: the request is open again for the person. */
 export const RequestReopened = event("RequestReopened", {

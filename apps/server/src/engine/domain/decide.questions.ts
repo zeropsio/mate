@@ -34,7 +34,8 @@ export const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer
   if (request.kind === "secret") return answerSecret(b, request, command);
   if (request.kind === "origin") return answerOrigin(b, request, command);
   if (request.kind === "mirror") return answerMirror(b, request, command);
-  if (request.kind === "board") return answerBoard(b, request, command);
+  if (request.kind === "board" || request.kind === "board-plan")
+    return answerBoard(b, request, command);
   if (request.dismissible === true) return answerByMessage(b, request, command);
   // A helper's ask may outlive the run the state keeps: the session it asked in takes the answer.
   const run = b.state.runs[request.runId];

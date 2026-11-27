@@ -899,6 +899,22 @@ export interface BoardAskActivityPayload {
   readonly answer: { readonly by: Principal; readonly at: number } | null;
   /** Put: HQ's id of the task it became, which the card follows; `null` before, or not recorded. */
   readonly taskId: string | null;
+  /**
+   * A plan proposed in one go, its tasks in order, each with its plan-local key and the keys (or
+   * Board task ids) it needs; `null` for a single task (`title`, `brief`). A plan's `title` and
+   * `brief` are its first task's.
+   */
+  readonly plan: ReadonlyArray<BoardPlanTaskPayload> | null;
+  /** A plan put: HQ's ids of its tasks in the plan's order; `null` before, or for a single task. */
+  readonly taskIds: ReadonlyArray<string> | null;
+}
+
+/** One task of a plan proposed for the Board, as its card reads it. */
+export interface BoardPlanTaskPayload {
+  readonly key: string;
+  readonly title: string;
+  readonly brief: string;
+  readonly needs: ReadonlyArray<string>;
 }
 
 const BOARD_ASK_STATES: Readonly<Record<string, BoardAskActivityPayload["state"]>> = {
@@ -909,16 +925,20 @@ const BOARD_ASK_STATES: Readonly<Record<string, BoardAskActivityPayload["state"]
 
 function boardAskActivity(
   request: Request,
-  ask: Extract<RequestAsk, { readonly kind: "board" }>,
+  ask: Extract<RequestAsk, { readonly kind: "board" | "board-plan" }>,
   card: string | null,
 ): OrchestrationThreadActivity {
+  const plan = ask.kind === "board-plan" ? ask.tasks : null;
+  const first = plan?.[0];
   const payload: BoardAskActivityPayload = {
     requestId: request.id,
-    title: ask.title,
-    brief: ask.brief,
+    title: ask.kind === "board" ? ask.title : (first?.title ?? ""),
+    brief: ask.kind === "board" ? ask.brief : (first?.brief ?? ""),
     state: BOARD_ASK_STATES[request.state] ?? "closed",
     answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
     taskId: request.answer?.taskId ?? null,
+    plan,
+    taskIds: request.answer?.taskIds ?? null,
   };
   return activity(
     `${request.id}#board`,
@@ -941,7 +961,8 @@ function requestActivities(
   if (ask.kind === "vault" || ask.kind === "secret") return [vaultAskActivity(request, ask, card)];
   if (ask.kind === "origin") return [originAskActivity(request, ask, card)];
   if (ask.kind === "mirror") return [mirrorAskActivity(request, ask, card)];
-  if (ask.kind === "board") return [boardAskActivity(request, ask, card)];
+  if (ask.kind === "board" || ask.kind === "board-plan")
+    return [boardAskActivity(request, ask, card)];
   const asked =
     ask.kind === "approval"
       ? activity(

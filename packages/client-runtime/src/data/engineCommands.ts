@@ -356,9 +356,14 @@ export const engineAnswerMirrorAsk =
 export type BoardAskAnswerInput = {
   readonly threadId: string;
   readonly requestId: string;
-} & ({ readonly outcome: "put"; readonly taskId: string } | { readonly outcome: "declined" });
+} & (
+  | { readonly outcome: "put"; readonly taskId: string }
+  /** A plan put: HQ's ids of its tasks, in the plan's order. */
+  | { readonly outcome: "put"; readonly taskIds: ReadonlyArray<string> }
+  | { readonly outcome: "declined" }
+);
 
-/** Work proposed for the Board, answered: put (with its task's id) or declined. */
+/** Work or a plan proposed for the Board, answered: put (with its tasks' ids) or declined. */
 export const engineAnswerBoardAsk =
   (environmentId: string, input: BoardAskAnswerInput) => (host: MateEngineHost) =>
     host.operations.answer({
@@ -366,9 +371,11 @@ export const engineAnswerBoardAsk =
       conversationId: input.threadId,
       requestId: input.requestId,
       answer:
-        input.outcome === "put"
-          ? { kind: "board", outcome: "put", taskId: input.taskId }
-          : { kind: "board", outcome: "declined" },
+        input.outcome === "declined"
+          ? { kind: "board", outcome: "declined" }
+          : "taskIds" in input
+            ? { kind: "board", outcome: "put", taskIds: input.taskIds }
+            : { kind: "board", outcome: "put", taskId: input.taskId },
       summary: input.outcome,
     });
 

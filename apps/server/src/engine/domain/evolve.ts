@@ -462,6 +462,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
               : {}),
             ...(event.ask.kind === "mirror" ? { mirror: { repo: event.ask.repo } } : {}),
             ...(event.ask.kind === "board" ? { board: { title: event.ask.title } } : {}),
+            ...(event.ask.kind === "board-plan"
+              ? { boardPlan: { titles: event.ask.tasks.map((task) => task.title) } }
+              : {}),
           },
         },
       };
@@ -505,6 +508,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(answered?.origin === undefined ? {} : { origin: answered.origin }),
             ...(answered?.mirror === undefined ? {} : { mirror: answered.mirror }),
             ...(answered?.board === undefined ? {} : { board: answered.board }),
+            ...(answered?.boardPlan === undefined ? {} : { boardPlan: answered.boardPlan }),
           },
         },
         answering: Object.fromEntries(
