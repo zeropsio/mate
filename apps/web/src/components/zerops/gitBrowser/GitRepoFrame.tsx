@@ -57,7 +57,6 @@ export function GitRepoFacts({
 }: {
   readonly about: GitHomeAbout | null;
   readonly storage: ReactNode;
-  readonly again?: ReactNode;
 }) {
   const where =
     about?.remote === null
