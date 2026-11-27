@@ -27,8 +27,6 @@ export interface AppRenameView {
   readonly line: { readonly words: string; readonly failed: boolean } | undefined;
   /** Each project of the rename the person sees, with its result. */
   readonly projects: ReadonlyArray<AppRenameProject>;
-  /** A different name is safe when no project is known to have refused the last rename. */
-  readonly mayRename: boolean;
 }
 
 /** A lost answer can be asked again by id; a new failure starts a new attempt. */
@@ -88,16 +86,11 @@ export function appRenameView(
 ): AppRenameView {
   const projects =
     rename.kind === "none" ? [] : (operation?.projects ?? []).map((p) => projectWords(p, nameOf));
-  const results = operation?.projects ?? [];
-  const mayRename =
-    rename.kind !== "failed" ||
-    (results.length > 0 && results.every((project) => !project.result?.startsWith(REFUSED)));
   switch (rename.kind) {
     case "going":
       return {
         line: { words: "Renaming its projects in Zerops…", failed: false },
         projects,
-        mayRename,
       };
     case "failed":
       return {
@@ -109,9 +102,8 @@ export function appRenameView(
           failed: true,
         },
         projects,
-        mayRename,
       };
     default:
-      return { line: undefined, projects, mayRename };
+      return { line: undefined, projects };
   }
 }

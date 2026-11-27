@@ -27,8 +27,6 @@ export function ZeropsRenameForm({
   submitLabel,
   validate,
   pending = false,
-  readOnly = false,
-  reportOnly = false,
   error: refusal = null,
   children,
   onCancel,
@@ -42,10 +40,6 @@ export function ZeropsRenameForm({
   readonly validate: (value: string) => string | undefined;
   /** The press is in flight: the form waits for its answer and takes no second press. */
   readonly pending?: boolean;
-  /** The name is not the person's to change now. */
-  readonly readOnly?: boolean;
-  /** The form only reports: no press can change the name, so it offers Close alone. */
-  readonly reportOnly?: boolean;
   /** Why the last press was refused, said in the dialog that made it. */
   readonly error?: string | null;
   /** What the caller says under the field: how the write it started stands. */
@@ -64,7 +58,7 @@ export function ZeropsRenameForm({
       data-zerops-surface="rename-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (pending || reportOnly) return;
+        if (pending) return;
         setSubmitted(true);
         if (error !== undefined) return;
         onSubmit(value.replace(/\s+/g, " ").trim());
@@ -84,7 +78,6 @@ export function ZeropsRenameForm({
             onChange={(event) => {
               setValue(event.target.value);
             }}
-            readOnly={readOnly || reportOnly}
             value={value}
           />
           {submitted && error !== undefined ? (
@@ -98,13 +91,11 @@ export function ZeropsRenameForm({
       <DialogFooter>
         <Failure cause={refusal} className="me-auto min-h-5 self-center" role="alert" size="line" />
         <Button onClick={onCancel} type="button" variant="ghost">
-          {reportOnly ? "Close" : "Cancel"}
+          Cancel
         </Button>
-        {reportOnly ? null : (
-          <Button aria-busy={pending || undefined} disabled={pending} type="submit">
-            {submitLabel}
-          </Button>
-        )}
+        <Button aria-busy={pending || undefined} disabled={pending} type="submit">
+          {submitLabel}
+        </Button>
       </DialogFooter>
     </form>
   );

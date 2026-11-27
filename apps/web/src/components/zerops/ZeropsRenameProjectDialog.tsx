@@ -110,12 +110,15 @@ export function ZeropsRenameProjectDialog({
     );
   };
   const orgId = activeOrganization?.id;
-  const running = standing.kind === "going" || standing.kind === "waiting";
   const end = endOperationIntent(standing, orgId, group.groupId);
   const beginRename = (name: string) => {
+    setTaken(null);
     const after = standing.kind === "failed" ? operation?.id : undefined;
     start.current = renameAttemptFor(start.current, name, after, randomUUID);
-    settle(rename(group.groupId, name, start.current.id), () => setTaken(name));
+    settle(rename(group.groupId, name, start.current.id), () => {
+      start.current = null;
+      setTaken(name);
+    });
   };
 
   return (
@@ -131,10 +134,7 @@ export function ZeropsRenameProjectDialog({
       }}
       onSubmit={beginRename}
       open
-      pending={pending || running}
-      // While HQ renames, the name is HQ's: it is not asked again until it ends.
-      readOnly={running}
-      reportOnly={!view.mayRename}
+      pending={pending}
       submitLabel="Rename"
       title="Rename the project"
       validate={(value) => (value.trim().length === 0 ? "Give the project a name." : undefined)}

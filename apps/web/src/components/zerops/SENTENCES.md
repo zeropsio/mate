@@ -1,4 +1,4 @@
-next: MN117
+next: MN118
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -33,7 +33,7 @@ next: MN117
 - MN25 — A stage or a production this page asked for offers Start again at its own tier once HQ's environment operation of it ended failed, and never while it runs, for a deploy key, or for an operation started elsewhere; breaks: a failed stage's card offers only Dismiss, or a running one offers a second start
 - MN26 — A project's menu row says Setting up while HQ's frame shows its application adding a stage or a production or setting up a deploy key, open or waiting on its maker, and says nothing of it once it failed, of Put it live, or of none; breaks: a second device's menu shows no stage being added
 - MN27 — A move HQ still runs outranks its Mate's own line, and one that ended is said only at rest, a crew's need taking it; breaks: a colleague's old rename replaces "needs your answer" on the row and card indefinitely
-- MN28 — A failed application rename permits a different name only when its project results are known and none was refused; breaks: a finished rename blocks later names, or a refused project gets another prefix
+- MN117 — A failed application rename, whatever its projects' results, still offers a name; breaks: a person cannot rename an application after Zerops refused one project
 - MN29 — A project's move sends its id again only for the same body, and any other body replaces it; breaks: a later move replays an old operation and reports success without moving anything
 - MN30 — After HQ refuses a move because the placement changed, a press waits until navigation shows a different application or kind; breaks: every later press sends the old placement and HQ refuses it again, so the Move dialog can never succeed
 - MN31 — Rename again starts a new application operation after a failure but keeps its id after a lost answer; breaks: a retry replays the failed operation or duplicates an uncertain start

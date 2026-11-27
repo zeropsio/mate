@@ -1,14 +1,18 @@
 import { waitingWords } from "@t3tools/client-runtime/data";
 import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vite-plus/test";
 import { addMateDoor } from "../../zerops/addMateDoor.ts";
 import { createDialogReplies } from "../../zerops/useDialogState.ts";
+import { Dialog } from "../ui/dialog.tsx";
 import { openBirthLeft } from "./ZeropsDeleteMateDialog.logic.ts";
 import { moveAttemptFor } from "./mateActions/moveAttempt.ts";
 import { crewMayTakeLine, mateRowSecond } from "./SidebarMateRow.logic.ts";
 import { moveAwaitsPlacement, movePlacementOf } from "./ZeropsMoveToGroupDialog.logic.ts";
 import { appRenameView, renameAttemptFor } from "./ZeropsRenameProjectDialog.logic.ts";
+import { ZeropsRenameForm } from "./ZeropsRenameDialog.tsx";
 import {
   deriveZeropsRowAction,
   plainSetUpCandidates,
@@ -216,42 +220,108 @@ it("MN27: A move HQ still runs outranks its Mate's own line, and one that ended 
   ).toBe(true);
 });
 
-// witness: apps/web/src/components/zerops/ZeropsRenameProjectDialog.logic.ts | !project.result?.startsWith(REFUSED) → project.result?.startsWith(REFUSED)
-it("MN28: A failed application rename permits a different name only when its project results are known and none was refused; breaks: a finished rename blocks later names, or a refused project gets another prefix", () => {
-  const nameOf = () => "Old - web";
+// witness: apps/web/src/components/zerops/ZeropsRenameDialog.tsx | disabled={pending} → disabled={true}
+it("MN117: A failed application rename, whatever its projects' results, still offers a name; breaks: a person cannot rename an application after Zerops refused one project", () => {
   const renamesLeft = {
     step: "rename_projects",
     code: "renames_left",
     at: "2026-11-22T10:00:05Z",
     origin: "hq",
   };
-  expect(appRenameView({ kind: "none" }, undefined, nameOf).mayRename).toBe(true);
-  expect(
-    appRenameView({ kind: "failed", id: "op", failure: renamesLeft }, undefined, nameOf).mayRename,
-  ).toBe(false);
+  const standings = [
+    { kind: "none" },
+    { kind: "going", id: "op" },
+    {
+      kind: "waiting",
+      id: "op",
+      continueBy: "person",
+      yours: true,
+      ...waitingWords("token_expired"),
+    },
+    { kind: "failed", id: "op", failure: renamesLeft },
+  ] as const;
+  const results = [
+    { projects: undefined, words: [] },
+    {
+      projects: [
+        { projectId: "p1", result: "renamed" },
+        { projectId: "p2", result: "renamed" },
+      ],
+      words: [
+        { projectId: "p1", words: "Old - web: renamed", failed: false },
+        { projectId: "p2", words: "Old - api: renamed", failed: false },
+      ],
+    },
+    {
+      projects: [
+        { projectId: "p1", result: "renamed" },
+        { projectId: "p2", result: "refused:conflict" },
+      ],
+      words: [
+        { projectId: "p1", words: "Old - web: renamed", failed: false },
+        {
+          projectId: "p2",
+          words: "Old - api: keeps its old name, Zerops did not rename it (conflict)",
+          failed: true,
+        },
+      ],
+    },
+    {
+      projects: [
+        { projectId: "p1", result: "renamed" },
+        { projectId: "p2", result: "gone" },
+      ],
+      words: [
+        { projectId: "p1", words: "Old - web: renamed", failed: false },
+        { projectId: "p2", words: "Old - api: gone from Zerops", failed: false },
+      ],
+    },
+  ] as const;
   const operation = {
-    id: "failed-1",
+    id: "op",
     kind: "app_rename",
     phase: "failed",
     at: "2026-11-22T10:00:05Z",
     acceptedAt: "2026-11-22T10:00:00Z",
-    projects: [
-      { projectId: "p1", result: "renamed" },
-      { projectId: "p2", result: "moved" },
-      { projectId: "p3", result: "gone" },
-      { projectId: "p4", result: "renamed_since" },
-    ],
   };
-  const failed = { kind: "failed", id: "op", failure: renamesLeft } as const;
-  const view = appRenameView(failed, operation, nameOf);
-  expect(view.mayRename).toBe(true);
-  expect(
-    appRenameView(
-      failed,
-      { ...operation, projects: [{ projectId: "p1", result: "refused:conflict" }] },
-      nameOf,
-    ).mayRename,
-  ).toBe(false);
+  const nameOf = (projectId: string) => (projectId === "p1" ? "Old - web" : "Old - api");
+  for (const standing of standings) {
+    for (const result of results) {
+      const view = appRenameView(
+        standing,
+        { ...operation, ...(result.projects === undefined ? {} : { projects: result.projects }) },
+        nameOf,
+      );
+      expect(view.projects).toEqual(standing.kind === "none" ? [] : result.words);
+      const markup = renderToStaticMarkup(
+        createElement(
+          Dialog,
+          { open: true, onOpenChange: () => {} },
+          createElement(
+            ZeropsRenameForm,
+            {
+              title: "Rename the project",
+              label: "Project name",
+              initialValue: "New application",
+              submitLabel: "Rename",
+              validate: () => undefined,
+              onCancel: () => {},
+              onSubmit: () => {},
+            },
+            view.projects.map((project) =>
+              createElement("p", { key: project.projectId }, project.words),
+            ),
+          ),
+        ),
+      );
+      const input = markup.match(/<input\b[^>]*>/)?.[0];
+      const submit = markup.match(/<button\b(?=[^>]*\btype="submit")[^>]*>/)?.[0];
+      expect(input).toContain('value="New application"');
+      expect(input).not.toMatch(/\s(?:disabled|readonly)(?:=|\s|>)/i);
+      expect(submit).toBeDefined();
+      expect(submit).not.toMatch(/\sdisabled(?:=|\s|>)/);
+    }
+  }
 });
 
 // witness: apps/web/src/components/zerops/ZeropsRenameProjectDialog.logic.ts | held?.name === name && held.after === after → held?.name === name
