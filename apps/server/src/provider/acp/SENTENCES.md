@@ -19,3 +19,4 @@ next: AP19
 - AP17 — An Antigravity session restores the conversation's saved model over the cold-resume default, and a model the account does not offer is refused, never replaced by a fallback
 - AP18 — An Antigravity prompt that cannot carry an attachment (a missing upload, an image over its own size limit or past the message's native budget) is refused whole, never sent without it
 - AP+1 — A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off
+- AP+2 — Antigravity started with a temporary folder of its own has it as its TMPDIR over the server's, the rest of its environment unchanged

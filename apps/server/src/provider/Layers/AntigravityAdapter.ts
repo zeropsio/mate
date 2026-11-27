@@ -49,7 +49,7 @@ import {
   type ProviderAdapterError,
   ProviderAdapterTurnEndedError,
 } from "../Errors.ts";
-import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
+import { mapAcpToAdapterError, readOnlyThreadDirectory } from "../acp/AcpAdapterSupport.ts";
 import {
   makeAcpAssistantItemEvent,
   makeAcpContentDeltaEvent,
@@ -138,6 +138,7 @@ export interface AntigravityAdapterOptions {
   readonly makeRuntime: (
     input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner"> & {
       readonly runtimeMode: RuntimeMode;
+      readonly temporaryDirectory?: string;
     },
   ) => Effect.Effect<Runtime, EffectAcpErrors.AcpError, Scope.Scope>;
   readonly onSessionStarted?: (
@@ -856,6 +857,30 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         );
         // A crewmate asks before every call, whatever mode its thread names.
         const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
+        // A read-only crewmate's agy works in a folder of its own, also its temporary folder: agy
+        // reads only those without asking (`buildAntigravityAcpSpawnInput`), so every read of the
+        // code, the crew's home or anything else reaches the gate.
+        const ownFolder = profileSetup?.readOnly
+          ? yield* Effect.gen(function* () {
+              const directory = readOnlyThreadDirectory(
+                serverConfig.stateDir,
+                PROVIDER,
+                input.threadId,
+              );
+              yield* fileSystem.makeDirectory(directory, { recursive: true });
+              return directory;
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderAdapterRequestError({
+                    provider: PROVIDER,
+                    method: "session/start",
+                    detail: "Could not make a read-only crewmate's Antigravity folder.",
+                    cause,
+                  }),
+              ),
+            )
+          : undefined;
         const startModel = (yield* acpTurnProfile(
           threadPolicies,
           threadRef,
@@ -868,7 +893,8 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
           // at the paths ProviderService injects into the turn text. It is
           // a leaf directory holding only uploads.
           const runtime = yield* options.makeRuntime({
-            cwd,
+            cwd: ownFolder ?? cwd,
+            ...(ownFolder === undefined ? {} : { temporaryDirectory: ownFolder }),
             runtimeMode,
             clientInfo: { name: "t3-code", version: "0.0.0" },
             clientFileSystem: true,

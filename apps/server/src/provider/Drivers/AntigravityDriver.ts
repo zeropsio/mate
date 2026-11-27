@@ -101,11 +101,14 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
       const makeRuntime = Effect.fn("AntigravityDriver.makeRuntime")(function* ({
         runtimeMode,
         geminiDirectory,
+        temporaryDirectory,
         ...input
       }: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner"> & {
         readonly runtimeMode?: RuntimeMode;
         /** A Gemini folder of the caller's own; default: the user's. */
         readonly geminiDirectory?: string;
+        /** agy's temporary folder; default: the server's. */
+        readonly temporaryDirectory?: string;
       }) {
         const runtime = yield* makeAntigravityAcpRuntime({
           ...input,
@@ -116,6 +119,7 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
             environment: processEnvironment,
             runtimeMode,
             geminiDirectory,
+            temporaryDirectory,
           }),
         }).pipe(Effect.provideService(SecureRandom.SecureRandom, crypto));
         return {
