@@ -297,6 +297,17 @@ it("CD8: A turn its agent ends at the run's budget stops its task at the budget,
   ]).toEqual([["task"], "working", "budget", 0.054]);
 });
 
+// witness: apps/server/src/zerops/crew/engine/decide.run.ts | if (!sessionHadTurn(member.session)) continue; → if (member.session.running === null) continue;
+it("CD79: A run's start opens no new session for a crewmate whose session has had no turn yet, and one that has had a turn goes on in a new session", () => {
+  const w = new CrewWorld();
+  w.apply(home(writer("backend"), reader("reviewer")));
+  newTask(w, "reviewer", "Read it");
+  w.run("reviewer");
+  w.end("reviewer");
+  run(w, "person");
+  expect([sessions(w, "backend"), sessions(w, "reviewer")]).toEqual([0, 1]);
+});
+
 // witness: apps/server/src/zerops/crew/engine/decide.advance.ts | member.carryOn.as === null && run === undefined → member.carryOn.as === null && b.state.run === null
 it("CD9: A restart sends no turn into a run the person paused; Resume carries the task on", () => {
   const w = new CrewWorld();

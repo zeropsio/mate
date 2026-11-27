@@ -1,4 +1,4 @@
-next: CD79
+next: CD80
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -81,3 +81,4 @@ next: CD79
 - CD+1 — A reader's verdict lands nothing: it waits on the reader's own task for the lead, and only the lead's accept lands the task it reviews
 - CD+2 — A reader gives its verdict only on the task its own task reviews: one on another task is refused and changes nothing
 - CD+3 — A reader's task that reviews another starts only once that task is in review, and the lead is woken for that task only once the reader reported
+- CD79 — A run's start opens no new session for a crewmate whose session has had no turn yet, and one that has had a turn goes on in a new session

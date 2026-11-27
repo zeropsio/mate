@@ -21,6 +21,7 @@ import {
 } from "~/components/chat/runTray";
 import { cn } from "~/lib/utils";
 import { useAtomValue } from "@effect/atom-react";
+import { shownHqAppChangesAtom } from "@t3tools/client-runtime/data";
 import {
   type MateMessageFrom,
   type MateMessageItem,
@@ -29,7 +30,9 @@ import {
   type ScopedThreadRef,
   type ServerProviderSkill,
 } from "@t3tools/contracts";
-import { createContext, type ReactNode, use, useCallback, useState } from "react";
+import { Atom } from "effect/reactivity";
+import { ChevronDownIcon } from "lucide-react";
+import { createContext, type ReactNode, use, useCallback, useMemo, useState } from "react";
 
 import { mateActivityAtom } from "../../zerops/mateActivityAtoms";
 import { useMateLook } from "../../zerops/useMateLook";
@@ -39,8 +42,10 @@ import type { AwaitedMateAnswer } from "../chat/MessagesTimeline.logic";
 import { DetailRow, spanOf } from "../chat/DetailRow";
 import { FOLD_FADE_MASK, foldsLikeAMessage } from "../chat/messageFold";
 import { Button } from "../ui/button";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { MessageBubble } from "../ui/message-bubble";
 import { MateFace } from "./primitives";
+import { noticePersonSentence } from "./MateMessageRow.logic";
 
 /**
  * Opens another Mate's conversation by its project: the conversation pane gives it (`OpenMateProvider`
@@ -72,23 +77,83 @@ function headingRest(
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
-export function MateMessageRow({
+type MessageRowProps = {
+  readonly item: MateMessageItem;
+  readonly text: string;
+  readonly mateName: string;
+  readonly markdownCwd: string | undefined;
+  readonly threadRef: ScopedThreadRef | undefined;
+  readonly skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+};
+
+export function MateMessageRow(props: MessageRowProps) {
+  return props.item.kind === "notice" ? (
+    <NoticeMessageRow {...props} item={props.item} />
+  ) : (
+    <PeerMessageRow {...props} item={props.item} />
+  );
+}
+
+function NoticeMessageRow({
+  item,
+  text,
+  mateName,
+  markdownCwd,
+  threadRef,
+  skills,
+}: MessageRowProps & {
+  readonly item: Extract<MateMessageItem, { kind: "notice" }>;
+}) {
+  const { appId, repo, number } = item.about;
+  const titleAtom = useMemo(
+    () =>
+      Atom.make(
+        (get) =>
+          get(shownHqAppChangesAtom)[appId]?.find(
+            (change) => change.repo === repo && change.number === number,
+          )?.title,
+      ),
+    [appId, repo, number],
+  );
+  const title = useAtomValue(titleAtom);
+  return (
+    <MessageBubble data-zerops-surface="mate-message" render={<article />} speaker="another-mate">
+      <div className="flex min-w-0 flex-col gap-2">
+        <header className="min-w-0 font-semibold text-mate-ink">
+          {mateMessageNoticeHeading(item.about, title)}
+        </header>
+        <p>{noticePersonSentence(mateName)}</p>
+        <Collapsible>
+          <CollapsibleTrigger className="group/more inline-flex items-center gap-1.5 rounded-mark text-body text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            What {mateName} was told
+            <ChevronDownIcon
+              aria-hidden="true"
+              className="size-3.5 transition-[rotate] duration-150 group-data-panel-open/more:rotate-180 motion-reduce:transition-none"
+            />
+          </CollapsibleTrigger>
+          <CollapsiblePanel>
+            <div className="min-w-0 pt-2">
+              <ChatMarkdown cwd={markdownCwd} skills={skills} text={text} threadRef={threadRef} />
+            </div>
+          </CollapsiblePanel>
+        </Collapsible>
+      </div>
+    </MessageBubble>
+  );
+}
+
+function PeerMessageRow({
   item,
   text,
   markdownCwd,
   threadRef,
   skills,
-}: {
-  readonly item: MateMessageItem;
-  readonly text: string;
-  readonly markdownCwd: string | undefined;
-  readonly threadRef: ScopedThreadRef | undefined;
-  readonly skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+}: MessageRowProps & {
+  readonly item: Exclude<MateMessageItem, { kind: "notice" }>;
 }) {
-  const notice = item.kind === "notice";
-  const look = useMateLook(notice ? "" : item.from.projectId);
-  const name = notice ? mateMessageNoticeHeading(item.about) : mateMessageSenderName(item.from);
-  const rest = notice ? null : headingRest(item, name);
+  const look = useMateLook(item.from.projectId);
+  const name = mateMessageSenderName(item.from);
+  const rest = headingRest(item, name);
   const [expanded, setExpanded] = useState(false);
   // Its words fold as a person's and the Mate's own do: one rule for every message.
   const folds = foldsLikeAMessage(text);
@@ -106,7 +171,7 @@ export function MateMessageRow({
     >
       <div className="flex min-w-0 flex-col gap-2">
         <header className="flex min-w-0 items-center gap-2 text-line">
-          {notice ? null : <MateFace size={24} state="idle" {...look} />}
+          <MateFace size={24} state="idle" {...look} />
           <span className="min-w-0 truncate font-semibold text-mate-ink">{name}</span>
           {rest === null ? null : (
             <span className="min-w-0 truncate text-muted-foreground">

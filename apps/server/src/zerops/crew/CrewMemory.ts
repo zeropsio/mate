@@ -15,8 +15,10 @@
  *   the oldest dropped; the crewmate files them itself.
  * - **The packet's memory** is the index with its marks, the open task's
  *   handoff and the unfiled queue (`crewPacketInput`); ground truth comes
- *   from one script over ssh (`groundFromFields`), and a crewmate without a
- *   copy has none.
+ *   from one script over ssh (`groundFromFields`) in the copy `copyOf`
+ *   names. A reader and the lead have no copy; a writer whose copy is not
+ *   ready yet (no host leased or verified) is told so, never that it is
+ *   read-only.
  * - **Ground truth is read within 5 s**: `SessionStart` holds the CLI while
  *   it runs (ARCHITECTURE §9 risk 6), so past the budget, or when the copy
  *   cannot be read, the packet goes without it and says why.
@@ -341,14 +343,17 @@ const valuesOf = (fields: ScriptFields, key: string): ReadonlyArray<string> =>
 const groundFromFields = (
   fields: ScriptFields,
   known: {
-    readonly lane: boolean;
+    readonly copy: CrewmateCopy;
     readonly lastCheck?: string;
     readonly resets: ReadonlyArray<string>;
   },
 ): { readonly ground: PacketGround; readonly stale: ReadonlySet<string> } => {
   const stale = new Set(valuesOf(fields, "stale"));
-  if (!known.lane) {
+  if (known.copy.kind === "none") {
     return { ground: { unavailable: "a read-only crewmate has no copy of the code" }, stale };
+  }
+  if (known.copy.kind === "not-ready") {
+    return { ground: { unavailable: "your copy of the code is not ready yet" }, stale };
   }
   const [tip] = valuesOf(fields, "tip");
   if (tip === undefined) {
@@ -374,9 +379,27 @@ const groundFromFields = (
  */
 const GROUND_BUDGET = Duration.seconds(5);
 
-/** The host of a crewmate's copy; a lead or a reader has none. */
-const hostOf = (member: CrewThreadMember): string | undefined =>
-  member.prompt.member.kind === "writer" ? member.prompt.member.lane.host : undefined;
+/** A crewmate's copy of the code: on its lane's host, not ready yet, or none (a reader, the lead). */
+export type CrewmateCopy =
+  | { readonly kind: "on"; readonly host: string }
+  | { readonly kind: "not-ready" }
+  | { readonly kind: "none" };
+
+/**
+ * The copy a crewmate's packet reads, judged by its kind: a writer's lane is known only once its
+ * host is leased and verified, and until then its copy is not ready, never absent.
+ */
+export const copyOf = (member: Pick<CrewThreadMember, "kind" | "prompt">): CrewmateCopy => {
+  if (member.kind !== "writer") return { kind: "none" };
+  const shaped = member.prompt.member;
+  return shaped.kind === "writer" ? { kind: "on", host: shaped.lane.host } : { kind: "not-ready" };
+};
+
+/** The host of a crewmate's copy, when it has one to read. */
+const hostOf = (member: CrewThreadMember): string | undefined => {
+  const copy = copyOf(member);
+  return copy.kind === "on" ? copy.host : undefined;
+};
 
 /** The open task as the engine knows it: the packet's view, and what only the engine records. */
 export interface CrewMemoryTask extends PacketTask {
@@ -494,13 +517,14 @@ export const makeOver = (records: CrewMemoryRecords) =>
       entries: ReadonlyArray<CrewMemoryRow>,
       task: CrewMemoryTask | undefined,
     ) => {
-      const host = hostOf(member);
+      const copy = copyOf(member);
       const known = {
-        lane: host !== undefined,
+        copy,
         resets: task?.resets ?? [],
         ...(task?.lastCheck === undefined ? {} : { lastCheck: task.lastCheck }),
       };
-      if (host === undefined) return Effect.succeed(groundFromFields([], known));
+      if (copy.kind !== "on") return Effect.succeed(groundFromFields([], known));
+      const { host } = copy;
       const facts = entries.filter(
         (entry) => entry.kind === "fact" && entry.verifiedAt !== null && entry.paths.length > 0,
       );

@@ -80,7 +80,9 @@ const leadRules = (handle: string): ReadonlyArray<string> => [
 const commonRules = (memory: boolean, crewTools: boolean): ReadonlyArray<string> => [
   "- Your context is compacted automatically; do not stop early. Files are the truth: re-read a file before you edit or judge it.",
   ...(memory && crewTools
-    ? ["- Record decisions, lessons and your handoff with crew_memory as you go."]
+    ? [
+        "- Record decisions and lessons with crew_memory as you go. A handoff belongs to a task: write it once a task of yours is open, never before.",
+      ]
     : []),
   ...(memory ? ["- The brief outranks your memory: when they disagree, follow the brief."] : []),
 ];
