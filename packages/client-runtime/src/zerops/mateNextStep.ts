@@ -46,7 +46,6 @@ import {
   changeShowsReview,
   changeState,
   READY_TO_MERGE,
-  sidebarChangeLabel,
   type FlowPullRequest,
 } from "./projectFlow.ts";
 import {
@@ -72,7 +71,10 @@ interface MateNextStepVerdict {
 
 export interface MateNextStepLine {
   readonly pull: FlowPullRequest;
-  /** As the menu names it: `apidev #1 Rebuild the API`. */
+  /**
+   * Its title, as the chat script names a draft (row 4), never by its number; one HQ is adding,
+   * what its addition says (`addingLine`, row 5), in place of its title and its standing.
+   */
   readonly label: string;
   /** Where it does not merge as it stands; absent on a change that merges. */
   readonly verdict?: MateNextStepVerdict | undefined;
@@ -115,8 +117,8 @@ export type MateNextStep =
       /**
        * Where more than one is listed, or one that does not merge, the first three — the
        * conversation's own branch's, then those that merge, then the rest, each newest first — each
-       * named as the menu names it (`apidev #1 Rebuild the API`); none where one change waits and
-       * merges, which the title names.
+       * on its line (`MateNextStepLine.label`); none where one change waits and merges, which the
+       * title names.
        */
       readonly lines: ReadonlyArray<MateNextStepLine>;
       /** How many more are listed past the lines. */
@@ -301,10 +303,12 @@ export function mateNextStep(input: {
     title: actTitle ?? who,
     detail: pull.title,
     lines: listed.slice(0, MATE_NEXT_STEP_LINES).map((entry) => {
-      const line = { pull: entry, label: sidebarChangeLabel(entry, pullRequests) };
+      const act = actOf(entry);
+      // One being added says so whole, in place of its title and its standing.
+      if (act?.kind === "adding") return { pull: entry, label: act.line, act, ...theirs(entry) };
+      const line = { pull: entry, label: entry.title };
       // What is being done to it is said over its word; its word stays, so putting the strip away
       // holds through it (`composerStripKey`).
-      const act = actOf(entry);
       const acted = { ...line, ...(act === undefined ? {} : { act }), ...theirs(entry) };
       if (!merges(entry)) return { ...acted, verdict: notMerging(entry, input) };
       const kind = standingOf(entry);

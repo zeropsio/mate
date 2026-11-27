@@ -95,7 +95,7 @@ interface ZeropsNextStepFix {
 
 /** One of several changes waiting, on a line of its own with its own Review. */
 export interface ZeropsNextStepLine {
-  /** `apidev #1 Rebuild the API`, as the menu names it. */
+  /** Its title, or what its addition says (`MateNextStepLine.label`). */
   readonly label: string;
   readonly target: Extract<ReviewTarget, { kind: "change" }>;
   /** Where it does not merge as it stands: the word its row says (`Conflicts with main`). */
@@ -276,9 +276,12 @@ function composerStrip(nextStep: ReviewNextStep): ZeropsNextStepStripModel {
               ...(line.standing === undefined ? {} : { standing: line.standing }),
               ...(line.says === undefined ? {} : { says: line.says }),
               ...(line.theirs === true ? { theirs: true as const } : {}),
+              // A line being added says so in its label; any other act says its word after it.
               ...(line.act === undefined
                 ? {}
-                : { act: line.act, actWord: changeActWords(line.act, line.pull.number).word }),
+                : line.act.kind === "adding"
+                  ? { act: line.act }
+                  : { act: line.act, actWord: changeActWords(line.act, line.pull.number).word }),
               ...(fix === undefined
                 ? {}
                 : {

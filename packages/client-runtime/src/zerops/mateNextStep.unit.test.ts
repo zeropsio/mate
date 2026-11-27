@@ -4,6 +4,7 @@ import type { ChangeAct } from "./changeAct.ts";
 import type { ChangeStanding, ChangeStandingRead } from "./changeStanding.ts";
 import { mateNextStep } from "./mateNextStep.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
+import { addingLine } from "./reviewVerdict.ts";
 
 const AT = "2026-11-01T08:00:00Z";
 
@@ -60,4 +61,19 @@ const queueOf = (yours: boolean) => {
 it("ZV141: Reviewing together takes every change waiting on the person, leaving out one that does not merge, one already asked for, one being merged and a colleague's Mate's", () => {
   expect(queueOf(true)).toEqual([2, 1]);
   expect(queueOf(false)).toEqual([]);
+});
+
+// witness: packages/client-runtime/src/zerops/mateNextStep.ts | if (act?.kind === "adding") return { pull: entry, label: act.line, act, ...theirs(entry) }; → if (act?.kind === "adding") return { pull: entry, label: entry.title, act, ...theirs(entry) };
+it("ZV+2: Of several drafts, each line goes by its title, and one HQ is adding says what its addition does in place of it; breaks: the line over the composer names the change by its number with only Adding after it", () => {
+  const adding: FlowPullRequest = { ...change(8, "mergeable"), state: "adding" };
+  const step = mateNextStep({
+    pullRequests: [change(6, "mergeable"), adding],
+    mateProjectId: "m1",
+    mateName: "Abel",
+  });
+  // Newest first, and by number where they moved together.
+  expect(step.kind === "review" ? step.lines.map((line) => line.label) : []).toEqual([
+    addingLine(adding),
+    "Change 6",
+  ]);
 });
