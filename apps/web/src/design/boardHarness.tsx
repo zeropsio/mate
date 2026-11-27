@@ -17,6 +17,7 @@ import { createRoot } from "react-dom/client";
 
 import type { AskState } from "~/components/ask/ask.logic";
 import { ComposerPrimaryActions } from "~/components/chat/ComposerPrimaryActions";
+import { ComposerPutOnBoardButton } from "~/components/chat/ComposerPutOnBoardButton";
 import { MateTaskCardView, MateTaskStatusView } from "~/components/zerops/MateTaskCard";
 import { BoardAskCardView } from "~/components/zerops/board/BoardAskCard";
 import type { BoardAnswerState } from "~/components/zerops/board/BoardTaskRow";
@@ -270,6 +271,7 @@ function Composer({ board }: { readonly board: boolean }) {
       <span className="me-auto text-body text-muted-foreground">
         Offer gift wrapping at checkout
       </span>
+      {board ? <ComposerPutOnBoardButton disabled={false} onPress={nothing} /> : null}
       <ComposerPrimaryActions
         away={null}
         compact={false}
@@ -281,7 +283,6 @@ function Composer({ board }: { readonly board: boolean }) {
         onImplementPlanInNewThread={nothing}
         onInterrupt={nothing}
         onPreviousPendingQuestion={nothing}
-        {...(board ? { onPutOnBoard: nothing } : {})}
         pendingAction={null}
         promptHasText
         sendDisabledReason={null}
@@ -297,7 +298,7 @@ const STATES: ReadonlyArray<{
   readonly title: string;
   readonly view: ReactNode;
 }> = [
-  { id: "composer", title: "Send, split: Put on board", view: <Composer board /> },
+  { id: "composer", title: "Send, with Put on board beside it", view: <Composer board /> },
   {
     id: "composer-plain",
     title: "Send where the Mate cannot put on a Board",

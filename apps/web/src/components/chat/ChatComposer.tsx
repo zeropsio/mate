@@ -207,6 +207,7 @@ import { getComposerPromptInjectionState, getComposerProviderState } from "./com
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
 import { ComposerAttachFilesButton } from "./ComposerAttachFilesButton";
+import { ComposerPutOnBoardButton } from "./ComposerPutOnBoardButton";
 import { ComposerVaultAddButton, useComposerVaultKeys } from "../zerops/vault/ComposerVaultAdd";
 import { ComposerFullScreenToggle } from "./ComposerFullScreenToggle";
 import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
@@ -3606,6 +3607,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       pickerRef={composerFilePickerRef}
                       onFiles={attachComposerFiles}
                     />
+                    {boardOffered ? (
+                      <ComposerPutOnBoardButton
+                        disabled={!hasSendableContent || isSendBusy || heldSend !== null}
+                        onPress={handlePutOnBoard}
+                      />
+                    ) : null}
                     {showMobilePendingAnswerActions ? null : inlineTasksBadge}
                     {showMobilePendingAnswerActions ? null : inlineStashBadge}
                     <ComposerFooterPrimaryActions
@@ -3640,7 +3647,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                       onInterrupt={handleInterruptPrimaryAction}
                       onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
-                      onPutOnBoard={boardOffered ? handlePutOnBoard : undefined}
                       compactDisabled={
                         compactDisabled || noProviderAvailable || isSendBusy || isConnecting
                       }
