@@ -196,7 +196,7 @@ export function useWarmTimeline(
     );
   }, [project, resources, serverMessages, urls]);
   const landed = useZeropsChangeLandedEvents(environmentId);
-  const landings = useZeropsConversationLandings(landed, messages);
+  const landings = useZeropsConversationLandings(landed, messages, zeropsEntries);
   const proposedPlans = thread?.proposedPlans;
   const entries = useMemo(
     () =>

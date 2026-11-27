@@ -374,7 +374,10 @@ export function LandedTitle({ event }: { readonly event: ChangeLandedEvent }) {
   );
 }
 
-/** A change of this Mate's that merged. */
+/**
+ * A change of this Mate's that merged: one added through Add to your app says the app has it now
+ * (the chat script's row 6), any other that it merged.
+ */
 function LandedLine({
   event,
   at,
@@ -390,10 +393,18 @@ function LandedLine({
       icon={<GitMergeIcon className="size-3.5 text-status-ok" />}
       timestampFormat={timestampFormat}
     >
-      <span className="flex min-w-0">
-        <LandedTitle event={event} />
-        <span className="shrink-0 whitespace-pre"> merged</span>
-      </span>
+      {event.added ? (
+        <span className="flex min-w-0">
+          <span className="shrink-0 whitespace-pre">Your app now has "</span>
+          <LandedTitle event={event} />
+          <span className="shrink-0">".</span>
+        </span>
+      ) : (
+        <span className="flex min-w-0">
+          <LandedTitle event={event} />
+          <span className="shrink-0 whitespace-pre"> merged</span>
+        </span>
+      )}
     </EventShell>
   );
 }

@@ -437,6 +437,11 @@ export interface ChangeLandedEvent {
   /** `appdev #1` — the same line every other surface names a change by. */
   readonly line: string;
   readonly landedAt: string;
+  /**
+   * A code change added through Add to your app, whose add built it before the merge: the app has
+   * it. A setup change, or one merged outside Mate, only merged.
+   */
+  readonly added: boolean;
 }
 
 /**
@@ -466,6 +471,7 @@ export function changeLandedEvents(
       title: change.title,
       line: change.line,
       landedAt,
+      added: change.kind === "code" && change.landedOutside !== true,
     });
   }
   // `toSorted` is not in Hermes, so the copy is explicit.

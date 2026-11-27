@@ -212,7 +212,7 @@ function Harness() {
             <ZeropsNextStepStrip
               onReview={noop}
               strip={{
-                title: "Alba is waiting for your review of #1",
+                title: "Draft ready",
                 detail: TITLE,
                 tint: "coral",
                 target: { kind: "change", groupId: "g-1", repository: "app", number: 1 },

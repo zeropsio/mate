@@ -36,7 +36,9 @@ export type ChangeAct =
   /** Its merge is being asked of the people who merge. */
   | { readonly kind: "asking" }
   /** Its Mate works on it, asked from its review (`workingOn`). */
-  | { readonly kind: "fixing"; readonly mateName: string };
+  | { readonly kind: "fixing"; readonly mateName: string }
+  /** HQ is adding it to the app (its state `adding` or `merging`), in `addingLine`'s words. */
+  | { readonly kind: "adding"; readonly line: string };
 
 /** One verb's press on a change, as the account holds it: on its way, and where its operation stands. */
 export interface ChangeVerbRead {
@@ -123,7 +125,8 @@ export function changeActBusy(act: ChangeAct | undefined): boolean {
     act?.kind === "merging" ||
     act?.kind === "closing" ||
     act?.kind === "asking" ||
-    act?.kind === "fixing"
+    act?.kind === "fixing" ||
+    act?.kind === "adding"
   );
 }
 
@@ -153,6 +156,8 @@ export function changeActWords(act: ChangeAct, number: number): ChangeActWords {
       return { title: `Asking to merge ${n}…`, word: "Asking…", tone: "busy" };
     case "fixing":
       return { title: `${act.mateName} is fixing ${n}`, word: "Fixing…", tone: "busy" };
+    case "adding":
+      return { title: act.line, word: "Adding…", tone: "busy" };
   }
 }
 

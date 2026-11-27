@@ -182,10 +182,7 @@ function stripOf(count: number): ZeropsNextStepStripModel {
   const target = (repository: string, number: number) =>
     ({ kind: "change", groupId: "g-1", repository, number }) as const;
   return {
-    title:
-      count === 1
-        ? "Wren is waiting for your review"
-        : `Wren is waiting for your review of ${String(count)} changes`,
+    title: count === 1 ? "Draft ready" : `Wren has ${String(count)} drafts for you`,
     detail: first[2],
     tint: "sky",
     target: target(first[0], first[1]),

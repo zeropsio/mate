@@ -1,5 +1,6 @@
 import { useDraftChange } from "./zerops/review/reviewReads";
 import type { ContextMenuItem, ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { isStageHostname } from "@t3tools/client-runtime/zerops/servicePairs";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
@@ -510,7 +511,12 @@ function surfaceTitle(
     case "zerops":
       return "Zerops";
     case "browser":
-      return "service" in surface ? surface.service : "Browser";
+      // A stage half is Your app, as Try it opens it; a tab never goes by a container's name there.
+      return "service" in surface
+        ? isStageHostname(surface.service)
+          ? "Your app"
+          : surface.service
+        : "Browser";
     case "mac":
       return "Mac";
     case "data":

@@ -375,6 +375,7 @@ const novaLanding = (createdAt: string): TimelineEntry => ({
     title: "Show HQ's sign-in in the landing's card",
     line: "storefront #42",
     landedAt: createdAt,
+    added: true,
   },
 });
 

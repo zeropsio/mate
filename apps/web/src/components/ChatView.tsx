@@ -2145,6 +2145,7 @@ function ConversationView(props: ChatViewProps) {
   const conversationLandedEvents = useZeropsConversationLandings(
     changeLandedEvents,
     timelineMessages,
+    zeropsThreadModel.entries,
   );
   // When the Mate raised each ask about production here: the releases made after one are this
   // conversation's to hear the end of.

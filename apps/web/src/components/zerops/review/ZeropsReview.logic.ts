@@ -17,7 +17,6 @@ import {
   type ReviewState,
   type ReviewVerdict,
   type ReleaseReplaces,
-  PRODUCTION_OUTSIDE_DECIDES,
 } from "@t3tools/client-runtime/zerops";
 import { keyRenewedBy, stopKeyGap } from "@t3tools/client-runtime/zerops/flow";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
@@ -304,9 +303,9 @@ export function diffFold(input: { readonly total: number; readonly all: boolean 
 }
 
 /**
- * Where a change's code opens in the Git browser: an open change's files at its head; a merged
+ * Where a change's code opens in the Git browser: an open change's files at its head; an added
  * one's commit on `main`, the page that says what it added there, its files read at that commit.
- * None where HQ named neither.
+ * Both are its files to the person, never a commit on main. None where HQ named neither.
  */
 export function changeCode(pull: {
   readonly merged: boolean;
@@ -314,7 +313,7 @@ export function changeCode(pull: {
   readonly mergeCommitSha?: string | undefined;
 }): { readonly sha: string; readonly view: "code" | "commit"; readonly words: string } | undefined {
   if (pull.merged && pull.mergeCommitSha !== undefined)
-    return { sha: pull.mergeCommitSha, view: "commit", words: "Commit on main" };
+    return { sha: pull.mergeCommitSha, view: "commit", words: "Browse files" };
   if (pull.headSha === undefined) return undefined;
   return { sha: pull.headSha, view: "code", words: "Browse files" };
 }
@@ -569,10 +568,6 @@ export function whySaid(verdict: ReviewVerdict, more: boolean): boolean {
   return verdict.state !== "ready" || more || verdict.showWhy === true;
 }
 
-/** "a", "a and b", "a, b and c". */
-const listed = (names: ReadonlyArray<string>): string =>
-  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-
 /** The main-following stages with the deploy-key gap HQ's facts reveal. */
 export interface MergeStage {
   readonly name: string;
@@ -625,12 +620,11 @@ export function mergeStages(input: {
 }
 
 /**
- * What merging does, said under the buttons: a merge is added to `main`, each stage that deploys
- * merges from it runs it (`stageDeploysMerges`) — no other is promised one — and production
- * keeps its release until the person releases, or — where HQ's rule refused them the release —
- * until it is released while the change waits on its press. Where no
- * stage deploys it, and for a setup change, which deploys nothing, the review's own words say what
- * merging does: they also say where merging is not offered, or its files were never shown.
+ * What adding does, said under the buttons: the review's own words (`consequence`: Your app gets
+ * it, and production isn't touched until a release), and, where a stage that deploys merges from
+ * `main` (`stageDeploysMerges`) cannot, why and who renews its key. Nothing else of Stage or
+ * Production (the chat script). A setup change, and a change no longer waiting on its press, say
+ * only the review's words.
  */
 export function mergeFoot(input: {
   readonly state: ReviewState;
@@ -639,41 +633,23 @@ export function mergeFoot(input: {
   readonly stages: ReadonlyArray<MergeStage>;
   readonly mayRenew: boolean;
   readonly renewal?: KeyRenewal | undefined;
-  /** The release production runs. */
-  readonly live: string | undefined;
   /** {@link changeReceipt}'s warning: parts not tried at the change. */
   readonly warning?: string | undefined;
   /** A recipe change: what its merge does is the review's to say. */
   readonly recipe?: boolean | undefined;
-  /**
-   * Production is deployed outside Mate (`downstream.productionOutside`): the merge
-   * offers nothing to release, and says only that production is elsewhere.
-   */
-  readonly productionOutside?: boolean | undefined;
-  /** `false` where HQ's rule refused the person the release: nothing then says "you release". */
-  readonly mayRelease?: boolean | undefined;
 }): string {
   if (!WAITING_ON_PRESS.has(input.state) || input.recipe === true) return input.consequence;
-  const keeps =
-    input.live !== undefined
-      ? ` Production keeps ${input.live} until ${input.mayRelease === false ? "it is released" : "you release"}.`
-      : input.productionOutside === true
-        ? ` ${PRODUCTION_OUTSIDE_DECIDES}`
-        : "";
-  const stages = mergeStages({
+  const held = mergeStages({
     state: input.state,
     recipe: false,
     stages: input.stages,
     mayRenew: input.mayRenew,
-  });
-  // Each by its title, as its row reads it: "demo-app-stage" is Stage.
-  const runs = stages.runs.map((name) => environmentTitle("stage", name));
-  const held = stages.held;
+  }).held;
   const gap = held?.stage.gap;
   const stopped =
     held === undefined || gap === undefined
       ? ""
-      : `${environmentTitle("stage", held.stage.name)} does not run it: ${gap.kind === "missing" ? "it has no deploy key yet" : "its deploy key no longer works"}.`;
+      : ` ${environmentTitle("stage", held.stage.name)} does not run it: ${gap.kind === "missing" ? "it has no deploy key yet" : "its deploy key no longer works"}.`;
   const repair =
     gap === undefined
       ? ""
@@ -682,10 +658,7 @@ export function mergeFoot(input: {
         : held?.offer === "told"
           ? ` ${keyRenewedBy(`the ${gap.project} project`, gap.kind)}`
           : "";
-  const foot =
-    held === undefined && runs.length === 0
-      ? input.consequence
-      : `Adds it to main; ${runs.length === 0 ? "" : `${listed(runs)} ${runs.length === 1 ? "runs" : "run"} it.${held === undefined ? "" : " "}`}${stopped}${keeps}${repair}`;
+  const foot = `${input.consequence}${stopped}${repair}`;
   return input.warning === undefined ? foot : `${input.warning} ${foot}`;
 }
 

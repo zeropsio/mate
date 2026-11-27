@@ -1393,10 +1393,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                     stages: props.stages ?? NO_STAGES,
                     mayRenew: mergeNoteShown && props.keyRenewal?.onRenew !== undefined,
                     renewal: props.keyRenewal?.run,
-                    live: props.live,
                     recipe: pull.kind === "recipe",
-                    productionOutside,
-                    mayRelease: props.mayRelease,
                   }),
                 ))
       }
@@ -1433,10 +1430,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   stages: props.stages ?? NO_STAGES,
                   mayRenew: mergeNoteShown && props.keyRenewal?.onRenew !== undefined,
                   renewal: props.keyRenewal?.run,
-                  live: props.live,
                   recipe: pull.kind === "recipe",
-                  productionOutside,
-                  mayRelease: props.mayRelease,
                 }),
               )
       }

@@ -49,7 +49,12 @@ import {
   sidebarChangeLabel,
   type FlowPullRequest,
 } from "./projectFlow.ts";
-import { changeMergeVerdict, type ReviewFixProblem, waitsForGithub } from "./reviewVerdict.ts";
+import {
+  addingLine,
+  changeMergeVerdict,
+  type ReviewFixProblem,
+  waitsForGithub,
+} from "./reviewVerdict.ts";
 
 /** How many of its waiting changes the strip lists, each with its own Review. */
 const MATE_NEXT_STEP_LINES = 3;
@@ -100,8 +105,9 @@ export type MateNextStep =
        */
       readonly pull: FlowPullRequest;
       /**
-       * `Wren is waiting for your review`, its change's title under it — or `… of 2 changes` where
-       * the header counts more than one.
+       * `Draft ready`, its change's title under it — or `Wren has 2 drafts for you` where the header
+       * counts more than one (the chat script's rows 2 and 4); what is being done to one listed alone,
+       * `Adding "Colours" to your app: checking it builds… A few minutes.` (row 5).
        */
       readonly title: string;
       /** What the leading change is: its own title. */
@@ -203,9 +209,12 @@ export function mateNextStep(input: {
   if (pull === undefined) return NONE;
   const name = input.mateName ?? "This Mate";
   const reads = new Map(listed.map((entry) => [entry, input.standingOf?.(entry)]));
-  // What is being done to each now: a press on its way, else its Mate fixing it, else how its merge
-  // ended (`changeActOf`'s order). A change on its way waits on HQ or its Mate, never on the person.
+  // What is being done to each now: HQ adding it, else a press on its way, else its Mate fixing it,
+  // else how its merge ended (`changeActOf`'s order). A change on its way waits on HQ or its Mate,
+  // never on the person.
   const actOf = (entry: FlowPullRequest): ChangeAct | undefined => {
+    const adding = addingLine(entry, input.now);
+    if (adding !== undefined) return { kind: "adding", line: adding };
     const pressed = reads.get(entry)?.act;
     if (changeActBusy(pressed) || !worksOnChange(input.workingOn, entry)) return pressed;
     return { kind: "fixing", mateName: name };
@@ -235,7 +244,6 @@ export function mateNextStep(input: {
     const kind = reads.get(entry)?.standing.kind;
     return kind === "to-ask" || kind === "waiting";
   });
-  const count = (several: number) => `${String(several)} changes`;
   const who = held
     ? heldTitle({
         name,
@@ -244,7 +252,9 @@ export function mateNextStep(input: {
         listed: listed.length,
         mergers: reads.get(asked[0] ?? pull)?.who ?? "an Owner or Admin",
       })
-    : `${name} is waiting for ${input.yours === false ? "a" : "your"} review`;
+    : listed.length === 1
+      ? "Draft ready"
+      : `${name} has ${String(listed.length)} drafts${input.yours === false ? "" : " for you"}`;
   const lead = standingOf(pull);
   const standing = {
     ...(lead === undefined ? {} : { standing: lead }),
@@ -272,7 +282,12 @@ export function mateNextStep(input: {
             : lead === "asked-of-me"
               ? `${reads.get(pull)?.asker ?? "Someone"} asks you to merge ${name}'s change`
               : who,
-      detail: leadAct?.kind === "merge-failed" ? leadAct.reason : pull.title,
+      detail:
+        leadAct?.kind === "merge-failed"
+          ? leadAct.reason
+          : leadAct?.kind === "adding"
+            ? "Your app keeps its current version until it is added."
+            : pull.title,
       lines: [],
       more: 0,
       waiting,
@@ -283,7 +298,7 @@ export function mateNextStep(input: {
   return {
     kind: "review",
     pull,
-    title: actTitle ?? (held || listed.length === 1 ? who : `${who} of ${count(listed.length)}`),
+    title: actTitle ?? who,
     detail: pull.title,
     lines: listed.slice(0, MATE_NEXT_STEP_LINES).map((entry) => {
       const line = { pull: entry, label: sidebarChangeLabel(entry, pullRequests) };

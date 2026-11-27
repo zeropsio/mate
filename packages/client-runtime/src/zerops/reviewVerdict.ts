@@ -878,6 +878,25 @@ export function addingVerdict(
   };
 }
 
+/**
+ * The conversation's row for a change HQ is adding (the chat script's row 5), by its title:
+ * `Adding "Colours" to your app: checking it builds… A few minutes.` Undefined for a change HQ is
+ * not adding; how an addition stands is `addingVerdict`'s answer.
+ */
+export function addingLine(
+  pull: Parameters<typeof addingVerdict>[0] & { readonly title: string },
+  now?: number,
+): string | undefined {
+  if (pull.state !== "adding" && pull.state !== "merging") return undefined;
+  const verdict = addingVerdict(pull, now);
+  if (verdict === undefined) return undefined;
+  const named = `"${pull.title}"`;
+  if (verdict.tone === "attention") return `${verdict.title}: ${named}. ${verdict.why}`;
+  return pull.state === "merging" || pull.reviewBuild?.state !== "awaiting"
+    ? `Adding ${named} to your app…`
+    : `Adding ${named} to your app: checking it builds… A few minutes.`;
+}
+
 /** What a change whose GitHub checks failed says of itself, in its review and on every row. */
 export const GITHUB_CHECKS_FAILED = "GitHub's checks failed";
 
@@ -1400,6 +1419,8 @@ function changeReviewModelOfHead(
     const nothing = releaseNothingReason(input.release);
     const waiting = nothing === undefined ? input.waiting?.count : 0;
     const recipe = pull.kind === "recipe";
+    // A code change's add built it on its stage before the merge: Your app has it, and nothing
+    // more is said of Stage (the chat script's row 6).
     const next = recipe
       ? recipeNext(input.recipe, base)
       : input.downstream.production && waiting === undefined
@@ -1407,9 +1428,7 @@ function changeReviewModelOfHead(
           undefined
         : input.downstream.production && waiting !== undefined && waiting > 0
           ? `${count(waiting, "change now waits", "changes now wait")} for production`
-          : input.downstream.stage
-            ? "the stage picks it up"
-            : undefined;
+          : undefined;
     const live = input.waiting?.live;
     const until = releaseWaitsFor(input, true);
     const consequence = recipe
@@ -1421,15 +1440,18 @@ function changeReviewModelOfHead(
             : `Production still serves ${live} until ${until}.`))
         : input.downstream.productionOutside === true
           ? PRODUCTION_DEPLOYED_OUTSIDE
-          : input.downstream.stage
-            ? `The stage picks it up from ${base}.`
-            : // Its title says where it went; nothing more follows from it.
-              "";
+          : // Its title says where it went; nothing more follows from it.
+            "";
     return {
       verdict: {
         state: "merged",
         tone: "done",
-        title: `Merged into ${base}${pull.landedOutside === true ? " outside Mate" : ""}`,
+        title:
+          pull.landedOutside === true
+            ? `Merged into ${base} outside Mate`
+            : recipe
+              ? `Merged into ${base}`
+              : "Added to your app",
         why: [age, next].filter((part) => part !== undefined).join(" · "),
         fix: undefined,
       },

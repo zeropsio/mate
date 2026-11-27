@@ -29,6 +29,7 @@ import {
   type ProductionLive,
   type ReleaseEndedEvent,
 } from "@t3tools/client-runtime/zerops";
+import type { ZeropsTimelineEntry } from "@t3tools/client-runtime/zerops/model";
 import { useMemo, useState } from "react";
 
 import { useProductionAddresses } from "./useProductionAddresses";
@@ -196,19 +197,38 @@ function mentionedChanges(message: SaidMessage, hqAddress: string): ReadonlyArra
   return changes;
 }
 
+const NO_PUSHES: ReadonlySet<string> = new Set();
+
+/** The changes a conversation's own runs pushed to, as `repo#number`: its work, named or not. */
+export function changesPushedIn(entries: ReadonlyArray<ZeropsTimelineEntry>): ReadonlySet<string> {
+  const pushed = entries.flatMap((entry) =>
+    entry.kind === "operation" && entry.operation.pullRequest !== undefined
+      ? [`${entry.operation.pullRequest.repository}#${String(entry.operation.pullRequest.number)}`]
+      : [],
+  );
+  return pushed.length === 0 ? NO_PUSHES : new Set(pushed);
+}
+
 /**
- * The landings a conversation places: the changes its loaded messages link to, landed after the
- * first of them. A landing earlier than that would sit above everything that is loaded, cut off
- * from the message that named it; it is placed once the turns before it are.
+ * The landings a conversation places: the changes its loaded messages link to or its own runs
+ * pushed to, landed after the first of them. A landing earlier than that would sit above
+ * everything that is loaded, cut off from the message that named it; it is placed once the turns
+ * before it are.
  */
 export function conversationLandings(
   events: ReadonlyArray<ChangeLandedEvent>,
   messages: ReadonlyArray<SaidMessage>,
   hqAddress: string | undefined,
+  pushed: ReadonlySet<string>,
 ): ReadonlyArray<ChangeLandedEvent> {
   const first = messages[0];
-  if (events.length === 0 || first === undefined || hqAddress === undefined) return NONE;
-  const mentioned = new Set(messages.flatMap((message) => mentionedChanges(message, hqAddress)));
+  if (events.length === 0 || first === undefined) return NONE;
+  const mentioned = new Set([
+    ...pushed,
+    ...(hqAddress === undefined
+      ? []
+      : messages.flatMap((message) => mentionedChanges(message, hqAddress))),
+  ]);
   const placed = events.filter(
     (event) =>
       mentioned.has(`${event.repository}#${String(event.number)}`) &&
@@ -220,11 +240,13 @@ export function conversationLandings(
 export function useZeropsConversationLandings(
   events: ReadonlyArray<ChangeLandedEvent>,
   messages: ReadonlyArray<SaidMessage>,
+  entries: ReadonlyArray<ZeropsTimelineEntry>,
 ): ReadonlyArray<ChangeLandedEvent> {
   const hqAddress = useHqAddress();
+  const pushed = useMemo(() => changesPushedIn(entries), [entries]);
   return useMemo(
-    () => conversationLandings(events, messages, hqAddress),
-    [events, messages, hqAddress],
+    () => conversationLandings(events, messages, hqAddress, pushed),
+    [events, messages, hqAddress, pushed],
   );
 }
 
