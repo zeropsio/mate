@@ -41,7 +41,7 @@ it("MN26: A project's menu row says Setting up while HQ's frame shows its applic
 });
 
 // witness: apps/web/src/components/zerops/SidebarProjectSites.logic.ts | part.pooled ? [] : part.dev.length === 0 → part.pooled ? part.dev : part.dev.length === 0
-it("MN+1: Sites lists a pool part's stage address but never its leased workspaces; breaks: a person keeps a pool address that ends when the lease does.", () => {
+it("MN114: Sites lists a pool part's stage address but never its leased workspaces; breaks: a person keeps a pool address that ends when the lease does.", () => {
   const mate = {
     projectId: "mate",
     name: "Mate",

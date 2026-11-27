@@ -1,4 +1,4 @@
-next: ZV200
+next: ZV205
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -168,8 +168,8 @@ next: ZV200
 - ZV197 — The Git tab reads the Review build of the change at the reader's clock; breaks: it says ready while the build is awaiting or failed, or keeps awaiting past its deadline
 - ZV198 — A project's flow reads an awaiting Review build at its caller's clock; breaks: a project keeps awaiting after the deadline with no new event
 - ZV199 — Each passed Review build part offers its probed public address, or its public stage hostname when unprobed; failed, unavailable and private parts offer none; breaks: a person cannot open a passed stage or is offered a stage that did not pass
-- ZV+1 — A change's Preview opens only a running workspace on its branch and repository, and an unread workspace is not claimed stopped; breaks: a review opens another change's workspace.
-- ZV+2 — A Review build's public app address opens its root rather than its health probe; breaks: Try it opens a health endpoint instead of the application.
-- ZV+3 — Only an open change offers its own live workspace; a merged or closed change never does, even while a lease remains visible; breaks: a person opens a workspace after its change ended.
-- ZV+4 — A routed app stage is offered only for the change's repository, including after its build report leaves; breaks: a merged change loses its app address or opens another repository's app.
-- ZV+5 — The app says this version is building only for an unexpired Review build at this change's head; breaks: a different head or an overdue build is described as the current version being built.
+- ZV200 — A change's Preview opens only a running workspace on its branch and repository, and an unread workspace is not claimed stopped; breaks: a review opens another change's workspace.
+- ZV201 — A Review build's public app address opens its root rather than its health probe; breaks: Try it opens a health endpoint instead of the application.
+- ZV202 — Only an open change offers its own live workspace; a merged or closed change never does, even while a lease remains visible; breaks: a person opens a workspace after its change ended.
+- ZV203 — A routed app stage is offered only for the change's repository, including after its build report leaves; breaks: a merged change loses its app address or opens another repository's app.
+- ZV204 — A public app address remains available while a Review build runs or its report is for another head; breaks: a person loses their app address during another build.

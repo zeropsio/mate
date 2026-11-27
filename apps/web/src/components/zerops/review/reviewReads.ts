@@ -37,7 +37,7 @@ export function useGroupName(groupId: string): string | undefined {
 
 const NO_BRANCH = Atom.make<string | null | undefined>(undefined);
 
-/** The part's app address and the open branch's live Preview. */
+/** The part's app address and the open branch's draft. */
 export function useMatePreviews(
   appId: string,
   mateProjectId: string,
@@ -48,7 +48,6 @@ export function useMatePreviews(
   branch: string | undefined,
   head: string | undefined,
   reviewBuild: HqReviewBuild | undefined,
-  now: number,
 ): ReviewTryTargets {
   const { listing } = useZeropsDetailCandidates();
   const appIds = useMemo(() => [appId], [appId]);
@@ -101,7 +100,6 @@ export function useMatePreviews(
         branch,
         head,
         reviewBuild,
-        now,
         leases: row?.services === undefined ? undefined : leases,
         poolPairs,
         classicBranch,
@@ -117,7 +115,6 @@ export function useMatePreviews(
       branch,
       head,
       reviewBuild,
-      now,
       leases,
       poolPairs,
       classicBranch,

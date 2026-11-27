@@ -918,7 +918,7 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
   };
 }
 
-/** "Try it": the app's stage and, while the change is open, its live Preview. */
+/** "Try it": the app's stage and, while the change is open, its draft. */
 export function ReviewTry({
   previews,
   previewState,
@@ -930,7 +930,6 @@ export function ReviewTry({
     | ReadonlyArray<{
         readonly service: string;
         readonly url: string;
-        readonly version: "building" | "unknown";
       }>
     | undefined;
 }) {
@@ -938,23 +937,18 @@ export function ReviewTry({
     <ReviewSection title="Try it">
       <div className="flex flex-wrap gap-2">
         {builds.map((build) => (
-          <div className="flex min-w-0 flex-col" key={`${build.service}:${build.url}`}>
-            <Button
-              className="max-w-full"
-              render={<a href={build.url} rel="noreferrer" target="_blank" />}
-              size="sm"
-              title={build.url}
-              variant="secondary"
-            >
-              <GlobeIcon aria-hidden="true" />
-              <span className="flex-none font-medium">Your app</span>
-              <span className="min-w-0 truncate text-muted-foreground">· {build.service}</span>
-              <ArrowUpRightIcon aria-hidden="true" />
-            </Button>
-            <Text className="mt-1" render={<p />} variant="description">
-              {build.version === "building" ? "Building this version" : "Version not available"}
-            </Text>
-          </div>
+          <Button
+            className="max-w-full"
+            key={`${build.service}:${build.url}`}
+            render={<a href={build.url} rel="noreferrer" target="_blank" />}
+            size="sm"
+            title={build.url}
+            variant="secondary"
+          >
+            <GlobeIcon aria-hidden="true" />
+            <span className="flex-none font-medium">Your app</span>
+            <ArrowUpRightIcon aria-hidden="true" />
+          </Button>
         ))}
         {previews.map((preview) => (
           <Button
@@ -965,8 +959,7 @@ export function ReviewTry({
             variant="secondary"
           >
             <GlobeIcon aria-hidden="true" />
-            <span className="flex-none font-medium">Live while the Mate works</span>
-            <span className="min-w-0 truncate text-muted-foreground">· {preview.service}</span>
+            <span className="flex-none font-medium">Draft</span>
             <ArrowUpRightIcon aria-hidden="true" />
           </Button>
         ))}
@@ -978,7 +971,7 @@ export function ReviewTry({
       ) : null}
       {previews.length > 0 || previewState === "ended" ? null : (
         <Text className="mt-1.5" render={<p />} variant="description">
-          {previewState === "reading" ? "Preview not read yet." : "Preview is not running."}
+          Draft is not available yet.
         </Text>
       )}
     </ReviewSection>

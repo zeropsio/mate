@@ -627,7 +627,6 @@ function ChangeReviewData({
     pull.branch,
     pull.headSha,
     pull.reviewBuild,
-    now,
   );
   // Reviewed together: a queued change that settled elsewhere leaves, by the open changes the flow
   // holds; a change done here moves the queue on, after a beat that says so.

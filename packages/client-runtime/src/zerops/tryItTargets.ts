@@ -14,7 +14,6 @@ export interface ReviewTryTargets {
   readonly builds: ReadonlyArray<{
     readonly service: string;
     readonly url: string;
-    readonly version: "building" | "unknown";
   }>;
 }
 
@@ -33,7 +32,6 @@ export function tryItTargets(input: {
   readonly branch: string | undefined;
   readonly head: string | undefined;
   readonly reviewBuild: HqReviewBuild | undefined;
-  readonly now?: number | undefined;
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
   readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
   /** The classic dev checkout's branch, null when read and not a branch. */
@@ -89,13 +87,10 @@ export function tryItTargets(input: {
       (input.classicBranch === undefined ||
         (input.classicBranch === input.branch && input.classicServers === undefined)));
   const build = input.reviewBuild;
-  const verdict = reviewBuildVerdict(build, input.now);
-  const version =
-    verdict?.state === "awaiting" && build?.head === input.head ? "building" : "unknown";
+  const verdict = reviewBuildVerdict(build, undefined);
   const appTarget = (service: string, url: string): ReviewTryTargets["builds"][number] => ({
     service,
     url: new URL(url).origin,
-    version,
   });
   const reported =
     build !== undefined && input.head !== undefined && build.head === input.head

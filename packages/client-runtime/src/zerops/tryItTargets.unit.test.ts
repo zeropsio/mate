@@ -58,7 +58,7 @@ const previewInput = {
 };
 
 // witness: packages/client-runtime/src/zerops/tryItTargets.ts | lease.branch !== input.branch → false
-it("ZV+1: A change's Preview opens only a running workspace on its branch and repository, and an unread workspace is not claimed stopped; breaks: a review opens another change's workspace.", () => {
+it("ZV200: A change's Preview opens only a running workspace on its branch and repository, and an unread workspace is not claimed stopped; breaks: a review opens another change's workspace.", () => {
   const cases = [
     {
       input: { ...previewInput, branch: "one" },
@@ -178,7 +178,7 @@ it("ZV+1: A change's Preview opens only a running workspace on its branch and re
 });
 
 // witness: packages/client-runtime/src/zerops/tryItTargets.ts | url: new URL(url).origin, → url,
-it("ZV+2: A Review build's public app address opens its root rather than its health probe; breaks: Try it opens a health endpoint instead of the application.", () => {
+it("ZV201: A Review build's public app address opens its root rather than its health probe; breaks: Try it opens a health endpoint instead of the application.", () => {
   const result = tryItTargets({
     ...previewInput,
     routes: [],
@@ -200,22 +200,45 @@ it("ZV+2: A Review build's public app address opens its root rather than its hea
 });
 
 // witness: packages/client-runtime/src/zerops/tryItTargets.ts | if (!input.open || input.branch === undefined || lease.branch !== input.branch) return []; → if (input.branch === undefined || lease.branch !== input.branch) return [];
-it("ZV+3: Only an open change offers its own live workspace; a merged or closed change never does, even while a lease remains visible; breaks: a person opens a workspace after its change ended.", () => {
+it("ZV202: Only an open change offers its own live workspace; a merged or closed change never does, even while a lease remains visible; breaks: a person opens a workspace after its change ended.", () => {
   const cases = [
-    { input: previewInput, urls: ["https://one.example"], state: "available" },
-    { input: { ...previewInput, leases: [] }, urls: [], state: "not-running" },
-    { input: { ...previewInput, open: false }, urls: [], state: "ended" },
-    { input: { ...previewInput, open: false, leases: [] }, urls: [], state: "ended" },
+    {
+      name: "open with a lease",
+      input: previewInput,
+      urls: ["https://one.example"],
+      state: "available",
+    },
+    {
+      name: "open without a lease",
+      input: { ...previewInput, leases: [] },
+      urls: [],
+      state: "not-running",
+    },
+    {
+      name: "merged with a lease",
+      input: { ...previewInput, open: false },
+      urls: [],
+      state: "ended",
+    },
+    {
+      name: "closed with a lease",
+      input: { ...previewInput, open: false },
+      urls: [],
+      state: "ended",
+    },
   ] as const;
-  for (const { input, urls, state } of cases) {
+  for (const { name, input, urls, state } of cases) {
     const result = tryItTargets(input);
-    expect(result.previews.map((entry) => entry.url)).toEqual(urls);
-    expect(result.previewState).toBe(state);
+    expect(
+      result.previews.map((entry) => entry.url),
+      name,
+    ).toEqual(urls);
+    expect(result.previewState, name).toBe(state);
   }
 });
 
 // witness: packages/client-runtime/src/zerops/tryItTargets.ts | part.devService !== input.repository && !sameRepository(repositories.get(stage.service)) → part.devService !== input.repository && false
-it("ZV+4: A routed app stage is offered only for the change's repository, including after its build report leaves; breaks: a merged change loses its app address or opens another repository's app.", () => {
+it("ZV203: A routed app stage is offered only for the change's repository, including after its build report leaves; breaks: a merged change loses its app address or opens another repository's app.", () => {
   const tier = `services:
   - hostname: webdev
     type: nodejs@22
@@ -232,7 +255,17 @@ it("ZV+4: A routed app stage is offered only for the change's repository, includ
     tier,
     poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
   };
-  expect(tryItTargets(input).builds.map((entry) => entry.url)).toEqual(["https://stage.example"]);
+  const cases = [
+    { name: "merged", input },
+    { name: "closed", input },
+    { name: "open with a lease", input: { ...input, open: true, leases: previewLeases } },
+    { name: "open without a lease", input: { ...input, open: true } },
+  ] as const;
+  for (const entry of cases)
+    expect(
+      tryItTargets(entry.input).builds.map((target) => target.url),
+      entry.name,
+    ).toEqual(["https://stage.example"]);
   expect(
     tryItTargets({
       ...input,
@@ -242,23 +275,27 @@ it("ZV+4: A routed app stage is offered only for the change's repository, includ
   ).toEqual([]);
 });
 
-// witness: packages/client-runtime/src/zerops/tryItTargets.ts | verdict?.state === "awaiting" && build?.head === input.head → verdict?.state === "awaiting"
-it("ZV+5: The app says this version is building only for an unexpired Review build at this change's head; breaks: a different head or an overdue build is described as the current version being built.", () => {
-  const build = { state: "awaiting" as const, head: previewHead, at: previewAt };
+// witness: packages/client-runtime/src/zerops/tryItTargets.ts | const routed = parts.flatMap((part) => { → const routed = (input.reviewBuild?.state === "awaiting" ? [] : parts).flatMap((part) => {
+it("ZV204: A public app address remains available while a Review build runs or its report is for another head; breaks: a person loses their app address during another build.", () => {
   const input = {
     ...previewInput,
     repository: "webdev",
     hostnames: ["webdev", "webstage"],
     pools: [],
-    reviewBuild: build,
   };
-  expect(tryItTargets(input).builds[0]?.version).toBe("building");
-  expect(tryItTargets({ ...input, head: "b".repeat(40) }).builds[0]?.version).toBe("unknown");
-  expect(
-    tryItTargets({
-      ...input,
-      now: Date.parse("2026-11-26T20:01:01Z"),
-      reviewBuild: { ...build, until: "2026-11-26T20:01:00Z" },
-    }).builds[0]?.version,
-  ).toBe("unknown");
+  const otherHead = {
+    state: "passing" as const,
+    head: "b".repeat(40),
+    at: previewAt,
+    parts: [{ setup: "web", stage: "other.example", outcome: "ok" as const }],
+  };
+  const cases = [
+    { ...input, reviewBuild: { state: "awaiting" as const, head: previewHead, at: previewAt } },
+    { ...input, reviewBuild: otherHead },
+  ];
+  for (const entry of cases)
+    expect(tryItTargets(entry).builds.map((target) => target.url)).toEqual([
+      "https://stage.example",
+    ]);
+  expect(tryItTargets({ ...input, routes: [], reviewBuild: otherHead }).builds).toEqual([]);
 });

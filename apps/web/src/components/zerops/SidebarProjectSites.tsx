@@ -1351,11 +1351,6 @@ function SitesServices({
             </TooltipPopup>
           </Tooltip>
         )}
-        {row.key.startsWith("preview:") ? (
-          <Text className="px-2 pb-1" render={<p />} variant="description">
-            Version not available
-          </Text>
-        ) : null}
         <RowButtons
           done={done}
           host={host}
