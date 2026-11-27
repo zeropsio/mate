@@ -1,0 +1,127 @@
+import { ThreadId } from "@t3tools/contracts";
+import type { CrewDigest } from "@t3tools/shared/mateLink";
+import { expect, it } from "vite-plus/test";
+
+import { needsYou, type NeedsYouActivity, type NeedsYouMate } from "../../zerops/waiting.logic.ts";
+
+const DAY = Date.parse("2026-11-27T00:00:00Z");
+
+const asking: NeedsYouActivity = {
+  threadId: ThreadId.make("t-fen"),
+  kind: "input",
+  face: "needs",
+  snippet: undefined,
+  pausedUntil: undefined,
+  question: "Stripe or Adyen?",
+};
+
+const crew = (over: Partial<CrewDigest>): CrewDigest => ({
+  crewmates: [
+    {
+      handle: "fable",
+      displayName: "Fable",
+      tint: "violet",
+      lead: true,
+      threadId: null,
+      threadKind: "working",
+      loginKey: null,
+    },
+    {
+      handle: "sol",
+      displayName: "Sol",
+      tint: "sky",
+      lead: false,
+      threadId: null,
+      threadKind: "idle",
+      loginKey: null,
+    },
+  ],
+  attention: [],
+  readyTasks: [],
+  personLands: true,
+  ...over,
+});
+
+const mate = (over: Partial<NeedsYouMate>): NeedsYouMate => ({
+  projectId: "fen",
+  name: "Fen",
+  tint: "coral",
+  shape: "gem",
+  connected: true,
+  mine: true,
+  activity: undefined,
+  reviewCount: 0,
+  ...over,
+});
+
+const keysOf = (mates: ReadonlyArray<NeedsYouMate>) =>
+  needsYou({ mates, order: [], releases: [], dayStart: DAY }).items.map((item) => item.key);
+
+// witness: apps/web/src/zerops/waiting.logic.ts | if (crew === undefined || !crew.current || !mate.mine) return []; → if (crew === undefined || !crew.current) return [];
+it("MN+1: A crewmate's question on the viewer's own Mate stands as its own item beside the Mate's own question, and a colleague's Mate's crew asks nothing of the viewer; breaks: the person never hears their crew is blocked, or is asked to answer for a colleague's crew", () => {
+  const blocked = crew({ attention: [{ id: "a1", kind: "question", handle: "fable" }] });
+  const reviewable = () => true;
+  expect(
+    keysOf([
+      mate({ activity: asking, crew: { digest: blocked, current: true, reviewable } }),
+      mate({
+        projectId: "ada",
+        name: "Ada",
+        mine: false,
+        crew: { digest: blocked, current: true, reviewable },
+      }),
+    ]),
+  ).toEqual(["m:fen", "c:fen:r:a1"]);
+});
+
+// witness: apps/web/src/zerops/waiting.logic.ts | const ready = crew.digest.personLands ? crew.digest.readyTasks : []; → const ready = crew.digest.readyTasks;
+it("MN+2: Finished crew work waits on the viewer once per task, only where the viewer adds it to the Mate's code themselves and may review it, and never again as the crew's ready row; breaks: the person is asked to add work the crew adds itself, or the same work twice", () => {
+  const ready = {
+    attention: [{ id: "a2", kind: "ready-to-land", handle: "sol" }],
+    readyTasks: [
+      { id: "t1", owner: "sol" },
+      { id: "t2", owner: "sol" },
+    ],
+  };
+  const reviewable = (taskId: string) => taskId === "t1";
+  expect(
+    keysOf([
+      mate({ crew: { digest: crew(ready), current: true, reviewable } }),
+      mate({
+        projectId: "ada",
+        name: "Ada",
+        crew: { digest: crew({ ...ready, personLands: false }), current: true, reviewable },
+      }),
+    ]),
+  ).toEqual(["c:fen:t:t1"]);
+});
+
+// witness: apps/web/src/zerops/waiting.logic.ts | if (mate.mine && wait === undefined && task?.waiting === true) → if (mate.mine && task?.waiting === true)
+it("MN+3: An automated Mate's task waiting for an answer waits on the viewer only while the Mate's conversation says nothing of its own; breaks: the one question is counted twice", () => {
+  const task = { id: "k1", title: "Fix the invoice total", url: null, waiting: true as const };
+  expect(
+    keysOf([mate({ task }), mate({ projectId: "ada", name: "Ada", activity: asking, task })]),
+  ).toEqual(["t:fen:k1", "m:ada"]);
+});
+
+// witness: apps/web/src/zerops/waiting.logic.ts | const finishedToday = (at: string) => Date.parse(at) >= input.dayStart; → const finishedToday = (at: string) => Date.parse(at) >= 0;
+it("MN+4: Running counts the working chats of the viewer's own Mates while their word is of now, and their working crewmates; done today counts the turns they finished since the day began; breaks: yesterday's work or a colleague's is counted as the person's today", () => {
+  const results = [
+    { completedAt: "2026-11-27T08:00:00Z" },
+    { completedAt: "2026-11-26T23:00:00Z" },
+  ];
+  const { counts } = needsYou({
+    mates: [
+      mate({
+        attention: { live: true, working: 2, results },
+        crew: { digest: crew({}), current: true, reviewable: () => true },
+      }),
+      mate({ projectId: "ada", attention: { live: false, working: 3, results: [] } }),
+      mate({ projectId: "bo", mine: false, attention: { live: true, working: 4, results } }),
+    ],
+    order: [],
+    releases: [],
+    dayStart: DAY,
+  });
+  expect(counts).toEqual({ running: 3, doneToday: 1 });
+});

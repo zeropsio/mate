@@ -89,7 +89,13 @@ import { SidebarChiefRow, SidebarChiefTile } from "~/components/zerops/chief/Sid
 import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 import { SidebarWaitingCount } from "~/components/zerops/SidebarWaiting";
 import { SidebarRail, useRailTiles } from "~/components/zerops/SidebarRail";
-import { waitingItemsOf, type WaitingItem } from "~/zerops/waiting.logic";
+import type {
+  WaitingCrew,
+  WaitingItem,
+  WaitingMate,
+  WaitingRelease,
+  WaitingTask,
+} from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { ZeropsProjectLink } from "~/components/zerops/ZeropsProjectLink";
@@ -1378,7 +1384,7 @@ function SidebarFrame({
     activityOf: activityOfCandidate,
     releases: HARNESS_RELEASES,
   });
-  useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
+  useWaitingNext({ items: waiting.items, activeProjectId: open, enabled: true });
   return (
     <aside
       className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
@@ -1525,6 +1531,37 @@ const HARNESS_HEADLINE = "Todo needs attention";
 /** Links' stage is ahead of its production: its release waits on the viewer. */
 const HARNESS_RELEASES = [{ groupId: "links", name: "Links", ahead: 3 }];
 
+/** The harness's waits, each Mate's as the one decision lists it, then the releases. */
+function harnessWaits(input: {
+  readonly mates: ReadonlyArray<WaitingMate>;
+  readonly crews?: ReadonlyArray<WaitingCrew>;
+  readonly tasks?: ReadonlyArray<WaitingTask>;
+  readonly releases: ReadonlyArray<WaitingRelease>;
+}): ReadonlyArray<WaitingItem> {
+  return [
+    ...input.mates.map((mate): WaitingItem => ({
+      kind: mate.kind,
+      key: `m:${mate.projectId}`,
+      mate,
+    })),
+    ...(input.crews ?? []).map((crew): WaitingItem => ({
+      kind: "crew",
+      key: `c:${crew.projectId}:${crew.crewmate.handle}:${crew.need.kind}`,
+      crew,
+    })),
+    ...(input.tasks ?? []).map((task): WaitingItem => ({
+      kind: "task",
+      key: `t:${task.projectId}:${task.taskId}`,
+      task,
+    })),
+    ...input.releases.map((release): WaitingItem => ({
+      kind: "release",
+      key: `r:${release.groupId}`,
+      release,
+    })),
+  ];
+}
+
 /**
  * `?wait=all`: one of each thing that waits on the viewer, as the board drew them — a Mate of
  * theirs stopped on an error, a plan, a question, a change, a release. None has a conversation
@@ -1532,7 +1569,7 @@ const HARNESS_RELEASES = [{ groupId: "links", name: "Links", ahead: 3 }];
  */
 const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
   new URLSearchParams(location.search).get("wait") === "all"
-    ? waitingItemsOf({
+    ? harnessWaits({
         mates: [
           {
             projectId: "fen",
@@ -1760,7 +1797,7 @@ function RailFrame({
     activityOf: activityOfCandidate,
     releases: HARNESS_RELEASES,
   });
-  useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
+  useWaitingNext({ items: waiting.items, activeProjectId: open, enabled: true });
   const items = WAIT_ALL ?? waiting.items;
   const projectName = useCallback(
     (groupId: string) => {

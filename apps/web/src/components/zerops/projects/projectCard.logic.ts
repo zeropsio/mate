@@ -49,6 +49,7 @@ import {
 } from "../SidebarMateRow.logic";
 import { NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 import {
+  isMateWait,
   waitingKindOf,
   waitingVerb,
   type WaitingChange,
@@ -103,7 +104,8 @@ export function projectWaits(input: {
   const asks: Array<ProjectWait> = [];
   const reviews: Array<ProjectWait> = [];
   for (const item of input.items) {
-    if (item.kind === "release" || !mates.has(item.mate.projectId)) continue;
+    // A project's card says what its Mates' conversations wait for; their crews say their own.
+    if (!isMateWait(item) || !mates.has(item.mate.projectId)) continue;
     if (item.kind === "change")
       reviews.push({ kind: "review", key: item.key, mate: item.mate, change: item.mate.change });
     else asks.push({ kind: "ask", key: item.key, ask: item.kind, mate: item.mate });

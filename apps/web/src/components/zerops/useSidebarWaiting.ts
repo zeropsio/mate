@@ -1,15 +1,16 @@
 /**
- * What waits on the viewer — the one list every surface counts and says (`useViewerWaits`): the
- * menu's badge, its rail and its Waiting on you list, the overview's tab, a project's card and
- * page — and the way to the next one, ⌥↓ (`useWaitingNext`).
+ * What needs the viewer — the one list every surface counts and says (`useViewerWaits`): the
+ * menu's badge, its rail and its Needs you list, the overview's tab, a project's card and page —
+ * and the way to the next one, ⌥↓ (`useWaitingNext`).
  *
- * Waiting is the one resolver's word (R5): a Mate of theirs whose face says it needs them, or
- * stopped on an error, or whose agent waits for the sign-in only they can make; and every project
- * whose release is offered (`releaseOffered`) and theirs to make (`useReleaseOnViewer`: being
- * allowed to release a colleague's project is not being asked to). It is always the viewer's: Mine / Everyone chooses
- * which Mates the menu lists, never what waits on them. The order is the menu's own
- * (`sidebarReveal.ts`'s `mateOrder`), so "the next one" is the next one down the list the viewer
- * is looking at.
+ * The decision is `needsYou` (`waiting.logic.ts`), over what the data layer answers for each Mate:
+ * its row's activity (the one resolver's word, R5), HQ's word of whom it waits on, its changes for
+ * the viewer's review, its agent's sign-in, its crew's digest, its task and its attention; and
+ * every project whose release is offered (`releaseOffered`) and theirs to make
+ * (`useReleaseOnViewer`: being allowed to release a colleague's project is not being asked to).
+ * It is always the viewer's: Mine / Everyone chooses which Mates the menu lists, never what waits
+ * on them. The order is the menu's own (`sidebarReveal.ts`'s `mateOrder`), so "the next one" is
+ * the next one down the list the viewer is looking at.
  */
 import {
   assignCandidateMateTints,
@@ -22,22 +23,28 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import type { MateTintId } from "@t3tools/shared/brand";
 import { useCallback, useEffect, useMemo } from "react";
 
 import { reviewQueueOrder } from "~/zerops/reviewQueue.logic";
 import { useMenuProjects } from "~/components/zerops/SidebarOverview";
 import {
+  needsYou,
   releaseOffered,
-  waitingItemsOf,
-  waitingKindOf,
+  waitingProjectId,
+  type NeedsYouCounts,
+  type NeedsYouMate,
   type WaitingChange,
   type WaitingItem,
-  type WaitingMate,
   type WaitingRelease,
 } from "~/zerops/waiting.logic";
 
-import { mateFaceOf, mateReviewCount, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { matesAttention, type MateAttentionRead } from "@t3tools/client-runtime/data";
+import { Atom } from "effect/reactivity";
+import { useAccountOrgId, useProjection } from "~/zerops/accountData";
+import { mateReviewCount, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { crewTaskReviewable } from "~/zerops/crew/crewDigest";
+import { useMateCrews } from "~/zerops/crew/useCrew";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useAppsChanges, useEveryAppId, useProjectFlows } from "~/zerops/projectFlows";
 import { useAtomValue } from "@effect/atom-react";
 import { applicationOperationsAtom } from "~/zerops/useEnvironmentOperation";
@@ -51,102 +58,26 @@ import { useReleaseOnViewer } from "~/zerops/useReleaseOnViewer";
 import { useSignInWaits } from "~/zerops/useSignInWaits";
 import { useWaitsOnViewer } from "~/zerops/useZeropsMateOwners";
 
-/**
- * The Mates that wait on the viewer — their own, asking, with changes for review, stopped on an
- * error, or waiting for the agent sign-in only they can make — in the menu's order; one the menu
- * does not hold, last. Another's Mate waits on its owner, not here.
- */
-export function waitingMatesOf<T extends ZeropsCandidate>(input: {
-  readonly candidates: ReadonlyArray<T>;
-  /** What its row reads (`useMateRowActivity`): HQ's word, or its socket's. */
-  readonly activityOf: (candidate: T) => ZeropsAgentActivity | undefined;
-  /** How many of its own changes wait for the person's review (`mateReviewCount`). */
-  readonly reviewCount: (candidate: T) => number;
-  /** Whether a project's Mate waits on the viewer, as HQ says it (`waitsOnViewer`). */
-  readonly waitsOnViewer: (projectId: string) => boolean;
-  readonly tints: ReadonlyMap<string, MateTintId>;
-  readonly order: ReadonlyArray<string>;
-  /** Its change that waits for review, as the review opens it; absent where none is read. */
-  readonly changeOf?: ((candidate: T) => WaitingChange | undefined) | undefined;
-  /**
-   * Its agent's sign-in, where it waits on the viewer (`useSignInWaits`): its words, as its
-   * composer says them.
-   */
-  readonly signInOf?: ((candidate: T) => string | undefined) | undefined;
-}): ReadonlyArray<WaitingMate> {
-  const place = (projectId: string) => {
-    const at = input.order.indexOf(projectId);
-    return at === -1 ? Number.MAX_SAFE_INTEGER : at;
-  };
-  return input.candidates
-    .flatMap((candidate): ReadonlyArray<WaitingMate> => {
-      if (!hasMate(candidate)) return [];
-      const tint = input.tints.get(candidate.project.id) ?? "slate";
-      const where = {
-        projectId: candidate.project.id,
-        name: projectNameInApp(candidate.project),
-        tint,
-        shape: mateShapeOf(candidate.project, tint),
-        ...(candidate.environmentId === undefined
-          ? {}
-          : { environmentId: candidate.environmentId }),
-      };
-      // Nothing else of it moves before its agent is signed in: that is what waits.
-      const signIn = input.signInOf?.(candidate);
-      if (signIn !== undefined) return [{ ...where, face: "needs", kind: "sign-in", text: signIn }];
-      const activity = input.activityOf(candidate);
-      const changes = input.reviewCount(candidate);
-      const reviewWaits = changes > 0;
-      const mine = input.waitsOnViewer(candidate.project.id);
-      // The face its row wears (`mateFaceOf`): asking, or its change waiting for your review —
-      // read from HQ or its socket, as the row reads it; a word at rest asks nothing now.
-      const face = mateFaceOf({
-        connected: candidate.group === "connected",
-        activity,
-        reviewWaits,
-        mine,
-        // Only a face that needs you stands here, and no pose of its life gives that.
-        pose: undefined,
-      });
-      // Stopped on an error, a Mate of the viewer's waits on them for help: its face stands still.
-      const failed = mine && activity?.remembered !== true && activity?.kind === "failed";
-      if (face !== "needs" && !failed) return [];
-      const kind = waitingKindOf({ activityKind: activity?.kind, reviewWaits });
-      const change = kind === "change" ? input.changeOf?.(candidate) : undefined;
-      const text =
-        kind === "failed"
-          ? activity?.errorLine
-          : kind === "change"
-            ? change?.title
-            : kind === "question"
-              ? (activity?.question ?? activity?.snippet)
-              : activity?.snippet;
-      return [
-        {
-          ...where,
-          face,
-          kind,
-          ...(text === undefined ? {} : { text }),
-          ...(kind === "change" ? { changes } : {}),
-          ...(activity?.threadId === undefined ? {} : { threadId: activity.threadId }),
-          ...(change === undefined ? {} : { change }),
-        },
-      ];
-    })
-    .toSorted((left, right) => place(left.projectId) - place(right.projectId));
+const NO_ATTENTION_READ: Readonly<Record<string, MateAttentionRead>> = {};
+const NO_ATTENTION = Atom.make(NO_ATTENTION_READ);
+
+/** The start of the viewer's day, in epoch milliseconds: what "done today" counts from. */
+function startOfToday(): number {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 }
 
 /**
- * What waits on the viewer among the candidates given, with every release offered: the one
- * computation (`waitingMatesOf`, `waitingItemsOf`). The app reads it through `useViewerWaits`; a
- * design harness hands its own fixtures in.
+ * What needs the viewer among the candidates given, with every release offered: the one decision
+ * (`needsYou`) over what the data layer answers for each Mate. The app reads it through
+ * `useViewerWaits`; a design harness hands its own fixtures in.
  */
 export function useWaitsOf<T extends ZeropsCandidate>(input: {
   readonly candidates: ReadonlyArray<T>;
   readonly activityOf: (candidate: T) => ZeropsAgentActivity | undefined;
   /** Every project whose next release is offered (`releaseOffered`). */
   readonly releases: ReadonlyArray<WaitingRelease>;
-}): { readonly mates: ReadonlyArray<WaitingMate>; readonly items: ReadonlyArray<WaitingItem> } {
+}): { readonly items: ReadonlyArray<WaitingItem>; readonly counts: NeedsYouCounts } {
   const { activityOf, candidates, releases } = input;
   const order = useSidebarReveal((state) => state.mateOrder);
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
@@ -154,6 +85,14 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
   const { changes } = useAppsChanges(useEveryAppId());
   const waitsOnViewer = useWaitsOnViewer();
   const signInOf = useSignInWaits(candidates);
+  const viewerSubject = useZeropsSessionOptional()?.user?.id;
+  const crews = useMateCrews(
+    useMemo(
+      () => candidates.flatMap((candidate) => (hasMate(candidate) ? [candidate.project.id] : [])),
+      [candidates],
+    ),
+  );
+  const attention = useProjection(matesAttention, useAccountOrgId(), NO_ATTENTION);
   // Whose press each change waits for where its application limits who merges: one the person
   // already asked for waits on the people who merge, and is no wait of theirs.
   const standingOf = useChangeStandingOf();
@@ -223,20 +162,70 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
   );
   const mates = useMemo(
     () =>
-      waitingMatesOf({
-        candidates,
-        activityOf,
-        reviewCount,
-        waitsOnViewer,
-        tints,
-        order,
-        changeOf,
-        signInOf,
+      candidates.flatMap((candidate): ReadonlyArray<NeedsYouMate> => {
+        if (!hasMate(candidate)) return [];
+        const projectId = candidate.project.id;
+        const tint = tints.get(projectId) ?? "slate";
+        const count = reviewCount(candidate);
+        const crew = crews.get(projectId);
+        const read = attention[projectId];
+        const signIn = signInOf(candidate);
+        const change = count > 0 ? changeOf(candidate) : undefined;
+        const task = candidate.project.hq?.mate?.task;
+        return [
+          {
+            projectId,
+            name: projectNameInApp(candidate.project),
+            tint,
+            shape: mateShapeOf(candidate.project, tint),
+            ...(candidate.environmentId === undefined
+              ? {}
+              : { environmentId: candidate.environmentId }),
+            connected: candidate.group === "connected",
+            mine: waitsOnViewer(projectId),
+            activity: activityOf(candidate),
+            ...(signIn === undefined ? {} : { signIn }),
+            reviewCount: count,
+            ...(change === undefined ? {} : { change }),
+            ...(crew?.crew == null
+              ? {}
+              : {
+                  crew: {
+                    digest: crew.crew,
+                    current: crew.current,
+                    reviewable: crewTaskReviewable(crew.crew, crew.logins, viewerSubject),
+                  },
+                }),
+            ...(task == null ? {} : { task }),
+            ...(read?.attention == null
+              ? {}
+              : {
+                  attention: {
+                    live: read.live,
+                    working: read.attention.working,
+                    results: read.attention.results,
+                  },
+                }),
+          },
+        ];
       }),
-    [activityOf, candidates, changeOf, order, reviewCount, signInOf, tints, waitsOnViewer],
+    [
+      activityOf,
+      attention,
+      candidates,
+      changeOf,
+      crews,
+      reviewCount,
+      signInOf,
+      tints,
+      viewerSubject,
+      waitsOnViewer,
+    ],
   );
-  const items = useMemo(() => waitingItemsOf({ mates, releases }), [mates, releases]);
-  return { mates, items };
+  return useMemo(
+    () => needsYou({ mates, order, releases, dayStart: startOfToday() }),
+    [mates, order, releases],
+  );
 }
 
 /**
@@ -288,8 +277,8 @@ function useWaitingReleases(): ReadonlyArray<WaitingRelease> {
  * its question, its error — which the menu's count never reads, so it never redraws on them.
  */
 export function useViewerWaits(options?: { readonly text?: boolean }): {
-  readonly mates: ReadonlyArray<WaitingMate>;
   readonly items: ReadonlyArray<WaitingItem>;
+  readonly counts: NeedsYouCounts;
 } {
   const { listing } = useZeropsCandidates();
   const held = useMemo(() => heldCandidates(listing).rows, [listing]);
@@ -304,19 +293,20 @@ function typedIntoField(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
-/** The next Mate that waits on the viewer, shown in the menu — ⌥↓, or `next()`. */
+/** The next Mate that needs the viewer, shown in the menu — ⌥↓, or `next()`. */
 export function useWaitingNext(input: {
-  readonly mates: ReadonlyArray<WaitingMate>;
+  /** What needs the viewer (`needsYou`): each Mate it is about, in its order. */
+  readonly items: ReadonlyArray<WaitingItem>;
   /** The Mate whose conversation is open: where "next" starts when nothing else is in view. */
   readonly activeProjectId: string | null;
   /** Called before a Mate is shown — a phone's menu opens first. */
   readonly beforeReveal?: (() => void) | undefined;
   readonly enabled: boolean;
 }): () => void {
-  const { mates, activeProjectId, beforeReveal, enabled } = input;
+  const { items, activeProjectId, beforeReveal, enabled } = input;
   const next = useCallback(() => {
     const { cursor, reveal, mateOrder } = useSidebarReveal.getState();
-    const waiting = mates.map((mate) => mate.projectId);
+    const waiting = [...new Set(items.flatMap((item) => waitingProjectId(item) ?? []))];
     // The whole menu's order, so a cursor on a Mate that waits on nobody
     // still says where "next" starts.
     const target = nextWaitingMate(
@@ -327,7 +317,7 @@ export function useWaitingNext(input: {
     if (target === undefined) return;
     beforeReveal?.();
     reveal({ kind: "mate", projectId: target });
-  }, [activeProjectId, beforeReveal, mates]);
+  }, [activeProjectId, beforeReveal, items]);
 
   useEffect(() => {
     if (!enabled) return;

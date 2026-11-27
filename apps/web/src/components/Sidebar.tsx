@@ -1016,7 +1016,7 @@ export default function Sidebar() {
   // Waiting on you row, the header's count and the rail; ⌥↓ goes to the next.
   const zeropsWaiting = useViewerWaits();
   useWaitingNext({
-    mates: zeropsWaiting.mates,
+    items: zeropsWaiting.items,
     activeProjectId: activeZeropsProjectId,
     beforeReveal: isMobile
       ? () => {

@@ -72,7 +72,7 @@ import {
   type RailTileMate,
 } from "./SidebarRail.logic";
 import { SidebarWaitingCount, type WaitingVerbs } from "./SidebarWaiting";
-import type { WaitingItem } from "~/zerops/waiting.logic";
+import { isMateWait, type WaitingItem, type WaitingMateItem } from "~/zerops/waiting.logic";
 import { Button } from "../ui/button";
 import { Text } from "~/components/ui/text";
 
@@ -143,9 +143,10 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
   const waitsOnViewer = useWaitsOnViewer();
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const mates = useMemo(() => {
-    const waits = new Map(
-      waiting.flatMap((item) => (item.kind === "release" ? [] : [[item.mate.projectId, item]])),
-    );
+    // Each Mate's own wait, the first the list says of it: what its conversation waits for.
+    const waits = new Map<string, WaitingMateItem>();
+    for (const item of waiting)
+      if (isMateWait(item) && !waits.has(item.mate.projectId)) waits.set(item.mate.projectId, item);
     return selectMateEnvironments(candidates).flatMap((candidate): ReadonlyArray<RailMate> => {
       if (!shown(candidate)) return [];
       const id = candidate.project.id;

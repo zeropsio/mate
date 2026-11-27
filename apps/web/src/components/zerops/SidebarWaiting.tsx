@@ -40,6 +40,7 @@ import { MateFace } from "./primitives";
 import {
   releaseWaitingLine,
   WAITING_VERBS,
+  waitingPhrase,
   waitingVerb,
   waitingCountWords,
   waitingTitle,
@@ -318,7 +319,16 @@ function WaitingEntry({
       ref={element}
     >
       <span className="flex h-8" aria-hidden="true">
-        {item.kind === "release" ? (
+        {item.kind === "crew" ? (
+          <MateFace
+            shape={item.crew.crewmate.shape}
+            size={32}
+            state="needs"
+            tint={item.crew.crewmate.tint}
+          />
+        ) : item.kind === "task" ? (
+          <MateFace shape={item.task.shape} size={32} state="needs" tint={item.task.tint} />
+        ) : item.kind === "release" ? (
           <LogoTile>{item.release.name.trim().charAt(0).toLocaleUpperCase()}</LogoTile>
         ) : (
           <MateFace
@@ -334,10 +344,25 @@ function WaitingEntry({
           {waitingTitle(item)}
         </p>
         <p className="mt-0.5 line-clamp-2 text-body empty:hidden">
-          {item.kind === "release" ? releaseWaitingLine(item.release) : item.mate.text}
+          {item.kind === "release"
+            ? releaseWaitingLine(item.release)
+            : item.kind === "crew"
+              ? waitingPhrase(item)
+              : item.kind === "task"
+                ? item.task.title
+                : item.mate.text}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {item.kind === "release" ? (
+          {item.kind === "crew" || item.kind === "task" ? (
+            <Button
+              onClick={() => {
+                onClose();
+                verbs.onOpenMate(item.kind === "crew" ? item.crew.projectId : item.task.projectId);
+              }}
+            >
+              {waitingVerb(item)}
+            </Button>
+          ) : item.kind === "release" ? (
             <ReviewButton
               label={WAITING_VERBS.release}
               onClose={onClose}
