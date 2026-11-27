@@ -12,14 +12,14 @@ import { setupFailureReason } from "@t3tools/client-runtime/data";
  * (`AgentSignInView`) and the real quiet line (`StandUpAskLine`), over fixtures.
  *
  * The sign-in answers as a Mate would: choosing a card starts its login, whose page is ready
- * 0.7 s later; a pasted code is checked for 1.2 s and signs in, and the stage moves on to the
+ * 3 s later (`?pageMs=`); a pasted code is checked for 1.2 s and signs in, and the stage moves on to the
  * stand-up and the conversation. Moving between states keeps the stage mounted, so every change
  * of state plays the hand-over it would play live.
  *
  * Served by the dev server at `/design-arrival.html` — `?state=<id>` for the state it opens on
  * (coming, coming-starting, coming-opening, coming-new, signin, signin-claude, signin-codex,
  * checking-code, signin-failed, terminal, standing-up, conversation, not-created, refused,
- * colleague, crew, dialog), `?theme=dark`.
+ * colleague, crew, dialog, dialog-codex, dialog-antigravity), `?theme=dark`.
  * `window.__arrivalHarness.go(id)` moves to a state from a script. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
@@ -104,6 +104,9 @@ import "../index.css";
 import { harnessAppearance, harnessFramed } from "./harnessPage";
 
 const params = new URLSearchParams(location.search);
+
+/** How long a login takes to print its page's address: `?pageMs=`, else as a Mate takes, ~3 s. */
+const PAGE_MS = Number(params.get("pageMs") ?? 3000);
 
 const ADA = "u-ada";
 const WREN: ZeropsMateIdentity = {
@@ -695,6 +698,22 @@ const STATES: ReadonlyArray<HarnessState> = [
     dialog: "claude-code",
   },
   {
+    id: "dialog-codex",
+    label: "6 The sign-in in a dialog · Codex, its code on the way",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    dialog: "codex",
+  },
+  {
+    id: "dialog-antigravity",
+    label: "6 The sign-in in a dialog · Antigravity, the code to paste",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    dialog: "antigravity",
+  },
+  {
     id: "dialog-held",
     label: "6 The sign-in in a dialog, over a colleague's sign-in",
     mate: WREN,
@@ -750,13 +769,22 @@ const TERMINAL: Record<ZeropsAgentId, string> = {
 const startedOf = (attempt: ZeropsAgentLoginState | undefined) =>
   attempt === undefined ? {} : { startedAt: attempt.startedAt };
 
-/** The sign-in as a Mate answers it: a login's page ready in 0.7 s, a pasted code in 1.2 s. */
+/** The sign-in as a Mate answers it: a login's page ready in `PAGE_MS`, a pasted code in 1.2 s. */
 function useFixtureSignIn(initial: Logins, onSignedIn: () => void, fail: boolean) {
   const [logins, setLogins] = useState<Logins>(initial);
-  const timers = useRef<number[]>([]);
-  useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
+  // Mounted, rather than timers cleared on unmount: development mounts twice, and a dialog starts
+  // its login once, on the first mount, whose timers a clearing unmount would drop for good.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const later = (ms: number, run: () => void) => {
-    timers.current.push(window.setTimeout(run, ms));
+    window.setTimeout(() => {
+      if (mounted.current) run();
+    }, ms);
   };
   const onStart = useCallback(
     (agentId: ZeropsAgentId) => {
@@ -765,7 +793,7 @@ function useFixtureSignIn(initial: Logins, onSignedIn: () => void, fail: boolean
         ...current,
         [agentId]: login(agentId, "starting", { startedAt }),
       }));
-      later(700, () =>
+      later(PAGE_MS, () =>
         setLogins((current) => ({
           ...current,
           [agentId]: login(agentId, "awaiting-browser", { startedAt }),
