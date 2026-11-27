@@ -61,9 +61,13 @@
  *
  * `parseCrewHome` reports what the files alone can tell (shape, handles, at
  * most one lead, no host on a read-only crewmate, the brief's length, a job per
- * crewmate). `validateCrewTopology` adds what needs the project: a writer's
- * host is a dev service, and a writer on a service with a database declares
- * `env:` or `database: shared` (PRD §5.1). Apply needs both to be empty.
+ * crewmate); a write is refused on any of them. `validateCrewTopology` adds
+ * what needs the project: a writer has a host or a pool, its host is a dev
+ * service, and a writer on a service with a database declares `env:` or
+ * `database: shared` (PRD §5.1). Apply needs both to be empty. A draft may
+ * hold a writer with nowhere for its copy yet — the setup can draft a crew
+ * before the Mate's dev services are read — and `withBuildersPlaced` places it
+ * on what the project has.
  *
  * @module crewHome
  */
@@ -425,14 +429,6 @@ const parseMember = (
       message: `${handle} declares both host and pool. Choose one for its copy.`,
     });
   }
-  if (kind === "writer" && host === undefined && pool === undefined) {
-    issues.push({
-      code: "host-missing",
-      path,
-      handle,
-      message: `${handle} changes files, so it needs a host or pool for its copy of the code.`,
-    });
-  }
   if (kind !== "writer" && (host !== undefined || pool !== undefined)) {
     issues.push({
       code: "host-on-read-only",
@@ -566,12 +562,64 @@ export const withSharedDatabase = (
       }
     : definition;
 
+/** Where a crew's builders can work. */
+export interface CrewPlaces {
+  /** The Mate's dev services; builders take them in turn. */
+  readonly devHosts: ReadonlyArray<string>;
+  /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
+  readonly databaseHosts?: ReadonlyArray<string>;
+  /** Each builder takes its own copy from the first pool when there is no dev service. */
+  readonly pools?: ReadonlyArray<string>;
+}
+
+/** A writer with neither a host nor a pool: nowhere for its copy of the code. */
+const unplaced = (member: CrewMemberSpec): boolean =>
+  member.kind === "writer" && member.host === undefined && member.pool === undefined;
+
+/**
+ * The definition with each writer that has nowhere for its copy placed — on the dev services in
+ * turn, else on the first pool — and each writer on a service with a database sharing it
+ * (`withSharedDatabase`): what the setup writes for a builder, whenever the project is read. A
+ * writer already placed keeps its place; with neither a dev service nor a pool, it stays unplaced
+ * and Apply refuses it. The same definition when nothing needs it.
+ */
+export const withBuildersPlaced = (
+  definition: CrewDefinition,
+  places: CrewPlaces,
+): CrewDefinition => {
+  const pool = places.pools?.[0];
+  const placeable =
+    (places.devHosts.length > 0 || pool !== undefined) && definition.members.some(unplaced);
+  let turn = 0;
+  const placed = placeable
+    ? {
+        ...definition,
+        members: definition.members.map((member): CrewMemberSpec => {
+          if (!unplaced(member)) return member;
+          if (places.devHosts.length === 0) return { ...member, pool: pool! };
+          return { ...member, host: places.devHosts[turn++ % places.devHosts.length]! };
+        }),
+      }
+    : definition;
+  return withSharedDatabase(placed, places.databaseHosts ?? []);
+};
+
 /** The checks that need the project's services (PRD §5.1, CONCEPT §3.3 *The shared database*). */
 export const validateCrewTopology = (
   definition: CrewDefinition,
   topology: CrewTopology,
 ): ReadonlyArray<CrewDefinitionIssue> =>
   definition.members.flatMap((member): ReadonlyArray<CrewDefinitionIssue> => {
+    if (unplaced(member)) {
+      return [
+        {
+          code: "host-missing",
+          path: CREW_HOME_FILE,
+          handle: member.handle,
+          message: `${member.handle} changes files, so it needs a host or pool for its copy of the code.`,
+        },
+      ];
+    }
     if (member.kind !== "writer" || member.host === undefined) return [];
     if (!topology.devHosts.includes(member.host)) {
       return [

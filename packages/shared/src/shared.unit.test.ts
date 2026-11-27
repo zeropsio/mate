@@ -8,6 +8,13 @@ import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 
 import { projectThreadAwareness } from "./agentAwareness.ts";
+import {
+  parseCrewHome,
+  renderCrewHome,
+  validateCrewTopology,
+  withBuildersPlaced,
+} from "./crewHome.ts";
+import { crewFromAsk } from "./crewTemplates.ts";
 import { hqOffer } from "./hqOffers.ts";
 import { leaseMayBeOf } from "./hqChanges.ts";
 import { KeyLinkDown, readLinkUp } from "./mateLink.ts";
@@ -534,4 +541,36 @@ it("SH11: OpenCode stands in for a person's sign-in only on a model key they set
     standsInForSignIn(free, chosen),
     standsInForSignIn(keyed, null),
   ]).toEqual([false, false, true, true]);
+});
+
+// witness: packages/shared/src/crewHome.ts | if (!unplaced(member)) return member; → return member;
+it("SH+1: A crew drafted before the Mate's dev services are read keeps every crewmate, and its builder is placed on the only dev service, sharing the database it reaches, before Apply admits it; breaks: a crew card pressed on a Mate with a new dev service saves nobody, or a builder starts with nowhere for its copy", () => {
+  const drafted = crewFromAsk({
+    crew: "crew",
+    devHosts: [],
+    seats: [
+      { name: "Lead", kind: "lead", part: "Plans the work." },
+      { name: "Builder", kind: "writer", part: "Builds the app." },
+      { name: "Reviewer", kind: "reader", part: "Reviews the work." },
+    ],
+  });
+  const saved = parseCrewHome("crew", renderCrewHome(drafted));
+  const read = saved.definition!;
+  const project = { devHosts: ["appdev"], databaseHosts: ["appdev"] };
+  const placed = withBuildersPlaced(read, project);
+  expect({
+    saved: saved.issues,
+    unplaced: validateCrewTopology(read, project).map((issue) => [issue.code, issue.handle]),
+    placed: placed.members.map((member) => [member.handle, member.host, member.database]),
+    admitted: validateCrewTopology(placed, project),
+  }).toEqual({
+    saved: [],
+    unplaced: [["host-missing", "builder"]],
+    placed: [
+      ["lead", undefined, undefined],
+      ["builder", "appdev", "shared"],
+      ["reviewer", undefined, undefined],
+    ],
+    admitted: [],
+  });
 });

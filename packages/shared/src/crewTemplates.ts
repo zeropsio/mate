@@ -3,10 +3,12 @@
  * lead and two builders* (the lead, two builders), the empty crew *Add
  * someone yourself* begins from, the crew the Mate proposed from the goal
  * (*Let Fen suggest a crew*) and the one it set up in its conversation (a
- * `crew-ask`). Each is a definition that parses and validates as it is, so
- * the setup opens on a crew that could start — a builder on a service with a
- * database shares it — and the person names each crewmate and writes what it
- * is responsible for there.
+ * `crew-ask`). Each is placed as `withBuildersPlaced` places a crew's
+ * builders — on the dev services in turn, else the first pool, sharing a
+ * service's database — so on a Mate whose services are read the setup opens on
+ * a crew that could start. Built before they are read, its builders are saved
+ * with nowhere for their copy and placed when the crew starts. The person
+ * names each crewmate and writes what it is responsible for there.
  *
  * A job is written to its crewmate, and its first sentence is what the Crew
  * tab's row says while the crewmate is on nothing: each opens with the line
@@ -19,23 +21,18 @@ import type { CrewMemberKind, CrewProposal } from "@t3tools/contracts";
 import type { MateTintId } from "./brand.ts";
 import {
   parseBrief,
-  withSharedDatabase,
+  withBuildersPlaced,
   type CrewDefinition,
   type CrewMemberSpec,
+  type CrewPlaces,
 } from "./crewHome.ts";
 
 export type CrewTemplateId = "lead-and-builders" | "empty";
 
-export interface CrewTemplateInput {
+/** Where the builders work (`withBuildersPlaced`), and the Mate's own tint, which no crewmate takes. */
+export interface CrewTemplateInput extends CrewPlaces {
   readonly template: CrewTemplateId;
   readonly crew: string;
-  /** The Mate's dev services; builders take them in turn. */
-  readonly devHosts: ReadonlyArray<string>;
-  /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
-  readonly databaseHosts?: ReadonlyArray<string>;
-  /** Each builder takes its own copy from the first pool when there is no dev service. */
-  readonly pools?: ReadonlyArray<string>;
-  /** The Mate's own tint, which no crewmate takes. */
   readonly mateTint?: MateTintId;
 }
 
@@ -105,17 +102,8 @@ const seatsOf = (template: CrewTemplateId): ReadonlyArray<Seat> => {
 export const crewFromTemplate = (input: CrewTemplateInput): CrewDefinition =>
   crewOf(seatsOf(input.template), input);
 
-export interface CrewFromProposalInput {
+export interface CrewFromProposalInput extends Omit<CrewTemplateInput, "template"> {
   readonly proposal: CrewProposal;
-  readonly crew: string;
-  /** The Mate's dev services; builders take them in turn. */
-  readonly devHosts: ReadonlyArray<string>;
-  /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
-  readonly databaseHosts?: ReadonlyArray<string>;
-  /** Each builder takes its own copy from the first pool when there is no dev service. */
-  readonly pools?: ReadonlyArray<string>;
-  /** The Mate's own tint, which no crewmate takes. */
-  readonly mateTint?: MateTintId;
 }
 
 /** The job past its first line: what a lead or a builder is told, as the starting crew's. */
@@ -194,41 +182,31 @@ export const crewFromProposal = ({ proposal, ...input }: CrewFromProposalInput):
 
 const crewOf = (
   seats: ReadonlyArray<Seat>,
-  input: Pick<CrewTemplateInput, "crew" | "devHosts" | "pools" | "databaseHosts" | "mateTint">,
+  input: Omit<CrewTemplateInput, "template">,
 ): CrewDefinition => {
   const tints = CREW_TINTS.filter((tint) => tint !== input.mateTint);
-  let writers = 0;
-  const members = seats.map((seat, index): CrewMemberSpec => {
-    const host =
-      seat.kind === "writer" && input.devHosts.length > 0
-        ? input.devHosts[writers++ % input.devHosts.length]
-        : undefined;
-    const pool = seat.kind === "writer" && host === undefined ? input.pools?.[0] : undefined;
-    return {
-      handle: seat.handle,
-      displayName: seat.displayName,
-      kind: seat.kind,
-      readOnly: seat.kind !== "writer",
-      tint: tints[index % tints.length]!,
-      ...(host ? { host } : {}),
-      ...(pool ? { pool } : {}),
-      restartAfterMerge: false,
-      afterLandRestart: false,
-      ...(seat.login === undefined ? {} : { login: seat.login }),
-      ...(seat.model === undefined ? {} : { model: seat.model }),
-      ...(seat.effort === undefined ? {} : { effort: seat.effort }),
-      env: {},
-      migrations: [],
-      job: seat.job,
-    };
-  });
-  return withSharedDatabase(
+  const members = seats.map((seat, index): CrewMemberSpec => ({
+    handle: seat.handle,
+    displayName: seat.displayName,
+    kind: seat.kind,
+    readOnly: seat.kind !== "writer",
+    tint: tints[index % tints.length]!,
+    restartAfterMerge: false,
+    afterLandRestart: false,
+    ...(seat.login === undefined ? {} : { login: seat.login }),
+    ...(seat.model === undefined ? {} : { model: seat.model }),
+    ...(seat.effort === undefined ? {} : { effort: seat.effort }),
+    env: {},
+    migrations: [],
+    job: seat.job,
+  }));
+  return withBuildersPlaced(
     {
       crew: input.crew,
       name: "Crew",
       brief: parseBrief("New brief", CREW_BRIEF_TEMPLATE),
       members,
     },
-    input.databaseHosts ?? [],
+    input,
   );
 };

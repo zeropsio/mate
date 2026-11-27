@@ -6,9 +6,11 @@
  * becomes a row of the Mate proposing, with Cancel, and the crew it proposes
  * fills the rows to edit — or from *Start with a lead and two builders*, or
  * *Add someone yourself*. Once drafted, a row per crewmate exactly like the
- * tab's, each opening its job. *Start the crew* makes each builder its own
- * copy of the Mate's code, and each row says how that goes, until the crew
- * stands and the view becomes the tab.
+ * tab's, each opening its job. *Start the crew* places each builder with
+ * nowhere for its copy on the Mate's dev services as last read, or its pool
+ * (`withBuildersPlaced`): a crew can be drafted before they are read. It then
+ * makes each builder its own copy of the Mate's code, and each row says how
+ * that goes, until the crew stands and the view becomes the tab.
  *
  * The draft is kept until the crew starts or the person drops it: the goal
  * for this account (`useCrewSetupDraft`), the picks in the Mate's crew home
@@ -46,7 +48,7 @@ import {
   CREW_BRIEF_FILE,
   CREW_HOME_FILE,
   renderCrewHome,
-  withSharedDatabase,
+  withBuildersPlaced,
   type CrewDefinition,
   type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
@@ -191,7 +193,9 @@ export function CrewSetup(props: CrewSetupProps) {
   };
 
   // A crew the Mate set up in its conversation fills the setup in once it is read, as its proposal
-  // does: the goal and the rows, over a draft here — its card's press asked for it.
+  // does: the goal and the rows, over a draft here — its card's press asked for it. It fills in at
+  // once, on the dev services as the crew last read them; opening the tab reads them again only
+  // after, so a builder may have nowhere for its copy yet: it keeps its row, and Start places it.
   const filledIn = useRef<string | null>(null);
   const { proposed } = props;
   useEffect(() => {
@@ -214,14 +218,15 @@ export function CrewSetup(props: CrewSetupProps) {
   };
 
   /**
-   * Saves the goal as written and each builder on a service with a database sharing it (one
-   * added by hand, or whose service was read since), then applies. A refusal stays beside the
-   * press until it is pressed again.
+   * Saves the goal as written and each builder placed on the services as read now — one with
+   * nowhere for its copy, drafted before they were read, and one on a service with a database
+   * sharing it (added by hand, or whose service was read since) — then applies. A refusal stays
+   * beside the press until it is pressed again.
    */
   const start = async () => {
     if (definition === null) return;
     setStartFailure(null);
-    const declared = withSharedDatabase(definition, databaseHosts);
+    const declared = withBuildersPlaced(definition, hostsOf);
     const next = draft.goal === null ? declared : withGoal(declared);
     const started =
       (next === definition || (await home.save(next, [CREW_HOME_FILE, CREW_BRIEF_FILE]))) &&
