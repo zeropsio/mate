@@ -14,10 +14,10 @@ import {
   appProjectName,
   mateTier,
   recipeTierServices,
+  type BirthAgent,
   type BirthPlacement,
   type BirthIntent,
   type RecipeRuntime,
-  type ZeropsAgentType,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -57,8 +57,8 @@ export interface NewProjectAsk {
   readonly botName: string;
   readonly face: ZeropsMateFace;
   readonly locationId: string | null;
-  /** Empty for every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`). */
-  readonly agents: ReadonlyArray<ZeropsAgentType>;
+  /** Empty for every agent: an empty selection omits `ZCP_AGENTS`. */
+  readonly agents: ReadonlyArray<BirthAgent>;
   /**
    * The organization's Chief (`chief.ts`): its project tagged a Chief's, for an Owner or Admin to
    * mark. Drawn in no group: the menu's top row shows it coming up instead.

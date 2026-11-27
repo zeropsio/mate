@@ -25,26 +25,23 @@
  * @module agentSelection
  */
 
-import {
-  ZEROPS_AGENT_TYPE_CANONICAL_ORDER,
-  agentTypeToEnvSuffix,
-  type ZeropsAgentType,
-} from "./newProject.ts";
+import { BirthAgent } from "./birthIntent.ts";
 
 /** The env key zcp writes when an agent's login verifies. */
 const OAUTH_FLAG_PREFIX = "ZCP_AGENT_OAUTH_";
 
+/** Mirrors the GUI's `agentTypeToEnvSuffix`: uppercase, hyphens to underscores. */
+const agentTypeToEnvSuffix = (agentType: BirthAgent): string =>
+  agentType.toUpperCase().replace(/-/g, "_");
+
 /** Every agent's sign-in flag key: what a read of a container's agents asks for, and nothing else. */
-export const AGENT_OAUTH_FLAG_KEYS: ReadonlyArray<string> = ZEROPS_AGENT_TYPE_CANONICAL_ORDER.map(
+export const AGENT_OAUTH_FLAG_KEYS: ReadonlyArray<string> = BirthAgent.literals.map(
   (agentType) => `${OAUTH_FLAG_PREFIX}${agentTypeToEnvSuffix(agentType)}`,
 );
 
 /** Suffix back to agent type, derived from the one forward mapping so they cannot drift. */
 const AGENT_BY_SUFFIX = new Map(
-  ZEROPS_AGENT_TYPE_CANONICAL_ORDER.map((agentType) => [
-    agentTypeToEnvSuffix(agentType),
-    agentType,
-  ]),
+  BirthAgent.literals.map((agentType) => [agentTypeToEnvSuffix(agentType), agentType]),
 );
 
 /**
@@ -67,20 +64,20 @@ function readsAsOn(value: string): boolean {
  */
 export function agentsFromOAuthFlags(
   records: ReadonlyArray<{ readonly key: string; readonly content: string }>,
-): ReadonlyArray<ZeropsAgentType> {
-  const authorized = new Set<ZeropsAgentType>();
+): ReadonlyArray<BirthAgent> {
+  const authorized = new Set<BirthAgent>();
   for (const { key, content } of records) {
     if (!key.startsWith(OAUTH_FLAG_PREFIX) || !readsAsOn(content)) continue;
     const agentType = AGENT_BY_SUFFIX.get(key.slice(OAUTH_FLAG_PREFIX.length));
     if (agentType !== undefined) authorized.add(agentType);
   }
-  return ZEROPS_AGENT_TYPE_CANONICAL_ORDER.filter((agentType) => authorized.has(agentType));
+  return BirthAgent.literals.filter((agentType) => authorized.has(agentType));
 }
 
 /** What a group's environments have authorized between them, in canonical order. */
 export function unionAgents(
-  perEnvironment: ReadonlyArray<ReadonlyArray<ZeropsAgentType>>,
-): ReadonlyArray<ZeropsAgentType> {
+  perEnvironment: ReadonlyArray<ReadonlyArray<BirthAgent>>,
+): ReadonlyArray<BirthAgent> {
   const all = new Set(perEnvironment.flat());
-  return ZEROPS_AGENT_TYPE_CANONICAL_ORDER.filter((agentType) => all.has(agentType));
+  return BirthAgent.literals.filter((agentType) => all.has(agentType));
 }

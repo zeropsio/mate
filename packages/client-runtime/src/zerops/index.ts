@@ -34,7 +34,7 @@ export {
   type ZeropsStorageAdapter,
 } from "./session.ts";
 
-export { type ZeropsAgentType, type ZeropsCorePackage } from "./newProject.ts";
+export type { ZeropsCorePackage } from "./newProject.ts";
 export {
   changedMateFace,
   deriveCanonicalGroups,
@@ -85,7 +85,7 @@ export {
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,
 } from "./environmentSummary.ts";
-export type { BirthIntent } from "./birthIntent.ts";
+export type { BirthAgent, BirthIntent } from "./birthIntent.ts";
 export { assignCandidateMateTints, mateShapeOf, newMateTint } from "./mateTints.ts";
 export {
   resolvePrimaryConversation,

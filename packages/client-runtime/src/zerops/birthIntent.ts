@@ -2,6 +2,16 @@ import { RecipeTier } from "@t3tools/shared/hqRecipe";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+/** The agents HQ accepts in a birth intent, in the container's presentation order. */
+export const BirthAgent = Schema.Literals([
+  "claude-code",
+  "codex",
+  "antigravity",
+  "grok",
+  "cursor",
+]);
+export type BirthAgent = typeof BirthAgent.Type;
+
 /** The non-secret inputs HQ retains so another device can continue this birth. */
 const BirthIntentSchema = Schema.Struct({
   projectName: Schema.String,
@@ -14,7 +24,7 @@ const BirthIntentSchema = Schema.Struct({
       tier: RecipeTier,
     }),
   ]),
-  agents: Schema.Array(Schema.Literals(["claude-code", "codex", "antigravity", "grok", "cursor"])),
+  agents: Schema.Array(BirthAgent),
   standUp: Schema.Boolean,
   automated: Schema.Boolean,
   placement: Schema.Struct({

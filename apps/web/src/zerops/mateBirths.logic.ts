@@ -7,9 +7,9 @@ import {
   formatMateFace,
   newMateTint,
   projectNameInApp,
+  type BirthAgent,
   type BirthIntent,
   type mateBirthTier,
-  type ZeropsAgentType,
   type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -87,7 +87,7 @@ export function addedMateBirth(input: {
   >;
   readonly projectName: string;
   readonly displayName: string;
-  readonly agents: ReadonlyArray<ZeropsAgentType>;
+  readonly agents: ReadonlyArray<BirthAgent>;
   readonly userRoles: ReadonlyArray<ProjectGrant>;
   /** The tier its import brings beside its container (`mateBirthTier`). */
   readonly tier: PlannedTier | undefined;

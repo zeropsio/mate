@@ -9,7 +9,7 @@
  */
 import { RegistryContext } from "@effect/atom-react";
 import { servicesAgents } from "@t3tools/client-runtime/data";
-import { unionAgents, type ZeropsAgentType } from "@t3tools/client-runtime/zerops";
+import { unionAgents, type BirthAgent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { useCallback, useContext } from "react";
 
@@ -17,7 +17,7 @@ import { useAccountDataOptional } from "./ZeropsAccountData";
 
 export type ReadGroupAgents = (
   environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>,
-) => Promise<ReadonlyArray<ZeropsAgentType>>;
+) => Promise<ReadonlyArray<BirthAgent>>;
 
 export function useReadGroupAgents(): ReadGroupAgents {
   const registry = useContext(RegistryContext);

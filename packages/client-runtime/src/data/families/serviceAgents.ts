@@ -11,12 +11,12 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { AGENT_OAUTH_FLAG_KEYS, agentsFromOAuthFlags } from "../../zerops/agentSelection.ts";
-import type { ZeropsAgentType } from "../../zerops/newProject.ts";
+import type { BirthAgent } from "../../zerops/birthIntent.ts";
 import type { ScopeKey } from "../model.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-type ServiceAgentsValue = ReadonlyArray<ZeropsAgentType>;
+type ServiceAgentsValue = ReadonlyArray<BirthAgent>;
 
 declare module "../model.ts" {
   interface FamilyValues {

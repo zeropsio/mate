@@ -6,11 +6,7 @@
  * until every read has settled, or a second and a half has passed, the answer is not settled, so a
  * sign-in never paints its cards in one order and then another.
  */
-import {
-  hasMate,
-  readZeropsMembership,
-  type ZeropsAgentType,
-} from "@t3tools/client-runtime/zerops";
+import { hasMate, readZeropsMembership, type BirthAgent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { servicesAgents, type SampledRead } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -25,9 +21,7 @@ import { useAccountDataOptional, useProjection } from "./ZeropsAccountData";
 /** How long a sign-in waits for the answer before it offers the agents in their own order. */
 const USUAL_AGENT_WAIT_MS = 1_500;
 
-const NOT_READ = Atom.make<Readonly<Record<string, SampledRead<ReadonlyArray<ZeropsAgentType>>>>>(
-  {},
-);
+const NOT_READ = Atom.make<Readonly<Record<string, SampledRead<ReadonlyArray<BirthAgent>>>>>({});
 
 /** The project's other Mates: those sharing its group, each with a container to read. */
 function otherMatesOf(
