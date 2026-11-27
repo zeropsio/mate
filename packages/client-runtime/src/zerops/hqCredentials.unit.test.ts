@@ -385,7 +385,7 @@ it("ZV103: A Git password is issued, listed and revoked through the person's ses
 });
 
 /** HQ over a literal `fetch` that keeps what each request sent: its `METHOD path`, its bearer, its body. */
-function sentTo() {
+function sentTo(token = "person-token") {
   const sent: Array<{
     readonly call: string;
     readonly bearer: string | null;
@@ -395,7 +395,7 @@ function sentTo() {
     address: ADDRESS,
     orgId: ORG,
     openSocket: noSocket,
-    accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
+    accessToken: async () => ({ token, expiresAt: "2099-01-01T00:00:00.000Z" }),
     fetch: async (url, init) => {
       const path = new URL(url).pathname;
       sent.push({
@@ -405,6 +405,7 @@ function sentTo() {
       });
       if (path === "/api/door")
         return answer(200, { session: "session-1", expiresAt: "2099-01-01T00:00:00.000Z" });
+      if (path === "/api/members/u2/take-over") return answer(200, { items: [], otherTokens: 0 });
       return answer(201, {});
     },
   });
@@ -423,13 +424,50 @@ it("ZV168: A take-over replace carries the person's Zerops access token beside H
   ]);
 });
 
-// witness: packages/client-runtime/src/zerops/hq/client.ts | body: JSON.stringify({ list }), → body: JSON.stringify(await withAccess({ list })),
-it("ZV169: A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for", async () => {
-  const { api, sent } = sentTo();
-  await api.takeOverList("u2", []).catch(() => undefined);
-  expect(sent.filter(({ call }) => call !== "POST /api/door")).toEqual([
-    { call: "POST /api/members/u2/take-over", bearer: "Bearer session-1", body: '{"list":[]}' },
-  ]);
+// witness: packages/client-runtime/src/zerops/hq/client.ts | const body = JSON.stringify(await withAccess({ list })); → const body = JSON.stringify({ list });
+it("ZV169: A take-over list read carries the person's Zerops list and access token under HQ's session; breaks: either HQ version cannot list the member's tokens", async () => {
+  const cases = [
+    { list: [], token: "person-token", body: { list: [], accessToken: "person-token" } },
+    {
+      list: [{ id: "key-1", name: "A café key", createdByUser: "u2" }],
+      token: "another-token",
+      body: {
+        list: [{ id: "key-1", name: "A café key", createdByUser: "u2" }],
+        accessToken: "another-token",
+      },
+    },
+  ] as const;
+  for (const { list, token, body } of cases) {
+    const { api, sent } = sentTo(token);
+    expect(await api.takeOverList("u2", list)).toEqual({ items: [], otherTokens: 0 });
+    expect(sent.filter(({ call }) => call !== "POST /api/door")).toEqual([
+      {
+        call: "POST /api/members/u2/take-over",
+        bearer: "Bearer session-1",
+        body: JSON.stringify(body),
+      },
+    ]);
+  }
+});
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts | if (new TextEncoder().encode(body).byteLength > TAKE_OVER_MAX_BYTES) { → if (new TextEncoder().encode(body).byteLength > TAKE_OVER_MAX_BYTES + 1) {
+it("ZV213: A take-over list body of at most 1 MiB is sent and a larger UTF-8 body is refused before any HQ request; breaks: HQ receives a request it cannot accept", async () => {
+  const name = "a".repeat(1_048_514);
+  const within = sentTo();
+  expect(await within.api.takeOverList("u2", [{ id: "1", name: `${name}é` }])).toEqual({
+    items: [],
+    otherTokens: 0,
+  });
+  const over = sentTo();
+  const refusal: unknown = await over.api
+    .takeOverList("u2", [{ id: "1", name: `${name}€` }])
+    .catch((cause: unknown) => cause);
+  expect(refusal).toMatchObject({
+    kind: "refused",
+    code: "too_large",
+    status: 413,
+  });
+  expect(over.sent).toEqual([]);
 });
 
 /** One press through the real operations and HQ's executor over `sentTo`: the requests it sent. */

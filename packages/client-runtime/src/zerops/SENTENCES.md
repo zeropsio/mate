@@ -1,4 +1,4 @@
-next: ZV213
+next: ZV214
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -139,7 +139,7 @@ next: ZV213
 - ZV166 — The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running
 - ZV167 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read
 - ZV168 — A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted
-- ZV169 — A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for
+- ZV169 — A take-over list read carries the person's Zerops list and access token under HQ's session; breaks: either HQ version cannot list the member's tokens
 - ZV170 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
 - ZV171 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
 - ZV172 — A stopped Mate's Start is one PUT that starts its own container's service, answered by the platform's process; breaks: Start asks the platform to start the project instead of the Mate's container
@@ -177,3 +177,4 @@ next: ZV213
 - ZV209 — A newly accepted addition waits for its own result when the change stream still holds the previous one; breaks: an old failure is reported for the new attempt.
 - ZV210 — A page a run publishes again under its title shows once, as its newest publish, where that publish stands; breaks: a corrected page shows twice, or its first draft stands in place of the correction
 - ZV211 — Rows read in above where a conversation began when it was shown, its first message and never a day's seam that moves up with its day, are its history; breaks: earlier turns read in open their cards as if they arrived, drawn over the rows the person reads
+- ZV213 — A take-over list body of at most 1 MiB is sent and a larger UTF-8 body is refused before any HQ request; breaks: HQ receives a request it cannot accept
