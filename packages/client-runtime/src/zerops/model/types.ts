@@ -482,7 +482,6 @@ export interface ZeropsSessionView {
   readonly phase?: string;
   /** `phase === "idle"` only. */
   readonly idleScenario?: string;
-  readonly serviceCount?: number;
   /** The open (or latest) bootstrap session, client-derived — `envelope.bootstrap` is nil on the wire. */
   readonly bootstrap?: {
     readonly key: string;

@@ -64,6 +64,12 @@ export interface AcpToolCallState {
   readonly kind?: string;
   readonly title?: string;
   readonly status?: "pending" | "inProgress" | "completed" | "failed";
+  /**
+   * Its permission ask was answered with one of its reject options: the call
+   * was turned down, whatever its agent reports about it afterwards (Cursor
+   * reports a rejected command completed, measured on cursor-agent 2026.10.22).
+   */
+  readonly declined?: true;
   readonly command?: string;
   readonly detail?: string;
   readonly data: Record<string, unknown>;
@@ -625,6 +631,7 @@ export function mergeToolCallState(
     ...(kind ? { kind } : {}),
     ...(title ? { title } : {}),
     ...(status ? { status } : {}),
+    ...(next.declined || previous?.declined ? { declined: true as const } : {}),
     ...(command ? { command } : {}),
     ...(detail ? { detail } : {}),
     data: {
@@ -712,6 +719,21 @@ export function decideToolCallUpdateEmission(
     return { emit: true, skippedSinceEmit: 0 };
   }
   return { emit: false, skippedSinceEmit: skippedSinceEmit + 1 };
+}
+
+/**
+ * Whether an answer to a permission request turns its call down: it picks one
+ * of the request's own reject options. A cancelled ask, an allow and an option
+ * the request never offered decline nothing.
+ */
+export function permissionAnswerDeclines(
+  request: EffectAcpSchema.RequestPermissionRequest,
+  response: EffectAcpSchema.RequestPermissionResponse,
+): boolean {
+  if (response.outcome.outcome !== "selected") return false;
+  const { optionId } = response.outcome;
+  const kind = request.options.find((option) => option.optionId === optionId)?.kind;
+  return kind === "reject_once" || kind === "reject_always";
 }
 
 export function parsePermissionRequest(

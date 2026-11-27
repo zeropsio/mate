@@ -132,7 +132,10 @@ const HQ_STOPPED = new Map<string, string>([
   [ACCESS_LOST, ACCESS_LOST_WORDS],
   [ZEROPS_NOT_ANSWERING, ZEROPS_NOT_ANSWERING_WORDS],
   ["project_not_gone", "Zerops still lists the project after its deletion ended."],
-  ["token_delete_refused", "Only an organization owner can delete this production's deploy token."],
+  [
+    "token_delete_refused",
+    "Only an organization owner can delete this environment's deploy token.",
+  ],
   [
     "project_write_in_flight",
     "An earlier change to the project has not settled yet. Try again in a moment.",
