@@ -4,19 +4,11 @@
  */
 import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { devServersOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import { classicCopyRead } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useMemo } from "react";
-import { useAtomValue } from "@effect/atom-react";
-import { scopedThreadKey, parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { AsyncResult, Atom } from "effect/reactivity";
-import * as Option from "effect/Option";
 import type { HqReviewBuild } from "@t3tools/shared/hqChanges";
-import { useProjectSitesOf } from "../projectPartsShown";
-import { useHqMainChats } from "~/zerops/useMenuMateReadings";
 import { useMatesLeases } from "~/zerops/useMatesLeases";
-import { useZeropsLifecycle } from "~/zerops/useZeropsFeeds";
 import { useHqAppReleases } from "~/zerops/useHqAppDetail";
-import { vcsStatus } from "~/state/workspace";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { stageDeploysMerges } from "./ZeropsReview.logic";
@@ -34,8 +26,6 @@ export function useGroupName(groupId: string): string | undefined {
     [groupId, listing],
   );
 }
-
-const NO_BRANCH = Atom.make<string | null | undefined>(undefined);
 
 /** The part's app address and the open branch's draft. */
 export function useMatePreviews(
@@ -55,36 +45,13 @@ export function useMatePreviews(
     .repos.get(appId)
     ?.find((entry) => entry.name === repository);
   const repositoryRemote = repo?.remote?.url ?? repo?.follows;
-  const sites = useProjectSitesOf(mateProjectId);
-  const mainChat = useHqMainChats()(mateProjectId);
-  const threadKey =
-    sites?.mates.find((mate) => mate.candidate.project.id === mateProjectId)?.threadKey ??
-    (mainChat === undefined ? undefined : scopedThreadKey(mainChat));
-  const leaseReading = useMatesLeases([{ projectId: mateProjectId, threadKey }])[mateProjectId];
-  const leases = leaseReading?.leases;
-  const poolPairs = leaseReading?.poolPairs;
-  const thread = threadKey === undefined ? null : parseScopedThreadKey(threadKey);
+  const copies = useMatesLeases([{ projectId: mateProjectId }])[mateProjectId];
+  const leases = copies?.leases;
+  const poolPairs = copies?.poolPairs;
   const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
-  const pooled = (row?.services?.pools?.length ?? 0) > 0;
-  const lifecycle = useZeropsLifecycle(
-    pooled ? null : (thread?.environmentId ?? null),
-    pooled ? null : (thread?.threadId ?? null),
-  );
-  const classicServers = devServersOf(repository, lifecycle);
-  const classicAtom = useMemo(() => {
-    if (thread === null || pooled) return NO_BRANCH;
-    return Atom.make((get): string | null | undefined => {
-      const status = get(
-        vcsStatus({
-          environmentId: thread.environmentId,
-          input: { cwd: `/var/www/${repository}` },
-        }),
-      );
-      const value = Option.getOrUndefined(AsyncResult.value(status));
-      return value === undefined ? undefined : value.isRepo ? value.refName : null;
-    });
-  }, [thread?.environmentId, pooled, repository]);
-  const classicBranch = useAtomValue(classicAtom);
+  const classic = classicCopyRead(repository, copies?.copies);
+  const classicServers = classic.devServers;
+  const classicBranch = classic.branch;
   return useMemo(
     () =>
       tryItTargets({

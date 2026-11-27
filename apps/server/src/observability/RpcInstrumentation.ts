@@ -77,6 +77,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.zeropsLifecycleGet]: "zerops",
   [WS_METHODS.zeropsStandUpRetry]: "zerops",
   [WS_METHODS.subscribeZeropsLifecycle]: "zerops",
+  [WS_METHODS.subscribeZeropsMateCopies]: "zerops",
   [WS_METHODS.subscribeZeropsAgentAuth]: "zerops",
   [WS_METHODS.subscribeZeropsHealth]: "zerops",
   [WS_METHODS.subscribeZeropsStandUpVerdict]: "zerops",

@@ -16,7 +16,7 @@ import { useNowMs } from "~/zerops/useNowMs";
  * Mate's application at HQ (`/git/<appId>/<hostname>.git`), and its checkout
  * is `/var/www/{hostname}` — the path zcp mounts every sibling service at. A part
  * migrated to a dev pool lists no checkout: its stage is the pool's pair's, as the
- * thread's last envelope says (`useThreadPoolPairs`); a tab that lists nothing then says the
+ * Mate's copies say (`useThreadPoolPairs`); a tab that lists nothing then says the
  * code lives in the pool, which the chat reaches by taking a workspace (`gitEmptyLine`). A thread
  * whose agent leased a pool container reads that lease's repository and every
  * other of its repository and branch zcp holds, alone (`threadLeases`,
@@ -59,7 +59,7 @@ import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
 
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
-import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
+import { useZeropsMateCopies } from "../../zerops/useZeropsFeeds";
 import { useGitRemoteReads } from "../../zerops/useZeropsGitRemoteProbe";
 import { useZeropsGroupRecipe } from "../../zerops/useZeropsGroupRecipe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
@@ -231,15 +231,10 @@ export interface ZeropsGitTabProps {
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
   const environmentId = props.threadRef?.environmentId ?? null;
-  const threadId = props.threadRef?.threadId ?? null;
   const topology = useProjectTopology(environmentId);
-  const leases = useThreadLeases(
-    environmentId,
-    threadId,
-    useThreadShell(props.threadRef)?.lease ?? null,
-  );
-  const poolPairs = useThreadPoolPairs(leases.length === 0 ? environmentId : null, threadId);
-  const lifecycle = useZeropsLifecycle(leases.length === 0 ? environmentId : null, threadId);
+  const leases = useThreadLeases(environmentId, useThreadShell(props.threadRef)?.lease ?? null);
+  const poolPairs = useThreadPoolPairs(leases.length === 0 ? environmentId : null);
+  const lifecycle = useZeropsMateCopies(leases.length === 0 ? environmentId : null);
   // The Mate tier on `main` says which dev services share a pair's code (one repository per pair).
   const recipe = useZeropsGroupRecipe({ appId: props.appId, tier: "mate", enabled: true });
   const tierYaml = recipe.tier?.yaml;

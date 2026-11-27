@@ -37,7 +37,7 @@
 import type {
   ZeropsDevServer,
   ZeropsLease,
-  ZeropsLifecycle,
+  ZeropsMateCopies,
   ZeropsStandIn,
   ZeropsStateEnvelope,
 } from "@t3tools/contracts";
@@ -563,29 +563,31 @@ function parseZeropsProductionLaunch(entry: string): ZeropsProductionLink {
  */
 const productionOf = (
   hostname: string,
-  lifecycle: Known<ZeropsLifecycle> | undefined,
+  lifecycle: Known<ZeropsMateCopies> | undefined,
 ): ReadonlyArray<ZeropsProductionLink> => {
   if (lifecycle?.state !== "known") return [];
-  const snapshot = lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname);
+  const snapshot = lifecycle.value.services?.find((entry) => entry.hostname === hostname);
   return (snapshot?.feedsProduction ?? []).map(parseZeropsProductionLaunch);
 };
 
 /** What zcp holds a dev service in place for, as its snapshot says; none while the lifecycle is not known. */
 export const standInOf = (
   hostname: string,
-  lifecycle: Known<ZeropsLifecycle> | undefined,
+  lifecycle: Known<ZeropsMateCopies> | undefined,
 ): ZeropsStandIn | undefined =>
   lifecycle?.state === "known"
-    ? lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname)?.standIn
+    ? lifecycle.value.services?.find((entry) => entry.hostname === hostname)?.standIn
     : undefined;
 
 /**
- * The services a known lifecycle's envelope marks as a repository's stand-in (`standIn`), by
+ * The services a known Mate copy feed marks as a repository's stand-in (`standIn`), by
  * hostname; none while it is not known.
  */
-export const standInsOf = (lifecycle: Known<ZeropsLifecycle> | undefined): ReadonlyArray<string> =>
+export const standInsOf = (
+  lifecycle: Known<ZeropsMateCopies> | undefined,
+): ReadonlyArray<string> =>
   lifecycle?.state === "known"
-    ? (lifecycle.value.envelope?.services ?? []).flatMap((entry) =>
+    ? (lifecycle.value.services ?? []).flatMap((entry) =>
         entry.standIn === undefined ? [] : [entry.hostname],
       )
     : [];
@@ -593,41 +595,60 @@ export const standInsOf = (lifecycle: Known<ZeropsLifecycle> | undefined): Reado
 /** The dev servers zcp last read on a service; none while the lifecycle is not known. */
 export const devServersOf = (
   hostname: string,
-  lifecycle: Known<ZeropsLifecycle> | undefined,
+  lifecycle: Known<ZeropsMateCopies> | undefined,
 ): ReadonlyArray<ZeropsDevServer> | undefined =>
   lifecycle?.state === "known"
-    ? lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname)?.devServers
+    ? (lifecycle.value.devServices?.find((entry) => entry.hostname === hostname)?.devServers ??
+      lifecycle.value.services?.find((entry) => entry.hostname === hostname)?.devServers)
     : undefined;
 
 /**
- * The Mate's leases as one of its conversations' lifecycles last read them (`leases[]` on the
- * lifecycle's envelope); `undefined` while it is not read, or before that conversation made a
- * Zerops call: not read, never none.
+ * The Mate's leases as zcp last read them; `undefined` while unread, never none.
  */
 export const lifecycleLeases = (
-  lifecycle: Known<ZeropsLifecycle> | undefined,
+  lifecycle: Known<ZeropsMateCopies> | undefined,
 ): ReadonlyArray<ZeropsLease> | undefined =>
-  lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined;
+  lifecycle?.state === "known" ? lifecycle.value.leases : undefined;
 
 /**
  * The leases a thread bound to `lease` reads (`threadLeases`): every lease of its repository and
- * branch its lifecycle last read zcp holding, its own first; the bound one alone while the
- * lifecycle is not known.
+ * branch the Mate last read zcp holding, its own first; the bound one alone while the
+ * copy feed is not known.
  */
 export const threadLeasesOf = (
   lease: CheckoutLease | null | undefined,
-  lifecycle: Known<ZeropsLifecycle> | undefined,
+  lifecycle: Known<ZeropsMateCopies> | undefined,
 ): ReadonlyArray<CheckoutLease> =>
-  threadLeases(lease, lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined);
+  threadLeases(lease, lifecycle?.state === "known" ? lifecycle.value.leases : undefined);
 
 /**
- * The pairs a known lifecycle's envelope keys by a dev pool (`poolPairsIn`), stale or not; none
+ * The pairs a known Mate copy feed keys by a dev pool (`poolPairsIn`), stale or not; none
  * while it is not known.
  */
 export const poolPairsOf = (
-  lifecycle: Known<ZeropsLifecycle> | undefined,
+  lifecycle: Known<ZeropsMateCopies> | undefined,
 ): ReadonlyArray<PoolPair> =>
-  lifecycle?.state === "known" ? poolPairsIn(lifecycle.value.envelope?.services ?? []) : [];
+  lifecycle?.state === "known" ? poolPairsIn(lifecycle.value.services ?? []) : [];
+
+/** The copy observations consumed together by Sites and Review. */
+export const mateCopiesRead = (copies: Known<ZeropsMateCopies>) => ({
+  copies,
+  leases: lifecycleLeases(copies),
+  poolPairs: poolPairsOf(copies),
+  standIns: standInsOf(copies),
+});
+
+/** A classic copy's last branch and server observations; undefined means not read. */
+export const classicCopyRead = (hostname: string, copies: Known<ZeropsMateCopies> | undefined) => {
+  if (copies?.state !== "known") return { branch: undefined, devServers: undefined };
+  const classic = copies.value.devServices?.find((copy) => copy.hostname === hostname);
+  return {
+    branch: classic?.branch,
+    devServers:
+      classic?.devServers ??
+      copies.value.services?.find((service) => service.hostname === hostname)?.devServers,
+  };
+};
 
 /** The dev servers one envelope read on a lease, by alias; none when it did not read them. */
 export const leaseDevServersIn = (
@@ -646,7 +667,7 @@ export const leaseDevServersIn = (
  */
 export function buildZeropsServiceMap(
   topology: ZeropsTopologyView | undefined,
-  lifecycle?: Known<ZeropsLifecycle>,
+  lifecycle?: Known<ZeropsMateCopies>,
   runningTool?: string,
   crewPorts?: ZeropsCrewPortOwners,
   /** The Mate's chats, each with the lease it is bound to: a pool's workspace goes by its chat's title. */

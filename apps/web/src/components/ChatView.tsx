@@ -2260,14 +2260,9 @@ function ConversationView(props: ChatViewProps) {
   // A Mate's new terminal starts in its code checkout, never its bare workspace (`terminalStartCwd`).
   const mateLeases = useThreadLeases(
     activeProject ? environmentId : null,
-    activeThreadId,
     activeThread?.lease ?? null,
   );
-  const mateRepositories = useMateRepositories(
-    activeProject ? environmentId : null,
-    mateLeases,
-    activeThreadId,
-  );
+  const mateRepositories = useMateRepositories(activeProject ? environmentId : null, mateLeases);
   const terminalOpenCwd = activeProject
     ? terminalStartCwd({
         launchCwd: null,
@@ -3068,7 +3063,7 @@ function ConversationView(props: ChatViewProps) {
     },
     [activeThreadRef],
   );
-  const mateAddresses = useMateAddresses(activeThreadEnvironmentId, activeThreadId);
+  const mateAddresses = useMateAddresses(activeThreadEnvironmentId);
   // Browser opens its own view and nothing else: each public address opens
   // as its own tab only when a person picks it (the header's links, the view's list).
   const addBrowserSurface = useCallback(() => {

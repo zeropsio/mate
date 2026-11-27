@@ -2,6 +2,7 @@ import {
   ConversationId,
   type ItemLifecyclePayload,
   type SpiEvent,
+  type ZeropsCopyStatus,
   type ThreadId,
   type ThreadLease,
 } from "@t3tools/contracts";
@@ -10,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
@@ -21,13 +23,11 @@ import { applyToolCall } from "../../../spi/toolCall.ts";
 import type { LeaseChange } from "../../lease/leaseBinding.ts";
 import { ZEROPS_ENVELOPE_FENCE } from "../../zeropsEnvelope.ts";
 import * as ZeropsLifecycle from "../../ZeropsLifecycle.ts";
+import { parseZcpStatus } from "../../zeropsSetupSteps.ts";
 
 const THREAD = "thread-1" as ThreadId;
 const CONVERSATION = ConversationId.make("mate");
 const SESSION = providerThreadOf(CONVERSATION);
-/** The conversation the lifecycle reads a provider session's events on. */
-const OWNER = CONVERSATION as string as ThreadId;
-
 const envelopeJsonText = (phase: string) =>
   JSON.stringify({
     phase,
@@ -181,6 +181,8 @@ const withConversations = <A, E>(
     lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"],
     checkouts: () => Effect.Effect<ReadonlyArray<CheckoutTold>>,
   ) => Effect.Effect<A, E, never>,
+  copyChanges?: Stream.Stream<ZeropsCopyStatus | undefined>,
+  readCopies?: Effect.Effect<ZeropsCopyStatus | undefined>,
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -195,6 +197,8 @@ const withConversations = <A, E>(
       const lifecycle = yield* ZeropsLifecycle.make({
         toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
         repository,
+        ...(copyChanges === undefined ? {} : { copyChanges }),
+        ...(readCopies === undefined ? {} : { readCopies }),
         threadOwner: conversationOfThread,
         leaseBindings: Effect.map(Ref.get(records), (all) => ({
           bindings: Object.entries(all).map(
@@ -236,7 +240,7 @@ const acquireBy = (threadId: ThreadId, alias: string, held: ReadonlyArray<unknow
   threadId,
 });
 
-// witness: apps/server/src/zerops/ZeropsLifecycle.ts | : { envelope: previous.envelope } → : {}
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | ? previous.envelope === undefined → ? previous.envelope !== undefined
 it.effect(
   "CD51: A conversation's Zerops strip shows the newest envelope a zerops tool result carried, fenced or under a JSON envelope key, and a result that carries none or a corrupt one leaves the last envelope standing",
   () =>
@@ -246,7 +250,8 @@ it.effect(
           yield* lifecycle.ingest(claudeEvent({}));
           const state = yield* lifecycle.get(THREAD);
           expect(state.envelope?.phase).toBe("develop-active");
-          expect(state.envelope?.services[0]?.hostname).toBe("kanbandev");
+          expect((yield* lifecycle.copies).services?.[0]?.hostname).toBe("kanbandev");
+          expect(state.envelope).not.toHaveProperty("services");
           expect(state.recentTools.at(-1)?.toolName).toBe("zerops_workflow");
         }),
       );
@@ -345,7 +350,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsLifecycle.ts | return service.devServers !== undefined || devServers === undefined → return devServers === undefined
 it.effect(
-  "CD53: A service's dev servers last read stay on the strip through an envelope that did not read them, and a newer read replaces the whole list",
+  "CD53: A service's last read dev servers stay on the Mate through an envelope that did not read them, and a newer read replaces the whole list",
   () =>
     withLifecycle((lifecycle) =>
       Effect.gen(function* () {
@@ -369,8 +374,8 @@ it.effect(
               },
             }),
           });
-        const servers = Effect.map(lifecycle.get(THREAD), (state) =>
-          state.envelope?.services[0]?.devServers?.map((server) => [
+        const servers = Effect.map(lifecycle.copies, (state) =>
+          state.services?.[0]?.devServers?.map((server) => [
             server.name,
             server.status,
             server.readAt,
@@ -415,7 +420,7 @@ it.effect("CD54: A provider session's zerops tools are read on the conversation 
 
 // witness: apps/server/src/zerops/ZeropsLifecycle.ts | const previous = yield* load(threadId); → const previous = yield* loadOrEmpty(threadId);
 it.effect(
-  "CD55: A conversation's Zerops state, its leases' last activity and unsaved work included, is read back after a restart, and a call folded while its stored row cannot be read never writes an empty state over that row",
+  "CD55: A conversation's Zerops state and the Mate's leases' last activity and unsaved work are read back after a restart, and a call folded while its stored row cannot be read never writes an empty state over that row",
   () =>
     Effect.gen(function* () {
       yield* Effect.scoped(
@@ -459,7 +464,7 @@ it.effect(
             repository,
             threadOwner: conversationOfThread,
           });
-          expect((yield* restarted.get(OWNER)).envelope?.leases?.[0]).toMatchObject({
+          expect((yield* restarted.copies).leases?.[0]).toMatchObject({
             activity: first,
             unsaved,
           });
@@ -506,21 +511,19 @@ it.effect(
     }),
 );
 
-// witness: apps/server/src/zerops/ZeropsLifecycle.ts | state.envelope === undefined || leases === undefined || state.envelope.leases === leases → state.envelope === undefined || leases === undefined || state.envelope.leases !== undefined
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | if (envelope?.leases !== undefined) { → if (envelope?.leases !== undefined && threadId === event.threadId) {
 it.effect(
-  "CD56: Every conversation shows zcp's leases as the latest call read them, whichever conversation made it; a call that did not read them keeps the last read, and an empty read is none",
+  "CD56: The Mate shows zcp's leases as the latest call read them, whichever conversation made it; a call that did not read them keeps the last read, and an empty read is none",
   () =>
     Effect.gen(function* () {
       yield* withLifecycle((lifecycle) =>
         Effect.gen(function* () {
           yield* lifecycle.ingest(statusReading([lease("webpool-3")]));
           yield* lifecycle.ingest(statusReading(undefined));
-          const kept = (yield* lifecycle.get(OWNER)).envelope?.leases;
+          const kept = (yield* lifecycle.copies).leases;
           expect(kept?.map((one) => one.alias)).toEqual(["webpool-3"]);
           yield* lifecycle.ingest(statusReading([]));
-          expect((yield* lifecycle.get(OWNER)).envelope?.leases, "an empty read is none").toEqual(
-            [],
-          );
+          expect((yield* lifecycle.copies).leases, "an empty read is none").toEqual([]);
         }),
       );
 
@@ -536,8 +539,8 @@ it.effect(
           acquiredAt: options.acquiredAt,
         };
       };
-      const leasesOf = (lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"], name: string) =>
-        Effect.map(lifecycle.get(name as ThreadId), (state) => state.envelope?.leases);
+      const leasesOf = (lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"], _name: string) =>
+        Effect.map(lifecycle.copies, (state) => state.leases);
       const branchOf = (
         leases:
           | ReadonlyArray<{ readonly alias: string; readonly branch?: string | undefined }>
@@ -557,7 +560,7 @@ it.effect(
               }),
             );
             expect(branchOf(yield* leasesOf(lifecycle, "ada"))).toBe("feat-x");
-            const watching = yield* lifecycle.subscribe("ada" as ThreadId);
+            const watching = yield* lifecycle.subscribeCopies;
             const heard = yield* Stream.runHead(watching.changes).pipe(Effect.forkChild);
 
             // apipool-4 was released unseen and another branch took it; bob's call read so.
@@ -572,7 +575,7 @@ it.effect(
             expect(branchOf(yield* leasesOf(lifecycle, "ada"))).toBe("feat-y");
             const published = yield* Fiber.join(heard);
             expect(
-              branchOf(Option.getOrUndefined(published)?.envelope?.leases),
+              branchOf(Option.getOrUndefined(published)?.leases),
               "a conversation watching hears it",
             ).toBe("feat-y");
           }),
@@ -597,8 +600,8 @@ it.effect(
               readAt: "2026-10-23T12:00:00Z",
             },
           ];
-          const devServersOf = Effect.map(lifecycle.get(OWNER), (state) =>
-            state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+          const devServersOf = Effect.map(lifecycle.copies, (state) =>
+            state.leases?.find((one) => one.alias === "webpool-3"),
           );
           yield* lifecycle.ingest(
             statusReading([{ ...lease("webpool-3"), devServers: preview }, lease("webpool-4")]),
@@ -615,8 +618,8 @@ it.effect(
       yield* withLifecycle((lifecycle) =>
         Effect.gen(function* () {
           const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
-          const leaseOf = Effect.map(lifecycle.get(OWNER), (state) =>
-            state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+          const leaseOf = Effect.map(lifecycle.copies, (state) =>
+            state.leases?.find((one) => one.alias === "webpool-3"),
           );
           yield* lifecycle.ingest(
             leaseStatus([{ ...lease("webpool-3"), acquiredAt, activity: first, unsaved }]),
@@ -674,10 +677,8 @@ it.effect(
           ],
           ...(devServersReadAt === undefined ? {} : { devServersReadAt }),
         });
-        const shown = Effect.map(lifecycle.get(OWNER), (state) =>
-          state.envelope?.leases
-            ?.find((one) => one.alias === "webpool-3")
-            ?.devServers?.map((one) => one.url),
+        const shown = Effect.map(lifecycle.copies, (state) =>
+          state.leases?.find((one) => one.alias === "webpool-3")?.devServers?.map((one) => one.url),
         );
         yield* lifecycle.ingest(statusReading([readOf("https://b.app", "2026-10-27T10:00:00Z")]));
         yield* lifecycle.ingest(statusReading([readOf("https://a.app", "2026-10-27T09:00:00Z")]));
@@ -700,8 +701,8 @@ it.effect(
       yield* withLifecycle((lifecycle) =>
         Effect.gen(function* () {
           const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
-          const leaseOf = Effect.map(lifecycle.get(OWNER), (state) =>
-            state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+          const leaseOf = Effect.map(lifecycle.copies, (state) =>
+            state.leases?.find((one) => one.alias === "webpool-3"),
           );
           const devServers = [
             { name: "webpool-3", port: 3000, status: "running", readAt: "2026-10-23T20:04:00Z" },
@@ -753,8 +754,8 @@ it.effect(
               readAt: "2026-10-23T12:00:00Z",
             },
           ];
-          const devServersOf = Effect.map(lifecycle.get(OWNER), (state) =>
-            state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+          const devServersOf = Effect.map(lifecycle.copies, (state) =>
+            state.leases?.find((one) => one.alias === "webpool-3"),
           );
           yield* lifecycle.ingest(
             statusReading([{ ...lease("webpool-3"), devServers: preview }, lease("webpool-4")]),
@@ -772,7 +773,7 @@ it.effect(
     }),
 );
 
-// witness: apps/server/src/zerops/ZeropsLifecycle.ts | ? `lease:${event.eventId}:bind` → ? `lease:${conversation}:bind`
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | ? `lease:${source}:bind` → ? `lease:${conversation}:bind`
 it.effect(
   "CD60: An acquire's binding is recorded under a key of that call's own, so the same call read twice gives one key and another call another",
   () =>
@@ -807,7 +808,7 @@ it.effect(
     ).pipe(Effect.provide(persistence)),
 );
 
-// witness: apps/server/src/zerops/ZeropsLifecycle.ts | noteLeases(leases.map((lease) => lease.alias)), → Effect.void,
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | yield* noteLeases(envelope.leases.map((lease) => lease.alias)); → yield* Effect.void;
 it.effect(
   "CD61: Every read of zcp's leases tells the repository source which mounts are leases, and a restart tells it the last stored read before any call",
   () =>
@@ -857,4 +858,138 @@ it.effect(
         expect((yield* checkouts()).slice(first)).toEqual([{ alias: "webpool-3", bound: {} }]);
       }),
     ),
+);
+
+const fileLease = {
+  alias: "webpool-3",
+  pool: "webpool",
+  containerHostname: "node-id-3.runtime.webpool.zerops",
+  branch: "feat-x",
+  acquiredAt: "2026-10-23T18:00:00Z",
+};
+
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | if (status.leases !== null) { → if (status.leases !== null && status.devServices !== null) {
+it.effect(
+  "CD75: A lease released in zcp's status file disappears from every conversation's Mate feed and unbinds its checkout without a tool call",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const writes = yield* Queue.unbounded<unknown>();
+        yield* withConversations(
+          (lifecycle, checkouts) =>
+            Effect.scoped(
+              Effect.gen(function* () {
+                yield* lifecycle.ingest(
+                  acquireBy(sessionOf("ada"), fileLease.alias, [{ ...fileLease, state: "held" }]),
+                );
+                const secondLease = {
+                  ...fileLease,
+                  alias: "apipool-4",
+                  pool: "apipool",
+                  containerHostname: "node-id-4.runtime.apipool.zerops",
+                };
+                yield* lifecycle.ingestCopies({
+                  leases: [fileLease, secondLease],
+                  devServices: null,
+                });
+                const ada = yield* lifecycle.subscribeCopies;
+                const bob = yield* lifecycle.subscribeCopies;
+                expect(ada.latest.leases?.map((lease) => lease.alias)).toEqual([
+                  fileLease.alias,
+                  secondLease.alias,
+                ]);
+                expect(bob.latest.leases?.map((lease) => lease.alias)).toEqual([
+                  fileLease.alias,
+                  secondLease.alias,
+                ]);
+                const heardAda = yield* Stream.runHead(ada.changes).pipe(Effect.forkChild);
+                const heardBob = yield* Stream.runHead(bob.changes).pipe(Effect.forkChild);
+                yield* Queue.offer(writes, {
+                  version: 1,
+                  copies: { leases: [], devServices: null },
+                });
+                expect(Option.getOrUndefined(yield* Fiber.join(heardAda))?.leases).toEqual([]);
+                expect(Option.getOrUndefined(yield* Fiber.join(heardBob))?.leases).toEqual([]);
+                // The feed publishes before binding effects; the next ingest waits for both.
+                yield* lifecycle.ingest(claudeEvent({ toolName: "mcp__t3-code__browser_open" }));
+                expect((yield* checkouts()).at(-1)).toEqual({ alias: fileLease.alias, bound: {} });
+                // An older envelope cannot resurrect a lease absent from the status file.
+                yield* lifecycle.ingest(statusReading([{ ...fileLease, state: "held" }]));
+                expect((yield* lifecycle.copies).leases).toEqual([]);
+              }),
+            ),
+          Stream.map(Stream.fromQueue(writes), (raw) => parseZcpStatus(raw)?.copies),
+        );
+      }),
+    ),
+);
+
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | const latest = yield* Ref.get(shared); → const { leases: _leases, ...latest } = yield* Ref.get(shared);
+it.effect("CD76: A conversation that never called zcp sees the Mate's leases", () =>
+  withLifecycle((lifecycle) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* lifecycle.ingestCopies({ leases: [fileLease], devServices: null });
+        const other = yield* lifecycle.get("never-called" as ThreadId);
+        expect(other.envelope).toBeUndefined();
+        const feed = yield* lifecycle.subscribeCopies;
+        expect(feed.latest.leases?.map((lease) => lease.alias)).toEqual([fileLease.alias]);
+      }),
+    ),
+  ),
+);
+
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | ...(status.devServices === null ? {} : { devServices: status.devServices }), → ...{},
+it.effect(
+  "CD77: A classic dev service's branch and dev server appear together on its Mate's copy feed",
+  () =>
+    withLifecycle((lifecycle) =>
+      Effect.gen(function* () {
+        const dev = {
+          hostname: "webdev",
+          branch: "feat-x",
+          branchReadAt: "2026-10-23T18:00:00Z",
+          devServers: [
+            { name: "web", status: "running", port: 3000, readAt: "2026-10-23T18:00:00Z" },
+          ],
+        };
+        yield* lifecycle.ingestCopies({ leases: null, devServices: [dev] });
+        expect((yield* lifecycle.copies).devServices).toEqual([dev]);
+      }),
+    ),
+);
+
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | yield* applyCopies(yield* options.readCopies); → yield* Effect.void;
+it.effect(
+  "CD78: A tool result reads the current copy file before binding, so a late acquire cannot bind a released lease",
+  () =>
+    Effect.gen(function* () {
+      const file = yield* Ref.make<ZeropsCopyStatus>({ leases: [], devServices: null });
+      yield* withConversations(
+        (lifecycle, checkouts) =>
+          Effect.gen(function* () {
+            yield* lifecycle.ingestCopies(yield* Ref.get(file));
+            yield* Ref.set(file, { leases: [fileLease], devServices: null });
+            const result = leaseCall({
+              threadId: sessionOf("ada"),
+              input: { action: "acquire", pool: "webpool", branch: "feat-x" },
+              leases: [{ ...fileLease, state: "held" }],
+              envelope: [{ ...fileLease, state: "held" }],
+            });
+            yield* lifecycle.ingest(result);
+            expect((yield* checkouts()).at(-1)).toEqual({
+              alias: fileLease.alias,
+              bound: { ada: fileLease.alias },
+            });
+            yield* Ref.set(file, { leases: [], devServices: null });
+            yield* lifecycle.ingestCopies(yield* Ref.get(file));
+            const afterRelease = yield* checkouts();
+            expect(afterRelease.at(-1)).toEqual({ alias: fileLease.alias, bound: {} });
+            yield* lifecycle.ingest(result);
+            expect(yield* checkouts()).toEqual(afterRelease);
+          }),
+        undefined,
+        Ref.get(file),
+      );
+    }),
 );

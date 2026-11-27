@@ -99,7 +99,7 @@ export function ChatHeaderLinks({
   readonly sites?: ProjectSitesInput | undefined;
   readonly mateProjectId?: string | undefined;
 }) {
-  const { addresses } = useMateAddresses(environmentId, threadId);
+  const { addresses } = useMateAddresses(environmentId);
   const navigate = useNavigate();
   const threadRef = scopeThreadRef(environmentId, threadId);
   const sitesControl =

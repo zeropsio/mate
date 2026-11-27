@@ -50,11 +50,9 @@ export class ZeropsThreadLifecycleRepository extends Context.Service<
     readonly getByThreadId: (
       threadId: ThreadId,
     ) => Effect.Effect<Option.Option<ZeropsThreadLifecycleRow>, ProjectionRepositoryError>;
-    /**
-     * The `leases` of the most recently written envelope that holds any, as stored (`unknown`):
-     * zcp's latest read of its leases this server kept. None when no envelope read them.
-     */
-    readonly latestLeases: Effect.Effect<Option.Option<unknown>, ProjectionRepositoryError>;
+    /** The Mate's one copy projection; it is not a conversation's envelope. */
+    readonly mateCopies: Effect.Effect<Option.Option<unknown>, ProjectionRepositoryError>;
+    readonly putMateCopies: (state: unknown) => Effect.Effect<void, ProjectionRepositoryError>;
   }
 >()("t3/persistence/ZeropsThreadLifecycle/ZeropsThreadLifecycleRepository") {}
 
@@ -126,13 +124,17 @@ export const make = Effect.gen(function* () {
       `,
   });
 
-  const findLatestLeases = sql<{ readonly leases: string }>`
-    SELECT json_extract(envelope_json, '$.leases') AS leases
-    FROM zerops_thread_lifecycle
-    WHERE json_type(envelope_json, '$.leases') = 'array'
-    ORDER BY updated_at DESC
-    LIMIT 1
+  const findMateCopies = sql<{ readonly state: string }>`
+    SELECT state_json AS state FROM zerops_mate_copies WHERE id = 1
   `;
+  const MateCopiesRow = Schema.Struct({ state: Schema.fromJsonString(Schema.Unknown) });
+  const putMateCopies = SqlSchema.void({
+    Request: MateCopiesRow,
+    execute: ({ state }) => sql`
+      INSERT INTO zerops_mate_copies (id, state_json) VALUES (1, ${state})
+      ON CONFLICT (id) DO UPDATE SET state_json = excluded.state_json
+    `,
+  });
 
   return {
     upsert: (row) =>
@@ -153,19 +155,18 @@ export const make = Effect.gen(function* () {
           toRepositoryError("zeropsThreadLifecycle.get", "zeropsThreadLifecycle.get.decode"),
         ),
       ),
-    latestLeases: findLatestLeases.pipe(
+    mateCopies: findMateCopies.pipe(
       Effect.flatMap((rows) =>
         rows[0] === undefined
           ? Effect.succeedNone
-          : decodeJson(rows[0].leases).pipe(Effect.map(Option.some)),
+          : decodeJson(rows[0].state).pipe(Effect.map(Option.some)),
       ),
-      Effect.mapError(
-        toRepositoryError(
-          "zeropsThreadLifecycle.latestLeases",
-          "zeropsThreadLifecycle.latestLeases.decode",
-        ),
-      ),
+      Effect.mapError(toRepositoryError("zeropsMateCopies.get", "zeropsMateCopies.get.decode")),
     ),
+    putMateCopies: (state) =>
+      putMateCopies({ state }).pipe(
+        Effect.mapError(toRepositoryError("zeropsMateCopies.put", "zeropsMateCopies.put.encode")),
+      ),
   } satisfies ZeropsThreadLifecycleRepository["Service"];
 });
 

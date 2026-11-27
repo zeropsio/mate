@@ -15,7 +15,7 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  * for the viewer's own Mate, its public access, its links and its way to Zerops. A Mate's section
  * is one row per service by its real hostname (`mateParts`), as a place's addresses are — each
  * part's dev, then its stage; a pool's dev is each workspace zcp holds on it, by its alias, read
- * from a conversation of the Mate (`useMatesLeases`) — then its other addresses. A place with nothing
+ * from the Mate's copy feed (`useMatesLeases`) — then its other addresses. A place with nothing
  * deployed is its head alone. Each address is listed once and copies from its row or its link
  * (`c`, ⌘C, or the button an address row's hover shows). An address opens in a Mate's side panel
  * (`openInMatePanel`): a Mate's in its own, a place's in one of its application's Mates' — and, from
@@ -482,7 +482,7 @@ export function SitesPanel({
   const leases = useMatesLeases(
     mates
       .filter((mate) => readsLeases(factsOf(mate)))
-      .map((mate) => ({ projectId: mate.candidate.project.id, threadKey: mate.threadKey })),
+      .map((mate) => ({ projectId: mate.candidate.project.id })),
   );
   const every = projectSitesSections({
     production: prod,

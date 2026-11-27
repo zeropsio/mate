@@ -54,7 +54,7 @@ import {
   type IncidentModel,
 } from "./conversation.logic";
 import { standInOf } from "@t3tools/client-runtime/zerops/serviceMap";
-import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import { useZeropsMateCopies, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import {
   detailLines,
   importLines,
@@ -663,10 +663,7 @@ function Instruments({
   // A service the platform works on this moment says nothing stale of itself.
   const topology = useZeropsTopology(incidents.length === 0 ? null : environmentId);
   // zcp's word on what it holds in place, beside the platform's status.
-  const lifecycle = useZeropsLifecycle(
-    incidents.length === 0 ? null : environmentId,
-    threadRef?.threadId ?? null,
-  );
+  const lifecycle = useZeropsMateCopies(incidents.length === 0 ? null : environmentId);
   const standing = incidentsAtRest(
     incidentsStanding(
       incidents,

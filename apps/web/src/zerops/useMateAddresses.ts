@@ -1,14 +1,10 @@
 /**
  * A Mate's public addresses (`mateAddresses`), read from what the account
- * already holds: the Mate's project topology, the dev servers the
- * conversation's lifecycle last read, and the group's stage and production
- * projects in the inventory. No request of its own — the topology's contents
- * are the same ones the conversation and project panel read. The Mate's parts
- * come from the one reader (`mateParts`): its dev pools' workspaces are the leases zcp holds for
- * the whole Mate in the lifecycle's newest envelope (`lifecycleLeases`), each by the chat it is for
- * (`useLeaseChats`), and a part migrated to a dev pool pairs its stage with the pool as that
- * envelope keys it (`poolPairsOf`). Where a dev service or a workspace runs several dev servers,
- * each running one is listed (`devServersOf`, the leases' own).
+ * already holds: the Mate's project topology and copies, and the group's stage
+ * and production projects in the inventory. Workspaces are the Mate's leases
+ * (`lifecycleLeases`), each named by its chat (`useLeaseChats`); a migrated
+ * part pairs its stage with a pool from the Mate's copies (`poolPairsOf`).
+ * Dev servers come from those same copies (`devServersOf`).
  */
 import { derivePublicRoutes } from "@t3tools/client-runtime/zerops";
 import {
@@ -17,7 +13,7 @@ import {
   poolPairsOf,
   standInsOf,
 } from "@t3tools/client-runtime/zerops/serviceMap";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useContext, useMemo } from "react";
 
 import { InventoryContext } from "./inventoryContext";
@@ -28,7 +24,7 @@ import {
 } from "@t3tools/client-runtime/zerops/mateAddresses";
 import { useLeaseChats } from "./useLeaseChats";
 import { useProjectsServiceValues } from "./ZeropsAccountData";
-import { useEnvironmentProjectRef, useZeropsLifecycle, useZeropsTopology } from "./useZeropsFeeds";
+import { useEnvironmentProjectRef, useZeropsMateCopies, useZeropsTopology } from "./useZeropsFeeds";
 
 const NO_ADDRESSES: ReadonlyArray<MateAddress> = [];
 
@@ -38,12 +34,9 @@ export interface MateAddressesRead {
   readonly known: boolean;
 }
 
-export function useMateAddresses(
-  environmentId: EnvironmentId | null,
-  threadId: ThreadId | null,
-): MateAddressesRead {
+export function useMateAddresses(environmentId: EnvironmentId | null): MateAddressesRead {
   const topology = useZeropsTopology(environmentId);
-  const lifecycle = useZeropsLifecycle(environmentId, threadId);
+  const lifecycle = useZeropsMateCopies(environmentId);
   // Each workspace by the chat it is for, as Sites and the Zerops panel name it. This hook never
   // mounts on a change's review (`/change/…`), so reading every chat's binding holds no review back.
   const leaseChats = useLeaseChats(environmentId);
@@ -68,7 +61,7 @@ export function useMateAddresses(
             },
           });
     const addresses = mateAddresses({
-      // A dev service running several dev servers lists each running one (`mateAddresses`).
+      // A dev service can list several dev servers (`mateAddresses`).
       services: topology.services.map((service) => ({
         ...service,
         devServers: devServersOf(service.hostname, lifecycle),

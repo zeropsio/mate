@@ -12,6 +12,9 @@ const lifecycle = Atom.family((key: string) => {
 const agentAuth = Atom.family((environmentId: EnvironmentId) =>
   mateFeedAtom({ family: "mateAgentAuth", environmentId, input: {} }),
 );
+const copies = Atom.family((environmentId: EnvironmentId) =>
+  mateFeedAtom({ family: "mateCopies", environmentId, input: {} }),
+);
 const crew = Atom.family((environmentId: EnvironmentId) =>
   mateFeedAtom({ family: "mateCrew", environmentId, input: {} }),
 );
@@ -19,6 +22,7 @@ const standUpVerdict = Atom.family((environmentId: EnvironmentId) =>
   mateFeedAtom({ family: "mateStandUpVerdict", environmentId, input: {} }),
 );
 export const zeropsFeeds = {
+  copies: (environmentId: EnvironmentId) => copies(environmentId),
   lifecycle: (target: {
     readonly environmentId: EnvironmentId;
     readonly input: { readonly threadId: ThreadId };

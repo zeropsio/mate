@@ -45,7 +45,7 @@ import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useHqPersonNames } from "../../zerops/useZeropsMateOwners";
-import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
+import { useZeropsMateCopies } from "../../zerops/useZeropsFeeds";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { OpenCodeAgentKeys } from "./OpenCodeAgentKeys";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
@@ -85,10 +85,7 @@ export function ZeropsPanel({
   readonly runningToolLabel?: string | undefined;
 }) {
   const topology = useProjectTopology(threadRef?.environmentId ?? null, { metrics: visible });
-  const lifecycle = useZeropsLifecycle(
-    threadRef?.environmentId ?? null,
-    threadRef?.threadId ?? null,
-  );
+  const lifecycle = useZeropsMateCopies(threadRef?.environmentId ?? null);
   const [authorizationAgentId, setAuthorizationAgentId] = useState<
     ZeropsAgentAuthSnapshot["agents"][number]["agentId"] | null
   >(null);

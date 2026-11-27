@@ -92,6 +92,7 @@ const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.zeropsLifecycleGet]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsStandUpRetry]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeZeropsLifecycle]: AuthOrchestrationReadScope,
+  [WS_METHODS.subscribeZeropsMateCopies]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeZeropsAgentAuth]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeZeropsHealth]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeZeropsStandUpVerdict]: AuthOrchestrationReadScope,

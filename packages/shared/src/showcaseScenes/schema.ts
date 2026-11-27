@@ -8,6 +8,7 @@ import {
   ZeropsAgentAuthSnapshot,
   ZeropsAgentLoginState,
   ZeropsLifecycle,
+  ZeropsStateEnvelope,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
@@ -80,9 +81,15 @@ export const ShowcaseTopologySource = Schema.Struct({
 });
 export type ShowcaseTopologySource = typeof ShowcaseTopologySource.Type;
 
+// Captures retain zcp's complete envelope; the fixture feed splits its Mate facts at runtime.
+const ShowcaseLifecycle = Schema.Struct({
+  ...ZeropsLifecycle.fields,
+  envelope: Schema.optional(ZeropsStateEnvelope),
+});
+
 const ShowcaseSceneStep = Schema.Struct({
   afterMs: NonNegativeInt,
-  lifecycle: Schema.optional(ZeropsLifecycle),
+  lifecycle: Schema.optional(ShowcaseLifecycle),
   agentAuth: Schema.optional(ZeropsAgentAuthSnapshot),
   agentLogin: Schema.optional(ShowcaseAgentLoginSnapshot),
 }).check(
@@ -103,7 +110,7 @@ export const ShowcaseScene = Schema.Struct({
     from: Schema.Literals(["z3-eval", "authored"]),
   }),
   topologySource: ShowcaseTopologySource,
-  lifecycle: ZeropsLifecycle,
+  lifecycle: ShowcaseLifecycle,
   agentAuth: ZeropsAgentAuthSnapshot,
   agentLogin: ShowcaseAgentLoginSnapshot,
   projects: Schema.Array(OrchestrationProjectShell),

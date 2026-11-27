@@ -209,19 +209,31 @@ const makeLifecycle = (scene: ShowcaseScene) =>
           snapshot.threadId === threadId ? snapshot : emptyLifecycle(threadId),
         ),
       );
+    const copiesOf = (snapshot: ShowcaseScene["lifecycle"]) => ({
+      ...(snapshot.envelope?.leases === undefined ? {} : { leases: snapshot.envelope.leases }),
+      ...(snapshot.envelope?.services === undefined
+        ? {}
+        : { services: snapshot.envelope.services }),
+    });
 
     return {
       get,
       subscribe: (threadId) =>
-        publisher.subscribeWith(get(threadId)).pipe(
+        publisher.subscribe.pipe(
           Effect.map(({ latest, changes }) => ({
-            latest,
+            latest: latest.threadId === threadId ? latest : emptyLifecycle(threadId),
             changes: Stream.filter(changes, (snapshot) => snapshot.threadId === threadId),
           })),
         ),
+      copies: Effect.map(publisher.latest, copiesOf),
+      subscribeCopies: Effect.map(publisher.subscribe, ({ latest, changes }) => ({
+        latest: copiesOf(latest),
+        changes: Stream.map(changes, copiesOf),
+      })),
       // The scripted scene is authoritative in fixture mode, so provider events
       // cannot mutate the deterministic lifecycle presented to clients.
       ingest: () => Effect.void,
+      ingestCopies: () => Effect.void,
     } satisfies ZeropsLifecycle.ZeropsLifecycle["Service"];
   });
 
