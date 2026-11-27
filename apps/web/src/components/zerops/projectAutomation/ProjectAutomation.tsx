@@ -377,10 +377,7 @@ function useTaskBoard(
         ? undefined
         : {
             offerOf: (taskId) => offers.tasks?.[taskId],
-            takeInto: offers.ownMates.map((projectId) => ({
-              projectId,
-              name: faces.get(projectId)?.name ?? "Your Mate",
-            })),
+            mateName: (projectId) => faces.get(projectId)?.name ?? "Your Mate",
             pressOf: (taskId) =>
               taskRowPress({
                 taskId,
@@ -683,8 +680,8 @@ export interface AutomationControls {
 export interface BoardVerbs {
   /** The task's verbs as the rules offer them (`boardOffers`); `undefined`: none known. */
   readonly offerOf: (taskId: string) => BoardTaskOffer | undefined;
-  /** The reader's own Mates in the application a Take opens in: a choice where several. */
-  readonly takeInto: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
+  /** A Mate of the reader's a Take may open in, by its project: its name. */
+  readonly mateName: (projectId: string) => string;
   /** Where the row's press stands: its Stop asking, a write under way or refused (`taskRowPress`). */
   readonly pressOf: (taskId: string) => RowPress;
   /** HQ took it for the reader, but its conversation did not open (`TakeOpening`). */
@@ -1002,15 +999,19 @@ function HoverStop({ verbs, taskId }: { readonly verbs: BoardVerbs; readonly tas
  */
 function TakePress({
   verbs,
+  into,
   taskId,
   title,
 }: {
   readonly verbs: BoardVerbs;
+  /** The reader's own Mates its Take may open in (`BoardTaskOffer.takeInto`): a choice where several. */
+  readonly into: ReadonlyArray<string>;
   readonly taskId: string;
   readonly title: string;
 }) {
-  const [only] = verbs.takeInto;
-  if (verbs.takeInto.length === 1 && only !== undefined)
+  const mates = into.map((projectId) => ({ projectId, name: verbs.mateName(projectId) }));
+  const [only] = mates;
+  if (mates.length === 1 && only !== undefined)
     return (
       <Button
         aria-label={`Take “${title}” into ${only.name}`}
@@ -1034,7 +1035,7 @@ function TakePress({
       <MenuPopup align="end" width="sm">
         <MenuGroup>
           <MenuGroupLabel>Take it into</MenuGroupLabel>
-          {verbs.takeInto.map((mate) => (
+          {mates.map((mate) => (
             <MenuItem
               key={mate.projectId}
               onClick={() => {
@@ -1229,7 +1230,8 @@ function BoardRowView({
   const busy = press.kind === "working";
   const stopping = row.status === "stopping";
   const asks = row.lane === "waiting" && !busy;
-  const take = verbs !== undefined && offer?.take === true && verbs.takeInto.length > 0;
+  const takeInto = offer?.takeInto ?? [];
+  const take = verbs !== undefined && takeInto.length > 0;
   const done = offer?.done === true;
   const release = offer?.release === true;
   const stop = offer?.stop === true && !stopping;
@@ -1355,7 +1357,7 @@ function BoardRowView({
               Open its conversation
             </Button>
           ) : primary === "take" ? (
-            <TakePress taskId={row.id} title={row.title} verbs={verbs} />
+            <TakePress into={takeInto} taskId={row.id} title={row.title} verbs={verbs} />
           ) : primary === "done" ? (
             <Button
               onClick={() => {

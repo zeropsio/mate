@@ -2,9 +2,8 @@
  * What the person may do on an application's Board, by the verb rules
  * (`@t3tools/shared/zeropsPermissions`) over their own live read of Zerops, HQ's tasks of the
  * application and its Mates (whose each is, and which are automated): where a Put on board may come
- * from — only a Mate whose server takes the Board — which of their own Mates a Take may open in,
- * and each task's Take (only into a Mate whose server reads the task's source), Release, Done, Stop
- * and Answer. Surfaces draw these answers and never decide one; HQ decides again at the press.
+ * from — only a Mate whose server takes the Board — and each task's Take (which of their own Mates
+ * it may open in: only one whose server reads the task's source), Release, Done, Stop and Answer. Surfaces draw these answers and never decide one; HQ decides again at the press.
  * `undefined` until Zerops is read: nothing is offered or refused on a guess.
  *
  * @module data/projections/boardOffers
@@ -18,6 +17,8 @@ import {
   stopTaskPermission,
   takeTaskPermission,
   type BoardMate,
+  type BoardTask,
+  type PermissionFacts,
 } from "@t3tools/shared/zeropsPermissions";
 
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
@@ -28,18 +29,37 @@ import { decided, livePermissionFacts } from "./permissionFacts.ts";
 
 /** A task's verbs, each offered or not. */
 export interface BoardTaskOffer {
-  readonly take: boolean;
+  /**
+   * The person's own Mates in the application its Take may open in: never an automated one, only
+   * one whose server reads the task's source (`mateBoardProtocolOf`); empty, no Take.
+   */
+  readonly takeInto: ReadonlyArray<string>;
   readonly release: boolean;
   readonly done: boolean;
   readonly stop: boolean;
   readonly answer: boolean;
 }
 
+/** One task's verbs for the person, by the verb rules over its record and the application's Mates. */
+export function boardTaskOffer(
+  facts: PermissionFacts,
+  task: BoardTask,
+  mates: ReadonlyArray<BoardMate>,
+): BoardTaskOffer {
+  return {
+    takeInto: mates
+      .filter((mate) => takeTaskPermission(facts, task, [mate], mate.projectId).allow)
+      .map((mate) => mate.projectId),
+    release: releaseTaskPermission(facts, task).allow,
+    done: doneTaskPermission(facts, task).allow,
+    stop: stopTaskPermission(facts, task).allow,
+    answer: answerTaskPermission(facts, task).allow,
+  };
+}
+
 export interface BoardOffers {
   /** The application's Mates a Put on board may come from: all of them, where the person sees it. */
   readonly putFrom: ReadonlyArray<string>;
-  /** The person's own Mates in the application, never an automated one: where a Take opens. */
-  readonly ownMates: ReadonlyArray<string>;
   /** Each task HQ answered, by its id; `undefined` while the Board is not read. */
   readonly tasks: Readonly<Record<string, BoardTaskOffer>> | undefined;
 }
@@ -54,9 +74,6 @@ function boardProtocol(read: ProjectionReads, projectId: string): number {
   if (mate.kind !== "known") return 0;
   return mate.value.overview?.identity?.board?.protocol ?? 0;
 }
-
-/** A queued task nobody put, of the oldest protocol: whether a Mate is one a Take may open in at all. */
-const QUEUED = { stored: "queued", putBy: null, protocol: 1, taker: null } as const;
 
 export const boardOffers: Projection<
   { readonly orgId: string; readonly appId: string },
@@ -96,24 +113,11 @@ export const boardOffers: Projection<
           boardProtocol(read, projectId) >= 1 &&
           putTaskPermission(facts, projectIds, projectId).allow,
       ),
-      ownMates: mates
-        .filter((mate) => takeTaskPermission(facts, QUEUED, [mate], mate.projectId).allow)
-        .map((mate) => mate.projectId),
       tasks: !known
         ? undefined
         : Object.fromEntries(
             tasks.value.map((task) => {
-              const board = boardTaskOf(task);
-              return [
-                task.id,
-                {
-                  take: takeTaskPermission(facts, board, mates).allow,
-                  release: releaseTaskPermission(facts, board).allow,
-                  done: doneTaskPermission(facts, board).allow,
-                  stop: stopTaskPermission(facts, board).allow,
-                  answer: answerTaskPermission(facts, board).allow,
-                },
-              ];
+              return [task.id, boardTaskOffer(facts, boardTaskOf(task), mates)];
             }),
           ),
     }));

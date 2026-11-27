@@ -28,17 +28,9 @@ import {
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
 import { boardOf, type BoardContext } from "~/components/zerops/projectAutomation/taskBoard.logic";
-import type { BoardTaskOffer } from "@t3tools/client-runtime/data";
+import { boardTaskOffer, type BoardTaskOffer } from "@t3tools/client-runtime/data";
 import { boardTaskOf, type HqAppTask } from "@t3tools/shared/hqIntake";
-import {
-  answerTaskPermission,
-  doneTaskPermission,
-  releaseTaskPermission,
-  stopTaskPermission,
-  takeTaskPermission,
-  type BoardMate,
-  type PermissionFacts,
-} from "@t3tools/shared/zeropsPermissions";
+import type { BoardMate, PermissionFacts } from "@t3tools/shared/zeropsPermissions";
 import {
   connectionMissing,
   sourceRows,
@@ -270,10 +262,13 @@ const OWN_MATES: Readonly<Record<string, BoardFace>> = {
 const POOL_FACES = new Map([SOL, PIM, WREN, BO].map((mate) => [mate.projectId, mate] as const));
 const faceOf = (projectId: string): BoardFace | undefined =>
   OWN_MATES[projectId] ?? POOL_FACES.get(projectId);
-/** Whose each Mate is, for Take: Mara's two, Rhea's one, and the pool. */
+/**
+ * Whose each Mate is, for Take: Mara's two (Quill on a server that reads no task put on the Board
+ * directly), Rhea's one, and the pool.
+ */
 const MATES: ReadonlyArray<BoardMate> = [
   { projectId: "p-lark", ownerUserId: ME, automated: false, boardProtocol: 2 },
-  { projectId: "p-quill", ownerUserId: ME, automated: false, boardProtocol: 2 },
+  { projectId: "p-quill", ownerUserId: ME, automated: false, boardProtocol: 1 },
   { projectId: "p-moss", ownerUserId: RHEA, automated: false, boardProtocol: 2 },
   ...[SOL, PIM, WREN, BO].map((mate) => ({
     projectId: mate.projectId,
@@ -296,23 +291,12 @@ function offers(
   const who = facts(roleCode);
   return (taskId: string): BoardTaskOffer | undefined => {
     const board = byId.get(taskId);
-    return board === undefined
-      ? undefined
-      : {
-          take: takeTaskPermission(who, board, mates).allow,
-          release: releaseTaskPermission(who, board).allow,
-          done: doneTaskPermission(who, board).allow,
-          stop: stopTaskPermission(who, board).allow,
-          answer: answerTaskPermission(who, board).allow,
-        };
+    return board === undefined ? undefined : boardTaskOffer(who, board, mates);
   };
 }
 const VERBS: BoardVerbs = {
   offerOf: () => undefined,
-  takeInto: [
-    { projectId: "p-lark", name: "Lark" },
-    { projectId: "p-quill", name: "Quill" },
-  ],
+  mateName: (projectId) => OWN_MATES[projectId]?.name ?? "Your Mate",
   pressOf: () => ({ kind: "idle" }),
   strandedOf: () => false,
   onOpenTaken: nothing,
@@ -332,7 +316,8 @@ function board(
     readonly held?: BoardContext["held"];
     /** Mara's role in the organization: what the rules offer her. */
     readonly role?: string;
-    readonly takeInto?: BoardVerbs["takeInto"];
+    /** The application's Mates, whose each and what its server reads: where Mara's Take opens. */
+    readonly mates?: ReadonlyArray<BoardMate>;
     /** Tasks Mara took whose conversation did not open. */
     readonly stranded?: ReadonlyArray<string>;
   } = {},
@@ -356,10 +341,9 @@ function board(
     faceOf,
     verbs: {
       ...VERBS,
-      offerOf: offers(tasks, more.role ?? "OWNER"),
+      offerOf: offers(tasks, more.role ?? "OWNER", more.mates),
       pressOf: more.pressOf ?? VERBS.pressOf,
       strandedOf: (taskId) => more.stranded?.includes(taskId) === true,
-      ...(more.takeInto === undefined ? {} : { takeInto: more.takeInto }),
     },
   };
 }
@@ -538,7 +522,7 @@ const STATES: ReadonlyArray<{
         board={board(BOARD_TASKS, "$9.12 of $50", {
           live: BOARD_LIVE,
           role: "BASIC_USER",
-          takeInto: [{ projectId: "p-lark", name: "Lark" }],
+          mates: MATES.filter((mate) => mate.projectId !== "p-quill"),
         })}
         onOpenMate={nothing}
         pool={BUSY_POOL}
@@ -812,7 +796,10 @@ const STATES: ReadonlyArray<{
     title: "A member reads it",
     view: (
       <ProjectAutomationView
-        board={board(BUSY_TASKS, "$7.94 of $50", { role: "BASIC_USER", takeInto: [] })}
+        board={board(BUSY_TASKS, "$7.94 of $50", {
+          role: "BASIC_USER",
+          mates: MATES.filter((mate) => mate.ownerUserId !== ME),
+        })}
         onOpenMate={nothing}
         pool={BUSY_POOL}
         sources={{ rows: SOURCES(1).rows.slice(0, 1), reading: false, withheld: true }}

@@ -73,6 +73,9 @@ function taskStopRefusal(cause: HqError): string | undefined {
  */
 function boardRefusal(cause: HqError): string | undefined {
   if (cause.reason === "task_not_found") return "That task is no longer on the Board.";
+  // A Take into a Mate whose server reads no task of the task's source (a New task, protocol 2).
+  if (cause.reason === "mate_cannot_read_source")
+    return "That Mate can’t take this task until it is updated.";
   if (cause.status === 409) return "That task moved meanwhile. Look at the Board again.";
   return undefined;
 }
