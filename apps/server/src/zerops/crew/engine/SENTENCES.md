@@ -1,4 +1,4 @@
-next: CD90
+next: CD92
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -88,5 +88,5 @@ next: CD90
 - CD87 — Continue on a card turn a restart could not carry on sends the card again, never its words as the person's own message; breaks: the crew's words show in the crewmate's conversation as the person's
 - CD88 — Start fresh pressed while its crewmate is busy clears its conversation once it is free, as the person who pressed it; breaks: the line in its conversation names nobody, or the crew, as the one who cleared it
 - CD89 — Work waiting for the lead's review raises no need of its own while a review the lead planned of it is under way, its question to the person included; once that review is over, an unattended wait shows again; breaks: one question to the person shows as two crewmates needing them
-- CD+1 — A landed task counts as shipped, or as not shipped yet, only by what the Mate read of its own landing commit on the origin's branches; one never read, read for an earlier landing, or closed with nothing to land counts as neither; breaks: after a restart, or once the Mate moved the work onto a branch of its own, the Crew tab says it hasn't shipped work it shipped
-- CD+2 — What shipped is read of at most a dev service's 20 newest landings not read as shipped, none landed more than 30 days ago, and the Crew tab counts those of them not read yet as unread, claiming nothing of them; breaks: every boot and every feed opened re-reads all of a long-lived crew's landings, until one slow read keeps every one unread
+- CD90 — A landed task counts as shipped, or as not shipped yet, only by what the Mate read of its own landing commit on the origin's branches; one never read, read for an earlier landing, or closed with nothing to land counts as neither; breaks: after a restart, or once the Mate moved the work onto a branch of its own, the Crew tab says it hasn't shipped work it shipped
+- CD91 — What shipped is read of at most a dev service's 20 newest landings not read as shipped, none landed more than 30 days ago, and the Crew tab counts those of them not read yet as unread, claiming nothing of them; breaks: every boot and every feed opened re-reads all of a long-lived crew's landings, until one slow read keeps every one unread

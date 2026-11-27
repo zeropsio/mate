@@ -248,7 +248,7 @@ it("CD32: A merge conflict, a crewmate's question and a task admission refused e
 });
 
 // witness: apps/server/src/zerops/crew/engine/project.ts | task.shipRead?.commit !== task.landedCommit → task.shipRead === undefined
-it("CD+1: A landed task counts as shipped, or as not shipped yet, only by what the Mate read of its own landing commit on the origin's branches; one never read, read for an earlier landing, or closed with nothing to land counts as neither; breaks: after a restart, or once the Mate moved the work onto a branch of its own, the Crew tab says it hasn't shipped work it shipped", () => {
+it("CD90: A landed task counts as shipped, or as not shipped yet, only by what the Mate read of its own landing commit on the origin's branches; one never read, read for an earlier landing, or closed with nothing to land counts as neither; breaks: after a restart, or once the Mate moved the work onto a branch of its own, the Crew tab says it hasn't shipped work it shipped", () => {
   const landing = (n: number) => String(n).repeat(40);
   const landed = (id: string, n: number, fields: Partial<TaskRecord>) =>
     task(id, n, { state: "landed", landedCommit: landing(n), landedAt: AT, ...fields });
@@ -322,7 +322,7 @@ it("CD89: Work waiting for the lead's review raises no need of its own while a r
 });
 
 // witness: apps/server/src/zerops/crew/engine/shipReads.ts | tasks.toSorted((a, b) => b.landedAt! - a.landedAt!).slice(0, SHIP_READS_PER_HOST), → tasks.toSorted((a, b) => b.landedAt! - a.landedAt!),
-it("CD+2: What shipped is read of at most a dev service's 20 newest landings not read as shipped, none landed more than 30 days ago, and the Crew tab counts those of them not read yet as unread, claiming nothing of them; breaks: every boot and every feed opened re-reads all of a long-lived crew's landings, until one slow read keeps every one unread", () => {
+it("CD91: What shipped is read of at most a dev service's 20 newest landings not read as shipped, none landed more than 30 days ago, and the Crew tab counts those of them not read yet as unread, claiming nothing of them; breaks: every boot and every feed opened re-reads all of a long-lived crew's landings, until one slow read keeps every one unread", () => {
   const MINUTE = 60_000;
   const DAY = 24 * 60 * MINUTE;
   const landed = (n: number, landedAt: number, fields: Partial<TaskRecord> = {}) =>
