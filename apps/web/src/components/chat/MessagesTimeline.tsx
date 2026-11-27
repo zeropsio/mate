@@ -35,6 +35,7 @@ import {
 import { ownListScrolls } from "./timelineEndFollow";
 import { AsPainted } from "./AsPainted";
 import { TimelineLoadEarlierHeader } from "./TimelineLoadEarlierHeader";
+import { TimelineProviders } from "./TimelineEarlierSeam";
 import { TimelineMinimap } from "./TimelineMinimap";
 import { opensRoom, TimelineRowContent } from "./TimelineRowFrame";
 import { TimelineEmptyState } from "./TimelineEmptyState";
@@ -53,6 +54,7 @@ import { type QueuedComposerMessage } from "../../queuedMessageStore";
 import { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { type RememberedTimelinePosition, readTimelinePosition } from "./timelineScrollAnchoring";
 import {
+  EARLIER_SEAM_ID,
   createMessagesTimelineRowsCache,
   conversationSpeaker,
   deriveMessagesTimelineRows,
@@ -104,7 +106,6 @@ import { useZeropsThreadActivity } from "../../zerops/useZeropsAgentActivity";
 import {
   TimelineNoticesCtx,
   TimelineRowActivityCtx,
-  TimelineRowCtx,
   TimelineWorkingCtx,
   type TimelineRowActivityState,
   type RowRooms,
@@ -245,8 +246,15 @@ interface MessagesTimelineProps {
    * rows come with the conversation's first paint; one that comes later enters (`opensRoom`).
    */
   flowRead?: boolean;
-  /** Non-null when older turns exist beyond the loaded window. */
-  loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
+  /**
+   * Non-null when older turns exist beyond the loaded window; `from`, where the loaded turns begin
+   * (`windowFrom`): rows before it were kept from earlier turns on their own.
+   */
+  loadEarlier?: {
+    readonly loading: boolean;
+    readonly onLoadEarlier: () => void;
+    readonly from?: string;
+  } | null;
   /** Messages sent during the running turn. They render as ghost bubbles after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
   /** What happened that still holds: the conversation's last rows while it does. */
@@ -403,6 +411,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         away: away ?? null,
         nowMs,
         newSince,
+        earlierFrom: loadEarlier?.from ?? null,
         timelineEntries,
         latestTurn,
         runningTurnId,
@@ -432,6 +441,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       runCards,
       nowMs,
       newSince,
+      loadEarlier?.from,
       timelineEntries,
       latestTurn,
       runningTurnId,
@@ -484,6 +494,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const newestReleaseAsk = useTimelineProposals(stableRows);
 
   const onLoadEarlier = useEarlierTurnsAnchor(listRef, rows, loadEarlier);
+  const earlierInRows = rows.some((row) => row.id === EARLIER_SEAM_ID);
+  const earlierLoading = loadEarlier?.loading === true;
+  const earlierTurns = useMemo(
+    () =>
+      loadEarlier === null || loadEarlier === undefined
+        ? null
+        : { loading: earlierLoading, onLoadEarlier },
+    [loadEarlier, earlierLoading, onLoadEarlier],
+  );
 
   const livePause = useMemo(() => livePauseId(rows), [rows]);
   // Only the server's own pause with nothing after it fills the conversation; the engine's pause
@@ -1044,7 +1063,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       />
     )
   ) : (
-    <TimelineRowCtx value={sharedState}>
+    <TimelineProviders earlier={earlierTurns} shared={sharedState}>
       <NewestReleaseAskContext value={newestReleaseAsk}>
         <TimelineNoticesCtx value={noticesById}>
           <TimelineRowActivityCtx value={activityState}>
@@ -1105,7 +1124,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     topFadeEnabled && "conversation-scroll-fade",
                   )}
                   ListHeaderComponent={
-                    loadEarlier !== null ? (
+                    // With rows kept from earlier turns, *Load earlier turns* stands where those
+                    // turns go (`seam:earlier`), not above the rows kept.
+                    loadEarlier !== null && !earlierInRows ? (
                       <TimelineLoadEarlierHeader
                         loading={loadEarlier.loading}
                         onLoadEarlier={onLoadEarlier}
@@ -1154,7 +1175,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           </TimelineRowActivityCtx>
         </TimelineNoticesCtx>
       </NewestReleaseAskContext>
-    </TimelineRowCtx>
+    </TimelineProviders>
   );
   return (
     <BareChangeNumbersProvider threadRef={threadRef}>

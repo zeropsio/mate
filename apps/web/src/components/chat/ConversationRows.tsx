@@ -254,15 +254,17 @@ export function Seam({
   readonly timestampFormat: TimestampFormat;
 }) {
   const label =
-    row.seam === "cut"
-      ? (row.words ?? "Earlier turns stayed with the previous engine.")
-      : row.seam === "agent"
-        ? (row.words ?? "Continued on another agent")
-        : row.seam === "day"
-          ? dayLabel(row.createdAt)
-          : row.seam === "new"
-            ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
-            : formatDayAwareTimestamp(row.createdAt, timestampFormat);
+    row.seam === "earlier"
+      ? "Earlier conversation"
+      : row.seam === "cut"
+        ? (row.words ?? "Earlier turns stayed with the previous engine.")
+        : row.seam === "agent"
+          ? (row.words ?? "Continued on another agent")
+          : row.seam === "day"
+            ? dayLabel(row.createdAt)
+            : row.seam === "new"
+              ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
+              : formatDayAwareTimestamp(row.createdAt, timestampFormat);
   return (
     <Separator
       aria-label={label}

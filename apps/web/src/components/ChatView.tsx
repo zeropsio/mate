@@ -849,8 +849,11 @@ function ConversationView(props: ChatViewProps) {
     if (routeKind !== "server" || !threadHasOlderTurns(routeThreadState)) {
       return null;
     }
+    const page = routeThreadState.page._tag === "Some" ? routeThreadState.page.value : null;
     return {
-      loading: routeThreadState.page._tag === "Some" && routeThreadState.page.value.loadingOlder,
+      loading: page?.loadingOlder === true,
+      // Where the loaded turns begin: rows drawn before it were kept from earlier on their own.
+      ...(page?.windowFrom === undefined ? {} : { from: page.windowFrom }),
       onLoadEarlier: () => {
         requestOlderThreadTurns(routeThreadRef.environmentId, routeThreadRef.threadId);
       },
