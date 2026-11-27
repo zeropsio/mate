@@ -291,7 +291,7 @@ export interface RecoveryOutcome {
 
 export function readRecoveryOutcome(
   requestId: string,
-  action: "start" | "restart" | "redeploy",
+  action: "start" | "restart",
   progress: OperationProgress,
   evidence?: string,
 ): RecoveryOutcome {
@@ -299,7 +299,7 @@ export function readRecoveryOutcome(
   const terminal =
     progress.stage === "done" || progress.stage === "refused" || progress.stage === "unsent";
   const succeeded = progress.stage === "done" && progress.outcome === "succeeded";
-  const label = action === "start" ? "Start" : action === "redeploy" ? "Redeploy" : "Restart";
+  const label = action === "start" ? "Start" : "Restart";
   let text: string;
   let details: string | undefined;
   switch (progress.stage) {
@@ -356,7 +356,7 @@ export function readRecoveryOutcome(
 
 /** A failed preparation never reached the write owner, so another press may submit. */
 export function recoveryPreparationFailure(
-  action: "start" | "restart" | "redeploy",
+  action: "start" | "restart",
   reason: string,
 ): RecoveryOutcome {
   return {

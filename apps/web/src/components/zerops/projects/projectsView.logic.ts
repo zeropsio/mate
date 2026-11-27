@@ -234,7 +234,6 @@ function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
     case "enable":
     case "remove":
     case "restart":
-    case "redeploy":
     case "none":
       return "other";
   }

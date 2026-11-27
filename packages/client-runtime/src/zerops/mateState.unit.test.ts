@@ -180,7 +180,7 @@ it("ZV158: Delete, Change face and Move are offered only where HQ offers the vie
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | : mayWork && viewer.visibility === "open"); → : mayWork);
-it("ZV159: Start, Stop, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
+it("ZV159: Start, Stop and Restart are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
   const roles: Readonly<Record<ZeropsOrgRole, boolean>> = {
     OWNER: true,
     ADMIN: true,
@@ -206,14 +206,12 @@ it("ZV159: Start, Stop, Restart and Redeploy are offered only to a viewer who ma
       expect(mateState(facts({ viewer })).verbs.restart).toBe(operates);
       expect(mateState(facts({ viewer })).verbs.stop).toBe(operates);
       expect(mateState(facts({ viewer, candidate: stopped })).verbs.start).toBe(operates);
-      expect(mateState(facts({ viewer, arrival: "redeploy" })).verbs.redeploy).toBe(operates);
     }
   }
   expect(mateState(facts({ viewer: null })).verbs).toMatchObject({
     start: false,
     stop: false,
     restart: false,
-    redeploy: false,
     delete: false,
     access: false,
   });
@@ -393,12 +391,11 @@ it("ZV178: A Mate's Stop writes each running service of its project and its Star
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | if (facts.arrival === "coming") return state("setup", { ...NO_VERBS, delete: remove }); → if (false) return state("setup", { ...NO_VERBS, delete: remove });
-it("ZV161: A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment offers Redeploy and no Start; breaks: a Mate whose setup stalls offers Restart beside Delete", () => {
+it("ZV161: A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment has failed and offers no Start and no Redeploy; breaks: a Mate whose setup stalls offers Restart beside Delete, or a browser deploys a birth HQ owns", () => {
   expect(mateArrivalOf(undefined)).toBe("none");
   expect(mateArrivalOf({ kind: "coming", birth: { attention: false } })).toBe("birth");
   expect(mateArrivalOf({ kind: "coming" })).toBe("coming");
-  expect(mateArrivalOf({ kind: "failed", verb: "redeploy" })).toBe("redeploy");
-  expect(mateArrivalOf({ kind: "failed", verb: "remove" })).toBe("failed");
+  expect(mateArrivalOf({ kind: "failed" })).toBe("failed");
 
   const birth = mateState(facts({ arrival: "birth" }));
   expect(birth.menu).toBe("birth");
@@ -410,13 +407,12 @@ it("ZV161: A Mate whose shared birth is open holds its birth's own menu, one sti
     Object.entries(coming.verbs).filter(([, verb]) => verb !== false && verb !== "no"),
   ).toEqual([["delete", true]]);
 
-  const stoppedNoDeploy = {
+  const noDeploy = {
     ...RUNNING,
     group: "unavailable" as const,
-    service: { id: "s-zcp", name: "zcp", status: "STOPPED" },
+    service: { id: "s-zcp", name: "zcp", status: "READY_TO_DEPLOY" },
   };
-  const redeploy = mateState(facts({ candidate: stoppedNoDeploy, arrival: "redeploy" }));
-  expect(redeploy.verbs.redeploy).toBe(true);
-  expect(redeploy.verbs.start).toBe(false);
-  expect(mateState(facts({ candidate: stoppedNoDeploy })).verbs.redeploy).toBe(false);
+  const failed = mateState(facts({ candidate: noDeploy, arrival: "failed" }));
+  expect(failed.verbs.start).toBe(false);
+  expect(Object.keys(failed.verbs)).not.toContain("redeploy");
 });

@@ -1,4 +1,4 @@
-next: PJ165
+next: PJ166
 
 - PJ164 — An HQ stop names the deploy token ids HQ sent and what the person does next, whatever its code; breaks: a person is not told which token to delete, or reads a known HQ code
 - PJ1 — An organization whose balance is below zero is out of credit
@@ -148,3 +148,4 @@ next: PJ165
 - PJ161 — A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart
 - PJ162 — A crewmate's conversation names the person who cleared it on that line, and no one on a new session the crew opened by itself; breaks: a colleague's Start fresh, or the crew's own, reads as the person looking having cleared it
 - PJ163 — A failed environment or Put it live operation carries the project HQ says it could not place, and no project is named when HQ omits it; breaks: the person cannot identify the project involved.
+- PJ165 — A Mate container left with no deployment past its first build's grace has failed and offers only its removal, never a deploy from the browser; breaks: the browser restarts a birth HQ owns

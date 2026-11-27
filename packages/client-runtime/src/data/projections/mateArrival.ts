@@ -60,8 +60,6 @@ export type MateComingVerb =
   | "remove"
   /** A press stopped at a step safe to ask again: it resumes there, on the same project. */
   | "try-again"
-  /** Its container has no deployment; create one through the same recipe as setup. */
-  | "redeploy"
   /** The platform may have taken it anyway: the projects page lists it if it did. */
   | "go-to-projects"
   /** Zerops refused its project for want of credit: credit added in HQ, then *Try again*. */
@@ -233,6 +231,7 @@ function comingWords(input: MateComingInput): MateComing | undefined {
   // build still owns the first deployment; a clock never turns that work into a failed setup. A
   // container within its first build's grace has not had it read yet: its import ends READY_TO_DEPLOY
   // a moment before its first build is listed (measured: "could not be added" for 0.4 s, then back).
+  // Its way out is HQ's birth contract: delete it and create again, never a deploy from this browser.
   if (
     candidate?.service?.status === "READY_TO_DEPLOY" &&
     candidate.service.activeAppVersion === null &&
@@ -240,7 +239,7 @@ function comingWords(input: MateComingInput): MateComing | undefined {
     input.firstBuild?.kind !== "running" &&
     !buildDue(candidate.service.created, input.nowMs)
   ) {
-    return { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" };
+    return { kind: "failed", line: "Nothing is deployed yet.", verb: "remove" };
   }
   const created = input.created === true;
   if (candidate?.creationFailed !== undefined) {
@@ -478,9 +477,6 @@ export function mateComingPage(input: {
   // coming — a birth left behind never keeps it from its conversation.
   if (reachability !== null && isTerminalReachability(reachability)) {
     return { kind: "unreachable", reachability };
-  }
-  if (input.coming?.kind === "failed" && input.coming.verb === "redeploy") {
-    return { kind: "coming", coming: input.coming };
   }
   if (input.linked || candidate?.group === "connected") return { kind: "up" };
   if (input.coming !== undefined) return { kind: "coming", coming: input.coming };

@@ -54,7 +54,6 @@ import { effectProcessOf } from "../../projections/lostAnswer.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { createServicesExecutor } from "./creationWrites.ts";
-import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import { renameProjectExecutor, startProjectExecutor } from "./projectWrites.ts";
 import {
@@ -67,10 +66,7 @@ import { cancelBuildExecutor } from "./pipelineWrites.ts";
 import { addressWritesExecutor, type AddressPlatform } from "./addressWrites.ts";
 import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "./vaultWrites.ts";
 
-type ZeropsOperationsClient = Pick<
-  ZeropsApiClient,
-  "deployMate" | "fetchProject" | "writeProject" | "door"
->;
+type ZeropsOperationsClient = Pick<ZeropsApiClient, "fetchProject" | "writeProject" | "door">;
 
 /** A service's and a project's lifecycle calls as the admitted client takes them. */
 type ServiceLifecycle = {
@@ -108,7 +104,6 @@ export function makeZeropsExecutor(input: {
     ServiceLifecycle &
     Pick<Parameters<typeof createServicesExecutor>[0], "importServicesIntoProject">;
   const assemble = (client: AdmittedClient): OperationExecutor => {
-    const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
       restartService: (serviceId) => client.restartService(serviceId),
     });
@@ -157,8 +152,6 @@ export function makeZeropsExecutor(input: {
       submit: (requestId, intent) =>
         Effect.suspend((): ReturnType<OperationExecutor["submit"]> => {
           switch (intent.kind) {
-            case "mate-deploy":
-              return deploy(requestId, intent);
             case "mate-restart":
               return restart.submit(requestId, intent);
             case "enable-subdomain-access":
@@ -254,7 +247,6 @@ export function makeZeropsExecutor(input: {
       };
       const source = input.client;
       const client: AdmittedClient = {
-        deployMate: (id, signal) => source.deployMate(id, signal, check),
         restartService: (id) => restartService(source.door, id, undefined, check),
         stopService: (id) => stopService(source.door, id, check),
         cancelBuild: (id) => cancelBuild(source.door, id, check),

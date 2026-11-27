@@ -185,3 +185,14 @@ it("PJ139: A Mate whose project holds no container reads as having none while no
     expect([status, pressed.page?.kind]).toEqual([status, "coming"]);
   }
 });
+
+// witness: packages/client-runtime/src/data/projections/mateArrival.ts | return { kind: "failed", line: "Nothing is deployed yet.", verb: "remove" }; → return { kind: "failed", line: "Nothing is deployed yet.", verb: "try-again" };
+it("PJ165: A Mate container left with no deployment past its first build's grace has failed and offers only its removal, never a deploy from the browser; breaks: the browser restarts a birth HQ owns", () => {
+  const noDeployment = {
+    group: "unavailable",
+    service: { status: "READY_TO_DEPLOY", created: "2026-11-27T00:00:00Z", activeAppVersion: null },
+  } as const;
+  expect(
+    mateArrival({ candidate: noDeployment, nowMs: Date.parse("2026-11-27T12:00:00Z") }).coming,
+  ).toEqual({ kind: "failed", line: "Nothing is deployed yet.", verb: "remove" });
+});

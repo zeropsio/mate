@@ -201,56 +201,6 @@ const writesOf = (received: ReadonlyArray<Received>) =>
 const failureOf = (call: Promise<unknown>): Promise<unknown> =>
   call.catch((error: unknown) => error);
 
-// witness: packages/client-runtime/src/zerops/api.ts | service.activeAppVersion !== null → service.activeAppVersion === undefined
-it("ZV104: Deploying a Mate with no deployment never replaces a deployment or invents settings, and a missing receipt stays uncertain", async () => {
-  const savedSetup =
-    "build:\n  base: ubuntu@22.04\nrun:\n  base: zcp@1\n  ports:\n    - port: 8080\n";
-  const settings = [
-    { key: "ZEROPS_YAML", content: savedSetup },
-    { key: "VSCODE_PASSWORD", content: "kept-password" },
-  ];
-  function mate(input: {
-    readonly activeAppVersion: { readonly id: string } | null;
-    readonly env: ReadonlyArray<{ readonly key: string; readonly content: string }>;
-    readonly receipt: unknown;
-  }) {
-    const platform = zeropsPlatform(({ method, path }) => {
-      if (path === "/service-stack/s1/env") return reply(200, { items: input.env });
-      if (method === "PUT") return reply(200, input.receipt);
-      return reply(200, {
-        id: "s1",
-        name: "zcp",
-        status: "READY_TO_DEPLOY",
-        base: "zcp@1",
-        activeAppVersion: input.activeAppVersion,
-      });
-    });
-    return { client: signedIn(platform.respond), received: platform.received };
-  }
-
-  const deployed = mate({
-    activeAppVersion: { id: "version-1" },
-    env: settings,
-    receipt: { process: { id: "process-1" } },
-  });
-  expect(await failureOf(deployed.client.deployMate("s1"))).toBeInstanceOf(ZeropsApiError);
-  expect(writesOf(deployed.received)).toEqual([]);
-
-  const unsaved = mate({
-    activeAppVersion: null,
-    env: [{ key: "VSCODE_PASSWORD", content: "kept-password" }],
-    receipt: { process: { id: "process-1" } },
-  });
-  expect(await failureOf(unsaved.client.deployMate("s1"))).toBeInstanceOf(ZeropsApiError);
-  expect(writesOf(unsaved.received)).toEqual([]);
-
-  const unreceipted = mate({ activeAppVersion: null, env: settings, receipt: {} });
-  expect(await failureOf(unreceipted.client.deployMate("s1"))).toMatchObject({ kind: "uncertain" });
-  expect(writesOf(unreceipted.received).map((request) => request.path)).toEqual([
-    "/service-stack/s1/trigger-pipeline",
-  ]);
-});
-
 // witness: packages/client-runtime/src/zerops/api.ts | this.#baseUrl = (options.baseUrl ?? DEFAULT_ZEROPS_API_BASE).replace(/\/+$/, ""); → this.#baseUrl = DEFAULT_ZEROPS_API_BASE;
 it("ZV105: The Zerops token is sent only to the configured API base", async () => {
   const platform = zeropsPlatform(() =>

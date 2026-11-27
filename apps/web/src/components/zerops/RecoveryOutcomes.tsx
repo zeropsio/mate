@@ -17,7 +17,7 @@ export function RecoveryItems({
 }: {
   readonly items: ReadonlyArray<Placement>;
   readonly actions?: boolean;
-  readonly onRetry?: ((action: "start" | "restart" | "redeploy") => void) | undefined;
+  readonly onRetry?: ((action: "start" | "restart") => void) | undefined;
 }) {
   const operations = useAccountOperations();
   const { owner, registry } = useOwner();

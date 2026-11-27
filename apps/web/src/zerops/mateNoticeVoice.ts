@@ -31,7 +31,7 @@ export function restartRefusal(progress: OperationProgress): string | null {
 }
 
 export interface MateOperationRefusal {
-  readonly kind: "retry" | "redeploy";
+  readonly kind: "retry" | "action";
   readonly details: string;
   readonly receipt?: OperationProgress | undefined;
   /** A retry answers this failed source attempt, not any later attempt. */
@@ -72,23 +72,21 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
           ? stoppedRestartWords(receipt.nextAction)
           : refusal.kind === "retry"
             ? "Zerops didn't accept the setup retry."
-            : "Zerops couldn't redeploy the Mate.";
+            : "The request didn't go through.";
   const secondary =
-    coming?.kind === "failed" && coming.verb === "redeploy"
-      ? coming.line
-      : (refusalText ??
-        (coming === undefined
-          ? undefined
-          : coming.kind === "failed"
-            ? (input.failureReason ??
-              (coming.verb === "go-to-projects" || coming.verb === "add-credit"
-                ? coming.line
-                : pressStopped(progress?.press)
-                  ? NOT_SET_UP_LINE
-                  : coming.line))
-            : coming.line !== COMING_UP_LINE && coming.line !== TAKING_LONGER_LINE
-              ? coming.line
-              : comingSentence(coming.line === TAKING_LONGER_LINE)));
+    refusalText ??
+    (coming === undefined
+      ? undefined
+      : coming.kind === "failed"
+        ? (input.failureReason ??
+          (coming.verb === "go-to-projects" || coming.verb === "add-credit"
+            ? coming.line
+            : pressStopped(progress?.press)
+              ? NOT_SET_UP_LINE
+              : coming.line))
+        : coming.line !== COMING_UP_LINE && coming.line !== TAKING_LONGER_LINE
+          ? coming.line
+          : comingSentence(coming.line === TAKING_LONGER_LINE));
   const details = [
     ...new Set(
       [

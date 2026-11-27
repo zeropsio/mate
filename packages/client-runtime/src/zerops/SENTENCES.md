@@ -81,7 +81,6 @@ next: ZV218
 - ZV101 — A Git password is erased when its account loses access, and an issue answered after the account closed is dropped
 - ZV102 — An issue whose answer was lost stays uncertain across a remount and never creates a second password
 - ZV103 — A Git password is issued, listed and revoked through the person's session and never travels in a URL
-- ZV104 — Deploying a Mate with no deployment never replaces a deployment or invents settings, and a missing receipt stays uncertain
 - ZV105 — The Zerops token is sent only to the configured API base
 - ZV107 — A login answer or read arriving after a local sign-out never signs in or signs out the next account
 - ZV108 — A lost answer to a project write is uncertain and never resent, and a write given up during a token renewal is never sent
@@ -127,11 +126,11 @@ next: ZV218
 - ZV156 — An organisation whose membership reads none is not offered by the switcher, and the selection moves to the next; once the person is a member again it is offered again; breaks: a removed person is offered an organisation every action refuses
 - ZV157 — A Mate the platform is deleting, or one HQ's current placement does not hold while no birth or press brings it up, is read so and offers no verb at all; breaks: a Mate whose row reads Deleting… or Not in this HQ still offers Restart and Delete in its menu
 - ZV158 — Delete, Change face and Move are offered only where HQ offers the viewer the Mate's record (edit_mate_record), drawn held while HQ has not said, and Leave as HQ offers its detach; Rename only to its project's OWNER or ADMIN, Hand over only to an organization owner or admin; breaks: a project admin HQ refuses the record is offered Delete
-- ZV159 — Start, Stop, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart
+- ZV159 — Start, Stop and Restart are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart
 - ZV160 — Restart is offered on an active project and container unless the platform or our own verb is already bringing it up and has not run past its cap, and Start only on a stopped Mate the platform is not moving; breaks: the menu offers a second Restart while the first is still coming up
 - ZV176 — Stop is offered on a running project that holds its Mate container, never where that container is stopped, where the platform is starting or stopping either, or where the project holds no container; breaks: a Mate whose container is stopped offers Stop beside Start
 - ZV178 — A Mate's Stop writes each running service of its project and its Start each stopped one, never a platform service, its Mate container last; breaks: a Stop refused partway has stopped the Mate's own computer and left its app running
-- ZV161 — A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment offers Redeploy and no Start; breaks: a Mate whose setup stalls offers Restart beside Delete
+- ZV161 — A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment has failed and offers no Start and no Redeploy; breaks: a Mate whose setup stalls offers Restart beside Delete, or a browser deploys a birth HQ owns
 - ZV162 — A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue
 - ZV163 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
 - ZV164 — A stage of an application whose environment operation is open is not half made, and the same stage is once none is open; breaks: Finish setting up is offered beside a stage being added, and a second start is refused as operation_in_flight

@@ -202,7 +202,7 @@ export const HAND_OVER_NAME_WAIT_MS = 15_000;
 
 /** The coming page does not read a server version for its actions. */
 const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
-/** No container levels: this page's menu verbs are its birth's and Redeploy, neither a level's. */
+/** No container levels: this page's menu verbs are its birth's and Delete, neither a level's. */
 const NO_LEVELS: ReadonlyMap<string, MateContainerLevel> = new Map();
 
 /** The slate face a Mate wears where nobody picked one. */
@@ -941,16 +941,6 @@ function ExistingMateComingPage({
 
   const mateActions = useMateActions({ serverVersions: NO_VERSIONS, levels: NO_LEVELS });
 
-  const redeployEntry =
-    coming?.kind !== "failed" || coming.verb !== "redeploy" || candidate === undefined
-      ? undefined
-      : mateActions
-          .actionsFor(candidate, readZeropsMembership(candidate.project))
-          .entries.find((entry) => entry.id === "redeploy");
-  const redeploy =
-    redeployEntry === undefined || "separator" in redeployEntry
-      ? undefined
-      : redeployEntry.onSelect;
   const deleteEntry =
     candidate === undefined || !mayRemoveMate(mateOffersOf(projectId))
       ? undefined
@@ -1006,7 +996,7 @@ function ExistingMateComingPage({
     (mateActions.trouble === null
       ? null
       : {
-          kind: "redeploy" as const,
+          kind: "action" as const,
           details: mateActions.trouble,
         });
 
@@ -1074,7 +1064,6 @@ function ExistingMateComingPage({
                   onRemove={deletion?.kind === "failed" ? undefined : removeEntry?.onSelect}
                   removeDisabled={removeEntry?.disabled}
                   removeLabel={linkWord.exit === "birth" ? removeEntry?.label : undefined}
-                  onRedeploy={redeploy}
                   {...(setupOrigin === undefined
                     ? {}
                     : { onSetupAgain: () => refreshMateSetup(setupOrigin) })}
@@ -1510,7 +1499,6 @@ export function ComingBelow({
   removeDisabled = false,
   removeLabel = "Remove",
   onRemove,
-  onRedeploy,
   onTryAgain,
   onSetupAgain,
   ends,
@@ -1540,7 +1528,6 @@ export function ComingBelow({
   readonly removeLabel?: string | undefined;
   readonly onRemove?: (() => void) | undefined;
   readonly onTryAgain?: (() => void) | undefined;
-  readonly onRedeploy?: (() => void) | undefined;
   /** Reads its setup again, where the last read could not be it (`refreshMateSetup`). */
   readonly onSetupAgain?: () => void;
   /**
@@ -1584,7 +1571,7 @@ export function ComingBelow({
       </div>
     );
   const verb =
-    coming?.kind === "failed" && coming.verb !== "redeploy" && setupFailureDetails !== undefined ? (
+    coming?.kind === "failed" && setupFailureDetails !== undefined ? (
       <>
         {onTryAgain === undefined ? null : (
           <Button
@@ -1608,11 +1595,7 @@ export function ComingBelow({
         )}
       </>
     ) : coming?.kind === "failed" ? (
-      coming.verb === "redeploy" && onRedeploy !== undefined ? (
-        <Button variant="primary" size="md" onClick={onRedeploy}>
-          Redeploy
-        </Button>
-      ) : coming.verb === "remove" && onRemove !== undefined ? (
+      coming.verb === "remove" && onRemove !== undefined ? (
         <Button variant="primary" size="md" disabled={removeDisabled} onClick={onRemove}>
           {removeLabel}
         </Button>

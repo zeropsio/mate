@@ -85,7 +85,7 @@ it("MN10: A Mate the person may see but not open offers no verb, not even a rest
     placementKnown: false,
     viewer: { role: "READ_ONLY", visibility: "listed", offers: undefined, handsOver: false },
   });
-  expect(verbs).toMatchObject({ start: false, restart: false, redeploy: false });
+  expect(verbs).toMatchObject({ start: false, restart: false });
 
   expect(deriveZeropsRowAction(row(running, { ...every, open: false }, "open")).kind).toBe("none");
   expect(deriveZeropsRowAction(row(failedBirth, { ...every, remove: false }, "open")).kind).toBe(

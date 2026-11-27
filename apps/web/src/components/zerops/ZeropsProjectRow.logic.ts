@@ -165,7 +165,6 @@ export type ZeropsRowAction =
   /** A project the platform failed to create is taken off the account. */
   | { readonly kind: "remove"; readonly label: "Remove" }
   | { readonly kind: "restart"; readonly label: "Restart" }
-  | { readonly kind: "redeploy"; readonly label: "Redeploy" }
   /**
    * A re-probe, nothing that writes (H9) — offered for `unreachable` and
    * `stalled`, which a browser cannot tell apart from a container that
@@ -458,13 +457,6 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
 
-  if (input.coming?.kind === "failed" && input.coming.verb === "redeploy") {
-    return {
-      status: { label: "Not deployed", tone: "attention" },
-      detail: input.coming.line,
-      detailIsError: true,
-    };
-  }
   // Its flag read off outranks a socket: what it says is that Zerops Mate needs enabling.
   if (candidate.group === "connected" && !awaitsEnable(input)) {
     return { status: { label: "Connected", tone: "ok" } };
@@ -670,9 +662,6 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   // place of it.
   if (input.visibility === "listed") return { kind: "none" };
 
-  if (input.coming?.kind === "failed" && input.coming.verb === "redeploy") {
-    return can.restart ? { kind: "redeploy", label: "Redeploy" } : { kind: "none" };
-  }
   const enable: ZeropsRowAction = can.enable
     ? { kind: "enable", label: "Enable Zerops Mate" }
     : { kind: "none" };

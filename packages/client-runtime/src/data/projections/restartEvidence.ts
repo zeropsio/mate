@@ -57,7 +57,7 @@ export const projectRestarts: Projection<ProjectKey, RestartEvidence> = {
 
 /** Invocation identity supplies the only lookup; completion is still the operation owner's. */
 export const recoveryOutcome: Projection<
-  { readonly requestId: string; readonly action: "start" | "restart" | "redeploy" },
+  { readonly requestId: string; readonly action: "start" | "restart" },
   RecoveryOutcome
 > = {
   name: "recoveryOutcome",

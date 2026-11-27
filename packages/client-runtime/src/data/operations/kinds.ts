@@ -40,7 +40,6 @@ import { setMergers } from "./hqMergers.ts";
 import { setOutsideProduction } from "./hqOutsideProduction.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
-import { mateDeploy } from "./mateDeploy.ts";
 import { mateRestart } from "./mateRestart.ts";
 import { renameProject } from "./renameProject.ts";
 import { serviceRestart } from "./serviceRestart.ts";
@@ -77,7 +76,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...MATE_ENGINE_KINDS,
   mateAction,
   mateRestart,
-  mateDeploy,
   mateUpdate,
   enableSubdomainAccess,
   cancelBuild,

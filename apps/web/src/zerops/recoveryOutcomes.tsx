@@ -29,7 +29,7 @@ interface Invocation {
   readonly projectId: string;
   readonly serviceId: string;
   readonly name: string;
-  readonly action: "start" | "restart" | "redeploy";
+  readonly action: "start" | "restart";
   readonly preparationFailure?: string;
 }
 const originKey = (kind: RecoveryOrigin, orgId: string | null, projectId: string) =>
@@ -81,7 +81,7 @@ interface RecoveryTarget {
 export function useRecoveryCommand(origin: RecoveryOrigin) {
   const { account, owner, registry } = useOwner();
   const operations = useAccountOperations();
-  return async (target: RecoveryTarget, action: "start" | "restart" | "redeploy") => {
+  return async (target: RecoveryTarget, action: "start" | "restart") => {
     if (account?.orgId == null) throw new Error("No organization is open.");
     const { orgId } = account;
     const epoch = currentAccountEpoch();
@@ -148,31 +148,24 @@ export function useRecoveryCommand(origin: RecoveryOrigin) {
     if (epoch !== currentAccountEpoch())
       throw new Error("The account changed before the request was sent.");
     const result = await operations.submit(
-      action === "redeploy"
-        ? {
-            kind: "mate-deploy",
-            orgId,
-            projectId: target.projectId,
-            serviceId: target.serviceId,
-          }
-        : action === "restart"
-          ? // A failed container Zerops refuses to restart is HQ's to bring back.
-            restartWay(target.status) === "hq"
-            ? { kind: "start-mate-restart", orgId, projectId: target.projectId, id: requestId }
-            : {
-                kind: "mate-restart",
-                orgId,
-                projectId: target.projectId,
-                serviceId: target.serviceId,
-              }
-          : target.projectStatus === "STOPPED"
-            ? { kind: "start-project", orgId, projectId: target.projectId }
-            : {
-                kind: "start-service",
-                orgId,
-                projectId: target.projectId,
-                serviceId: target.serviceId,
-              },
+      action === "restart"
+        ? // A failed container Zerops refuses to restart is HQ's to bring back.
+          restartWay(target.status) === "hq"
+          ? { kind: "start-mate-restart", orgId, projectId: target.projectId, id: requestId }
+          : {
+              kind: "mate-restart",
+              orgId,
+              projectId: target.projectId,
+              serviceId: target.serviceId,
+            }
+        : target.projectStatus === "STOPPED"
+          ? { kind: "start-project", orgId, projectId: target.projectId }
+          : {
+              kind: "start-service",
+              orgId,
+              projectId: target.projectId,
+              serviceId: target.serviceId,
+            },
       requestId,
     );
     if (

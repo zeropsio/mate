@@ -39,21 +39,20 @@ export interface MateViewerFacts {
 
 /**
  * How far a Mate has come into being: a shared birth HQ holds open for its project (`birth`),
- * coming up (`coming`), stopped with a container that has no deployment (`redeploy`), stopped
- * otherwise (`failed`), or come (`none`).
+ * coming up (`coming`), stopped (`failed`), or come (`none`).
  */
-export type MateArrival = "none" | "birth" | "coming" | "redeploy" | "failed";
+export type MateArrival = "none" | "birth" | "coming" | "failed";
 
 /** A Mate's arrival from its coming (`mateComing`): a shared birth's carries its birth. */
 export function mateArrivalOf(
   coming:
     | { readonly kind: "coming"; readonly birth?: unknown }
-    | { readonly kind: "failed"; readonly verb: string }
+    | { readonly kind: "failed" }
     | undefined,
 ): MateArrival {
   if (coming === undefined) return "none";
   if (coming.kind === "coming") return coming.birth === undefined ? "coming" : "birth";
-  return coming.verb === "redeploy" ? "redeploy" : "failed";
+  return "failed";
 }
 
 export interface MateFacts {
@@ -78,7 +77,6 @@ export interface MateVerbs {
   /** Stopping its whole project, its computer and every service beside it, until Start. */
   readonly stop: boolean;
   readonly restart: boolean;
-  readonly redeploy: boolean;
   /** Renaming its project, whose name is the Mate's: a platform write for its OWNER or ADMIN. */
   readonly rename: boolean;
   readonly face: HqVerb;
@@ -98,7 +96,7 @@ export interface MateState {
   /** HQ's current placement holds no record of it, and nothing is bringing it up. */
   readonly outsideHq: boolean;
   /**
-   * Whether the viewer may run its Zerops verbs (Enable, Start, Stop, Restart, Redeploy): their role works
+   * Whether the viewer may run its Zerops verbs (Enable, Start, Stop, Restart): their role works
    * there and, on a project HQ places, HQ's entry opens it. Before HQ's first answer, nobody.
    */
   readonly operates: boolean;
@@ -114,7 +112,6 @@ const NO_VERBS: MateVerbs = {
   start: false,
   stop: false,
   restart: false,
-  redeploy: false,
   rename: false,
   face: "no",
   assign: false,
@@ -238,12 +235,10 @@ export function mateState(facts: MateFacts): MateState {
   const remove = record?.edit.kind === "allowed" && mate;
   if (facts.arrival === "coming") return state("setup", { ...NO_VERBS, delete: remove });
 
-  const redeploy = operates && facts.arrival === "redeploy";
   const level = facts.level;
   return state("verbs", {
     start:
       operates &&
-      !redeploy &&
       candidate.group === "unavailable" &&
       candidate.creationFailed === undefined &&
       candidate.missingContainer !== true &&
@@ -252,7 +247,6 @@ export function mateState(facts: MateFacts): MateState {
     // From a running project only: never beside Start, nor while the platform is moving it.
     stop:
       operates &&
-      !redeploy &&
       candidate.project.status === "ACTIVE" &&
       candidate.service !== undefined &&
       !isStopped(candidate) &&
@@ -263,7 +257,6 @@ export function mateState(facts: MateFacts): MateState {
       candidate.project.status === "ACTIVE" &&
       candidate.service?.status === "ACTIVE" &&
       (level === undefined || !COMING_UP.has(level.level) || level.overdue),
-    redeploy,
     rename: reach === "administer",
     face: record !== undefined && mate ? hqVerb(record.edit) : "no",
     assign: viewer?.handsOver === true,

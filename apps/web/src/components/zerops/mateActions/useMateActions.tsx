@@ -79,7 +79,6 @@ import {
 } from "react";
 
 import { moveAttemptFor, type MoveAttempt } from "./moveAttempt";
-import { MateDeployConfirmation } from "./MateDeployConfirmation";
 import { useMateStates } from "./useMateStates";
 import { RestartMateConfirmation, StopMateConfirmation } from "./MateVerbConfirmation";
 import type { HqMoveTo } from "@t3tools/shared/hqOffers";
@@ -170,7 +169,6 @@ type MateDialog =
       readonly id: string;
       readonly operationKind: string;
     }
-  | { readonly kind: "redeploy"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "rename"; readonly candidate: ZeropsCandidatePresentation }
   | {
       readonly kind: "face";
@@ -1253,14 +1251,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const openFace = changeFace(candidate);
       const serverVersion = serverVersions.get(candidate.key);
       const quick: Array<ZeropsMenuEntry> = [];
-      if (verbs.redeploy) {
-        quick.push({
-          id: "redeploy",
-          label: "Redeploy",
-          disabled: busy,
-          onSelect: () => setDialog({ kind: "redeploy", candidate }),
-        });
-      }
       if (verbs.start) {
         quick.push({
           id: "start",
@@ -1511,9 +1501,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           }}
           open
         />
-      ) : null}
-      {dialog?.kind === "redeploy" ? (
-        <MateDeployConfirmation candidate={dialog.candidate} onClose={close} />
       ) : null}
       {dialog?.kind === "restart" ? (
         <RestartMateConfirmation

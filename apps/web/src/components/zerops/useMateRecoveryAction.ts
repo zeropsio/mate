@@ -30,7 +30,7 @@ export function useMateRecoveryAction(projectId: string | null) {
   const act =
     candidate?.service === undefined || !writes
       ? undefined
-      : async (action: "start" | "restart" | "redeploy") => {
+      : async (action: "start" | "restart") => {
           if (candidate.service === undefined) return;
           await command(
             {

@@ -841,11 +841,7 @@ export interface MateBornLine {
  */
 export function mateBornLine(coming: MateComing): MateBornLine {
   if (comingWaitsOnMaker(coming)) return WAITS_ON_MAKER_LINE;
-  if (coming.kind === "failed") {
-    return coming.verb === "redeploy"
-      ? { words: coming.line, since: undefined, tone: "attention" }
-      : BORN_STOPPED;
-  }
+  if (coming.kind === "failed") return BORN_STOPPED;
   // A birth that stopped says how far it got; one under way is on its clock like any other,
   // whichever of its steps runs: those are its own view's to list.
   if (coming.birth?.attention === true)
