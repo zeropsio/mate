@@ -1688,10 +1688,14 @@ function pageOf(
   const earlier = earlierOf(read, key);
   if (earlier === null || !earlier.more) return Option.none();
   const phase = read.stream(engineEarlierScope(key)).phase;
+  const oldest = valuesOf(read, "mateEngineRun", "engineRunsIn", engineConversationId(key)).find(
+    (run) => run.ordinal === earlier.before,
+  );
   return Option.some({
     beforeCursor: String(earlier.before),
     hasMore: true,
     loadingOlder: phase === "connecting" || phase === "baselining",
+    ...(oldest === undefined ? {} : { windowFrom: iso(oldest.queuedAt) }),
   });
 }
 

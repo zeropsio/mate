@@ -1,6 +1,19 @@
 import { useCallback, useLayoutEffect, useRef, type RefObject } from "react";
 import { type LegendListRef } from "@legendapp/list/react";
-import { earlierTurnsAnchor, type MessagesTimelineRow } from "./MessagesTimeline.logic";
+import {
+  EARLIER_SEAM_ID,
+  earlierTurnsAnchor,
+  type MessagesTimelineRow,
+} from "./MessagesTimeline.logic";
+
+/**
+ * The first row of the loaded turns, the one earlier turns arrive above: after the line where
+ * they go when rows were kept from them on their own (`EARLIER_SEAM_ID`), else the first.
+ */
+const firstLoadedRowId = (rows: ReadonlyArray<MessagesTimelineRow>): string | undefined => {
+  const from = rows.findIndex((row) => row.id === EARLIER_SEAM_ID) + 1;
+  return rows.slice(from).find((row) => row.kind !== "seam")?.id;
+};
 
 /** What hands the page back to the person while earlier turns are being placed. */
 const GESTURES = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
@@ -31,22 +44,26 @@ export function useEarlierTurnsAnchor(
     if (viewport !== undefined) {
       stopFollowingRef.current?.();
       stopFollowingRef.current = null;
+      // Rows kept from earlier turns on their own stand above where those turns go: the row held
+      // is one of the loaded turns, which the earlier ones arrive above.
+      const gap = rows.findIndex((row) => row.id === EARLIER_SEAM_ID);
+      const kept = new Set(gap === -1 ? [] : rows.slice(0, gap).map((row) => row.id));
       const anchor = earlierTurnsAnchor(
-        [...viewport.querySelectorAll<HTMLElement>("[data-timeline-row-id]")].map((element) => {
-          const box = element.getBoundingClientRect();
-          return {
-            id: element.dataset.timelineRowId ?? "",
-            kind: element.dataset.timelineRowKind,
-            top: box.top,
-            bottom: box.bottom,
-          };
-        }),
+        [...viewport.querySelectorAll<HTMLElement>("[data-timeline-row-id]")]
+          .filter((element) => !kept.has(element.dataset.timelineRowId ?? ""))
+          .map((element) => {
+            const box = element.getBoundingClientRect();
+            return {
+              id: element.dataset.timelineRowId ?? "",
+              kind: element.dataset.timelineRowKind,
+              top: box.top,
+              bottom: box.bottom,
+            };
+          }),
         viewport.getBoundingClientRect().top,
       );
       earlierAnchorRef.current =
-        anchor === null
-          ? null
-          : { ...anchor, firstId: rows.find((row) => row.kind !== "seam")?.id };
+        anchor === null ? null : { ...anchor, firstId: firstLoadedRowId(rows) };
       if (anchor !== null) {
         const follow = () => {
           const current = earlierAnchorRef.current;
@@ -72,7 +89,7 @@ export function useEarlierTurnsAnchor(
     const viewport = listRef.current?.getScrollableNode() as HTMLElement | undefined;
     if (anchor === null || viewport === undefined) return;
     // Nothing came in above it yet: the earlier turns are still on their way.
-    if (rows.find((row) => row.kind !== "seam")?.id === anchor.firstId) return;
+    if (firstLoadedRowId(rows) === anchor.firstId) return;
     // `anchor` holds the top the last pre-arrival scroll left the row at.
     stopFollowingRef.current?.();
     stopFollowingRef.current = null;

@@ -118,12 +118,12 @@ import {
   nextCrewFrame,
   type CrewView,
 } from "./project.ts";
+import { landingsToRead } from "./shipReads.ts";
 import { crewEngineUpdateFacts } from "./updateIdle.ts";
 import {
   DEFAULT_CREW_LOGIN,
   DEFAULT_CREW_TIMING,
   membersInOrder,
-  tasksInOrder,
   type CrewState,
 } from "./state.ts";
 
@@ -267,6 +267,9 @@ export const principalOf = (principal: TurnPrincipal): Principal =>
  * Each crewmate's tint at Apply (`crewTints`): its own, else the one it wore, else the first a
  * crewmate of this crew does not wear, never its Mate's.
  */
+/** A dev service that answered nothing of what shipped. */
+const NOTHING_READ = { read: new Set<string>(), shipped: new Set<string>() } as const;
+
 const withTints = (
   members: ReadonlyArray<CrewMemberSpec>,
   previous: CrewState,
@@ -622,8 +625,6 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       Effect.orElseSucceed(() => 0),
     );
 
-    /** Landed tasks *Deliver* found gone out with your tree, as its draft last read them. */
-    const delivered = new Set<string>();
     const viewOf = (current: CrewState) =>
       Effect.gen(function* () {
         const loginsByHandle: Record<string, CrewLogin> = {};
@@ -637,7 +638,6 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           devHosts: yield* SubscriptionRef.get(devHosts),
           memory: yield* memoryCounts,
           context: {},
-          delivered,
         } satisfies CrewView;
       });
 
@@ -1054,6 +1054,49 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       });
 
     const io = (error: { readonly message: string }) => refuse("io", error.message);
+
+    /**
+     * Whether landed work went out (`CrewReads.shipped`), told to the crew to keep per task. Read
+     * when the crew's landed work is read — its boot, a feed opened, *Ask to ship* — never on a
+     * cadence, and only the landings `landingsToRead` bounds: a landing read as shipped is not
+     * read again, one read as not shipped is. A host that cannot be read says nothing of its
+     * landings, and the others' answers are told all the same.
+     */
+    const readShipped = Effect.gen(function* () {
+      const current = yield* state;
+      const read: Array<{ taskId: string; commit: string; shipped: boolean }> = [];
+      for (const [host, tasks] of landingsToRead(current, yield* Clock.currentTimeMillis)) {
+        const out = yield* reads
+          .shipped(
+            host,
+            tasks.map((task) => task.landedCommit!),
+          )
+          .pipe(
+            Effect.catch((failure) =>
+              Effect.logWarning("crew: a dev service did not say what shipped", {
+                host,
+                failure: failure.message,
+              }).pipe(Effect.as(NOTHING_READ)),
+            ),
+          );
+        for (const task of tasks) {
+          const commit = task.landedCommit!;
+          if (out.read.has(commit)) {
+            read.push({ taskId: task.id, commit, shipped: out.shipped.has(commit) });
+          }
+        }
+      }
+      if (read.length === 0) return;
+      yield* tell({ _tag: "ShippedRead", read }, `shipped:${yield* Clock.currentTimeMillis}`);
+    }).pipe(
+      Effect.catchCause((cause) => Effect.logWarning("crew: what shipped was not read", cause)),
+    );
+    /** One read at a time; a feed opened while one runs takes that one's answer. */
+    const shippedGate = yield* Semaphore.make(1);
+    const readShippedOnce = Effect.forkIn(
+      Semaphore.withPermitsIfAvailable(shippedGate, 1)(readShipped),
+      scope,
+    );
     const writerHosts = (current: CrewState) => [
       ...new Set(
         membersInOrder(current).flatMap((member) =>
@@ -1077,18 +1120,9 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
               for (const path of yield* reads.dirtyPaths(host).pipe(Effect.mapError(io))) {
                 dirtyPaths.push(`${repository.mountPath}/${path}`);
               }
-              const landed = tasksInOrder(current).filter(
-                (task) => task.landedCommit !== null && current.members[task.owner]?.host === host,
-              );
-              const out = yield* reads
-                .delivered(
-                  host,
-                  landed.map((task) => task.landedCommit!),
-                )
-                .pipe(Effect.mapError(io));
-              for (const task of landed) if (out.has(task.landedCommit!)) delivered.add(task.id);
             }
-            yield* refresh;
+            // What went out is read beside it: the press waits on no read.
+            yield* readShippedOnce;
             return { _tag: "deliverDraft", dirtyPaths } satisfies CrewCommandResult;
           }
           case "orphanScan": {
@@ -1262,10 +1296,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       });
 
     const taskPage = (input: CrewTaskPageInput): Effect.Effect<CrewTaskPage> =>
-      Effect.gen(function* () {
-        const current = yield* state;
-        return crewTaskPage(current, input, yield* viewOf(current));
-      });
+      Effect.map(state, (current) => crewTaskPage(current, input));
 
     const service: CrewEngineService = {
       // The front is served only once its boot (the import, the observer, the sweep) has run.
@@ -1276,7 +1307,8 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       }),
       // A sign-in reaches the crew as an input of its record; there is no pass of its own to wait on.
       nextLoginReconciliation: Effect.never,
-      snapshot: frames,
+      // A feed opened reads what of the crew's landed work went out, beside its frames.
+      snapshot: Stream.unwrap(Effect.as(readShippedOnce, frames)),
       updateFacts,
       updateChanges: Stream.fromPubSub(updateChanged),
       subscribeUpdateChanges: subscribeUpdateChanges(updateChanged),
@@ -1331,6 +1363,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       `configure:${yield* Clock.currentTimeMillis}`,
     );
     yield* listDevHosts.pipe(Effect.ignore);
+    yield* readShippedOnce;
     const booted = yield* state;
     if (booted.applied !== null) {
       yield* verify(membersInOrder(booted)).pipe(Effect.ignore);

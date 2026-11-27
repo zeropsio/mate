@@ -273,6 +273,7 @@ export function CrewSection(props: CrewSectionProps) {
         error={props.errorAt(CREW_ORIGIN.deliver)}
         mateName={props.mateName}
         notShipped={snapshot.landedNotDelivered}
+        unread={snapshot.landedUnread ?? 0}
         onReview={props.onReview}
         onShip={props.askLock === null ? props.onShip : null}
         {...(props.readTaskPage === undefined ? {} : { readTaskPage: props.readTaskPage })}

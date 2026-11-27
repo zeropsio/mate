@@ -2,6 +2,7 @@ import { expect, it } from "vite-plus/test";
 
 import { CrewWorld, home, lead, reader, writer } from "./crewDecideFixture.ts";
 import { crewSnapshotOf, nextCrewFrame, type CrewView } from "./project.ts";
+import { landingsToRead } from "./shipReads.ts";
 import type { CrewState, LaneRecord, MemberRecord, RunRecord, TaskRecord } from "./state.ts";
 
 const AT = Date.parse("2026-09-27T10:00:00.000Z");
@@ -74,7 +75,6 @@ const view = (fields: Partial<CrewView> = {}): CrewView => ({
   devHosts: {},
   memory: {},
   context: {},
-  delivered: new Set(),
   ...fields,
 });
 
@@ -247,16 +247,34 @@ it("CD32: A merge conflict, a crewmate's question and a task admission refused e
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/project.ts | task.state === "landed" && task.landedCommit !== null → task.state === "landed"
-it("CD33: A task closed with nothing to land is not counted as landed work waiting to be delivered", () => {
+// witness: apps/server/src/zerops/crew/engine/project.ts | task.shipRead?.commit !== task.landedCommit → task.shipRead === undefined
+it("CD90: A landed task counts as shipped, or as not shipped yet, only by what the Mate read of its own landing commit on the origin's branches; one never read, read for an earlier landing, or closed with nothing to land counts as neither; breaks: after a restart, or once the Mate moved the work onto a branch of its own, the Crew tab says it hasn't shipped work it shipped", () => {
+  const landing = (n: number) => String(n).repeat(40);
+  const landed = (id: string, n: number, fields: Partial<TaskRecord>) =>
+    task(id, n, { state: "landed", landedCommit: landing(n), landedAt: AT, ...fields });
   const snapshot = crewSnapshotOf(
     withTasks(applied(), [
-      task("t-1", 1, { state: "landed", landedCommit: "c".repeat(40), landedAt: AT }),
-      task("t-2", 2, { state: "landed", landedCommit: null, landedAt: AT }),
+      landed("t-1", 1, { shipRead: { commit: landing(1), shipped: true } }),
+      landed("t-2", 2, { shipRead: { commit: landing(2), shipped: false } }),
+      landed("t-3", 3, {}),
+      landed("t-4", 4, { shipRead: { commit: landing(9), shipped: false } }),
+      task("t-5", 5, { state: "landed", landedCommit: null, landedAt: AT }),
     ]),
     view(),
   );
-  expect(snapshot.landedNotDelivered).toBe(1);
+  expect([
+    snapshot.board.tasks.map((entry) => [entry.id, entry.delivered]),
+    snapshot.landedNotDelivered,
+  ]).toEqual([
+    [
+      ["t-1", true],
+      ["t-2", false],
+      ["t-3", false],
+      ["t-4", false],
+      ["t-5", false],
+    ],
+    1,
+  ]);
 });
 
 // witness: apps/server/src/zerops/crew/engine/project.ts | if (hostFrozen(state, member.host)) return { state: "frozen", detail: null }; → if (hostFrozen(state, member.handle)) return { state: "frozen", detail: null };
@@ -301,4 +319,38 @@ it("CD89: Work waiting for the lead's review raises no need of its own while a r
       view({ nowMs: AT + 30 * 60_000 }),
     ).attention.map((row) => row.id);
   expect([waits("blocked"), waits("landed")]).toEqual([["question:t-2"], ["review-wait:t-1"]]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/shipReads.ts | tasks.toSorted((a, b) => b.landedAt! - a.landedAt!).slice(0, SHIP_READS_PER_HOST), → tasks.toSorted((a, b) => b.landedAt! - a.landedAt!),
+it("CD91: What shipped is read of at most a dev service's 20 newest landings not read as shipped, none landed more than 30 days ago, and the Crew tab counts those of them not read yet as unread, claiming nothing of them; breaks: every boot and every feed opened re-reads all of a long-lived crew's landings, until one slow read keeps every one unread", () => {
+  const MINUTE = 60_000;
+  const DAY = 24 * 60 * MINUTE;
+  const landed = (n: number, landedAt: number, fields: Partial<TaskRecord> = {}) =>
+    task(`t-${n}`, n, {
+      state: "landed",
+      landedCommit: String(n % 10).repeat(40) + String(n),
+      landedAt,
+      ...fields,
+    });
+  const tasks = [
+    ...Array.from({ length: 22 }, (_, index) => landed(index + 1, AT - (22 - index) * MINUTE)),
+    landed(23, AT - 31 * DAY),
+  ];
+  // The newest is read as shipped already: it is read no more.
+  const newest = tasks[21]!;
+  const state = withTasks(applied(), [
+    ...tasks.slice(0, 21),
+    { ...newest, shipRead: { commit: newest.landedCommit!, shipped: true } },
+    tasks[22]!,
+  ]);
+  const toRead = landingsToRead(state, AT);
+  expect([
+    [...toRead.keys()],
+    toRead.get("appdev")?.map((entry) => entry.number),
+    crewSnapshotOf(state, view()).landedUnread,
+  ]).toEqual([
+    ["appdev"],
+    [21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+    20,
+  ]);
 });

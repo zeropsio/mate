@@ -56,6 +56,7 @@ export function CrewInFensCode({
   tasks,
   crewmates,
   notShipped,
+  unread,
   mateName,
   error,
   onReview,
@@ -64,8 +65,10 @@ export function CrewInFensCode({
 }: {
   readonly tasks: ReadonlyArray<CrewTask>;
   readonly crewmates: ReadonlyArray<Crewmate>;
-  /** How much of it has not shipped yet. */
+  /** How much of it the Mate read as not shipped yet. */
   readonly notShipped: number;
+  /** How much of it the Mate has not read yet: offered to ship, said of nothing. */
+  readonly unread: number;
   readonly mateName: string;
   /** *Ask Fen to ship them*'s refusal. */
   readonly error: string | null;
@@ -140,14 +143,18 @@ export function CrewInFensCode({
           <CrewTextButton label={crewShowAllWord(more ? null : work.length)} onPress={showAll} />
         </div>
       )}
-      {notShipped === 0 ? null : (
+      {notShipped === 0 && (unread === 0 || onShip === null) ? null : (
         <div className="mt-0.5 flex h-7 items-center gap-1.5 ps-14 pe-4 text-line leading-4.5 text-muted-foreground @max-md:h-8">
-          {/* A phone's width says it short. */}
-          <span className="truncate @max-md:hidden">{crewNotShippedWords(mateName)}</span>
-          <span className="hidden @max-md:inline">{CREW_NOT_SHIPPED_SHORT}</span>
+          {/* A phone's width says it short. Work not read yet is offered, and claims nothing. */}
+          {notShipped === 0 ? null : (
+            <>
+              <span className="truncate @max-md:hidden">{crewNotShippedWords(mateName)}</span>
+              <span className="hidden @max-md:inline">{CREW_NOT_SHIPPED_SHORT}</span>
+            </>
+          )}
           {onShip === null ? null : (
             <>
-              <span aria-hidden="true">·</span>
+              {notShipped === 0 ? null : <span aria-hidden="true">·</span>}
               <CrewTextButton
                 label={crewShipWord(mateName)}
                 line={crewShipLine(mateName)}

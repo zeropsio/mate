@@ -1,4 +1,4 @@
-next: CD90
+next: CD92
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -32,7 +32,6 @@ next: CD90
 - CD30 — A task the review sent back waits on you unless a running run sends it back itself
 - CD31 — A queued task whose dependency was discarded or stopped waits on you; one whose dependency is still worked or landed does not
 - CD32 — A merge conflict, a crewmate's question and a task admission refused each wait on you, a conflict naming its paths
-- CD33 — A task closed with nothing to land is not counted as landed work waiting to be delivered
 - CD34 — A crewmate's copy reads as being made, set up, frozen by a redeploy, gone or lost as its lane and its host stand
 - CD35 — A crewmate's conversation works in the copy its crew names, and opens nowhere, never in the Mate's tree, when the crew cannot read that copy or has not started; a conversation that is not a crewmate's is none of the crew's
 - CD36 — The crew's observer reads each conversation's record after the crew's cursor and tells each event the crew reads once, and a batch the crew could not take in is read again from the same cursor, nothing skipped
@@ -92,3 +91,5 @@ next: CD90
 - CD+4 — A conversation hands a writer a task that is the conversation's, marked in the conversation for its card to follow: with no run going a run starts of up to 2 hours that stops at 80% of the plan's usage, and the writer starts it at once; a hand-off to a reader or the lead is refused and makes nothing
 - CD+5 — A conversation that handed a task off hears once when the task comes to rest, as the principal that handed it off, and not while the crew is still on it: its check failing, the lead reviewing it or sending it back
 - CD+6 — A handed-off task a message sends back to work after it was ready is heard of again when it is ready again
+- CD90 — A landed task counts as shipped, or as not shipped yet, only by what the Mate read of its own landing commit on the origin's branches; one never read, read for an earlier landing, or closed with nothing to land counts as neither; breaks: after a restart, or once the Mate moved the work onto a branch of its own, the Crew tab says it hasn't shipped work it shipped
+- CD91 — What shipped is read of at most a dev service's 20 newest landings not read as shipped, none landed more than 30 days ago, and the Crew tab counts those of them not read yet as unread, claiming nothing of them; breaks: every boot and every feed opened re-reads all of a long-lived crew's landings, until one slow read keeps every one unread

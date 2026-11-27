@@ -812,9 +812,11 @@ type MessagesTimelineRowBody =
       /**
        * A new day, a long quiet stretch, where the person left off last time, where the
        * history import cut the conversation's earlier turns (`words` says what stayed behind),
-       * or where another agent took the conversation over (`words` names it).
+       * where another agent took the conversation over (`words` names it), or where the
+       * conversation's earlier turns, not loaded yet, stand between rows kept from them (an open
+       * request) and the turns loaded.
        */
-      seam: "day" | "gap" | "new" | "cut" | "agent";
+      seam: "day" | "gap" | "new" | "cut" | "agent" | "earlier";
       words?: string;
       /** It stands before a row of the project's flow, and joins the conversation with it. */
       flow?: true;
@@ -1263,6 +1265,9 @@ export function rowGap(
     return "tight";
   return "line";
 }
+
+/** The line where earlier turns not loaded yet stand, after rows kept from them on their own. */
+export const EARLIER_SEAM_ID = "seam:earlier";
 
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
@@ -2619,6 +2624,8 @@ export function deriveMessagesTimelineRows(input: {
   notices?: ReadonlyArray<string>;
   /** When the person last saw this conversation, if something came since. */
   newSince?: string | null;
+  /** When the loaded turns begin, while earlier ones are not loaded (`windowFrom`). */
+  earlierFrom?: string | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
   /** A failure no run shows, at the conversation's end (`threadErrorNotice`). */
@@ -2793,7 +2800,22 @@ export function deriveMessagesTimelineRows(input: {
   let lastEnd: string | null = null;
   const newSinceMs = input.newSince ? Date.parse(input.newSince) : NaN;
   let newSinceDrawn = !Number.isFinite(newSinceMs);
+  const earlierFromMs = input.earlierFrom ? Date.parse(input.earlierFrom) : NaN;
+  let earlierPlaced = !Number.isFinite(earlierFromMs);
   const seamBefore = (at: string, id: string, flow = false) => {
+    if (!earlierPlaced && Date.parse(at) >= earlierFromMs) {
+      // Rows before the loaded turns were kept from earlier ones on their own: the line stands
+      // where those turns go, in time order, and loads them.
+      if (rows.some((row) => row.kind !== "seam")) {
+        rows.push({
+          kind: "seam",
+          id: EARLIER_SEAM_ID,
+          createdAt: input.earlierFrom!,
+          seam: "earlier",
+        });
+      }
+      earlierPlaced = true;
+    }
     const day = localDayKey(at);
     const atMs = Date.parse(at);
     const endMs = lastEnd === null ? NaN : Date.parse(lastEnd);

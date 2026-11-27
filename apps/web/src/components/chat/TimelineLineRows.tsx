@@ -12,6 +12,7 @@ import {
   TimelineWorkingCtx,
 } from "./timelineContext";
 import { ErrorLine, EventLine, NoticeLine, Seam } from "./ConversationRows";
+import { TimelineEarlierSeam } from "./TimelineEarlierSeam";
 import { CrewTaskCard } from "../zerops/crew/CrewTaskCard";
 import { MateTaskCard } from "../zerops/MateTaskCard";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -154,5 +155,9 @@ export function PageTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pa
 
 export function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> }) {
   const ctx = use(TimelineRowCtx);
-  return <Seam row={row} timestampFormat={ctx.timestampFormat} />;
+  return row.seam === "earlier" ? (
+    <TimelineEarlierSeam row={row} timestampFormat={ctx.timestampFormat} />
+  ) : (
+    <Seam row={row} timestampFormat={ctx.timestampFormat} />
+  );
 }

@@ -16,7 +16,9 @@
  * line — Fen and a crew of three, each chat one of the four — so a press on
  * a face swaps the conversation as the line moves, `?first=<ms>` for a live
  * Mate that has done nothing yet, `?deploy=<from>,<to>` for a deploy running
- * alongside its run, and `?end=<ms>` for its run's end).
+ * alongside its run, and `?end=<ms>` for its run's end). `?earlier=1` opens Nova on
+ * its newest turns alone, an approval asked in an earlier turn kept above them, and *Load
+ * earlier turns* where those turns go.
  * `window.__switchHarness
  * .switchTo("juno")` switches from a script, so a per-frame sampler can watch
  * a switch it started itself, `.say("mira", text)` lands a message at a
@@ -338,6 +340,25 @@ const LANDED_PARAM = params.get("landed");
 const LANDED_MS =
   LANDED_PARAM === null ? null : LANDED_PARAM === "never" ? Infinity : Number(LANDED_PARAM);
 const FLOW_THREAD = params.get("thread") ?? "nova";
+const EARLIER = params.get("earlier") === "1";
+/** Where Nova's loaded turns begin with `?earlier=1`: its tenth turn on. */
+const EARLIER_FROM = at(9 * 11);
+/** An approval Nova asked in its third turn and nobody gave, kept above the turns loaded. */
+const KEPT_APPROVAL: TimelineEntry = {
+  id: "nova-approval-2",
+  kind: "work",
+  createdAt: at(2 * 11, 30),
+  entry: {
+    id: "nova-approval-2",
+    createdAt: at(2 * 11, 30),
+    turnId: TurnId.make("nova-turn-2"),
+    label: "Approval requested",
+    tone: "info",
+    sourceActivityKind: "approval.requested",
+    requestKind: "command",
+    detail: "npm run db:migrate",
+  },
+};
 const ANCHORED = params.get("anchor") === "1";
 const LANDED_MID = params.get("landedAt") === "mid";
 const LANDED_ID = `${FLOW_THREAD}-landed`;
@@ -793,9 +814,33 @@ function useHarnessThread(key: string) {
   }, []);
   const loading = shown === "loading";
   const flowRead = useFlowRead();
+  // `?earlier=1`: Nova's earlier turns come with a press, after the server's wait.
+  const [earlier, setEarlier] = useState<"window" | "loading" | "all">(
+    EARLIER && thread.key === FLOW_THREAD ? "window" : "all",
+  );
+  const loadEarlier = useMemo(
+    () =>
+      earlier === "all"
+        ? null
+        : {
+            loading: earlier === "loading",
+            from: EARLIER_FROM,
+            onLoadEarlier: () => {
+              setEarlier("loading");
+              setTimeout(() => setEarlier("all"), LATENCY_MS);
+            },
+          },
+    [earlier],
+  );
   const entries = useMemo(() => {
     if (loading) return [];
-    const whole = [...conversationOf(thread, tick, ended), ...(heard.get(thread.key) ?? [])];
+    const all = [...conversationOf(thread, tick, ended), ...(heard.get(thread.key) ?? [])];
+    const whole =
+      EARLIER && thread.key === FLOW_THREAD
+        ? earlier === "all"
+          ? [...all, KEPT_APPROVAL].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt))
+          : [KEPT_APPROVAL, ...all.filter((entry) => entry.createdAt >= EARLIER_FROM)]
+        : all;
     const own =
       ANCHORED && thread.key === FLOW_THREAD
         ? whole.slice(
@@ -808,8 +853,16 @@ function useHarnessThread(key: string) {
     if (!LANDED_MID) return [...own, novaLanding(new Date(STREAM_STARTED).toISOString())];
     const middle = Math.floor(own.length / 2);
     return [...own.slice(0, middle), novaLanding(own[middle]!.createdAt), ...own.slice(middle)];
-  }, [loading, thread, tick, ended, heard, flowRead]);
-  return { thread, live: thread.live === true && !ended, ended, phase: shown, entries, flowRead };
+  }, [loading, thread, tick, ended, heard, flowRead, earlier]);
+  return {
+    thread,
+    live: thread.live === true && !ended,
+    ended,
+    phase: shown,
+    entries,
+    flowRead,
+    loadEarlier,
+  };
 }
 
 const COMPOSER_HEIGHT = 132;
@@ -828,7 +881,8 @@ const keptForever = () => true;
 const readsNothing = () => null;
 
 function Pane({ threadKey }: { readonly threadKey: string }) {
-  const { thread, live, ended, phase, entries, flowRead } = useHarnessThread(threadKey);
+  const { thread, live, ended, phase, entries, flowRead, loadEarlier } =
+    useHarnessThread(threadKey);
   const listRef = useRef<LegendListRef | null>(null);
   const routeThreadKey = threadKeyOf(thread.key);
   // As ChatView: a thread left mid-read reopens there, any other follows its
@@ -933,6 +987,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
             topFadeEnabled: true,
             // As ChatView: the list waits a moment for the flow, out of sight.
             flowRead: thread.key !== FLOW_THREAD || flowRead,
+            loadEarlier,
           }}
         />
       </div>

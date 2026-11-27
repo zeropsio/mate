@@ -76,6 +76,20 @@ const handle = (b: Builder, input: CrewInput): void => {
       return wakeFired(b, input.wakeId);
     case "EffectSettled":
       return settled(b, input.effectId, input.outcome);
+    case "ShippedRead":
+      // A read of a landing the task no longer stands on (landed again since) says nothing of it.
+      for (const read of input.read) {
+        const task = b.state.tasks[read.taskId];
+        if (task?.state !== "landed" || task.landedCommit !== read.commit) continue;
+        if (task.shipRead?.commit === read.commit && task.shipRead.shipped === read.shipped)
+          continue;
+        b.emit({
+          _tag: "TaskUpdated",
+          taskId: task.id,
+          set: { shipRead: { commit: read.commit, shipped: read.shipped } },
+        });
+      }
+      return;
     case "Recovered":
       return recovered(b);
     case "ProcessesMoved":

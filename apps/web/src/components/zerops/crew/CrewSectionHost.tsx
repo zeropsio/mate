@@ -227,7 +227,7 @@ export function CrewSectionHost({
       if (result?._tag !== "deliverDraft") return;
       setAsk({
         ask: crewDeliverAsk(snapshot, result.dirtyPaths),
-        what: `${crewShipWhat(snapshot.landedNotDelivered)} ${crewShipLine(mateName)}`,
+        what: `${crewShipWhat(snapshot.landedNotDelivered, snapshot.landedUnread)} ${crewShipLine(mateName)}`,
       });
     });
   };

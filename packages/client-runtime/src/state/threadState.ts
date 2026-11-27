@@ -14,6 +14,12 @@ export interface EnvironmentThreadPageState {
   readonly hasMore: boolean;
   /** True while an older page fetch is in flight. */
   readonly loadingOlder: boolean;
+  /**
+   * When the loaded turns begin (their oldest's queueing): anything drawn before it was kept from
+   * earlier on its own (an open request), with the conversation's earlier turns between. Absent
+   * where the source does not say.
+   */
+  readonly windowFrom?: string;
 }
 
 export interface EnvironmentThreadState {
