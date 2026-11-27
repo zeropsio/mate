@@ -27,7 +27,8 @@ import {
 import {
   applyCursorAcpModelSelection,
   buildCursorAcpSpawnInput,
-  cursorReadOnlySettings,
+  cursorOwnSettings,
+  resolveCursorModeId,
 } from "./CursorAcpSupport.ts";
 import { applyGrokAcpModelSelection, grokAcpSpawnArgs } from "./GrokAcpSupport.ts";
 
@@ -204,7 +205,7 @@ it("AP2: Cursor starts with `--force` only under full access and with `--auto-re
   }
 });
 
-// witness: apps/server/src/provider/acp/CursorAcpSupport.ts | deny: [...beside.flat(), `${root}/.*`].flatMap((path) => [ → deny: [...beside.flat()].flatMap((path) => [
+// witness: apps/server/src/provider/acp/CursorAcpSupport.ts | : [...(yield* besideTheWayDown(confine.reads, entriesOf)), `${confine.reads}/.*`]; → : [...(yield* besideTheWayDown(confine.reads, entriesOf))];
 it.effect(
   "AP+1: A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off",
   () =>
@@ -214,7 +215,7 @@ it.effect(
         "/var": ["lib", "www"],
       };
       expect(
-        yield* cursorReadOnlySettings("/var/www", (directory) =>
+        yield* cursorOwnSettings({ reads: "/var/www" }, (directory) =>
           Effect.succeed(entries[directory] ?? []),
         ),
       ).toEqual({
@@ -251,6 +252,70 @@ it.effect(
       });
     }),
 );
+
+// witness: apps/server/src/provider/acp/CursorAcpSupport.ts | : [...(yield* besideTheWayDown(confine.writes, entriesOf)), `${confine.writes}/.git`]; → : [...(yield* besideTheWayDown(confine.writes, entriesOf))];
+it.effect(
+  "AP+3: A crew writer's Cursor starts with settings of its own that refuse every write beside the way down to its copy and into the copy's git internals, and every read outside the code",
+  () =>
+    Effect.gen(function* () {
+      const entries: Readonly<Record<string, ReadonlyArray<string>>> = {
+        "/": ["tmp", "var"],
+        "/var": ["www"],
+        "/var/www": [".mate", "api", "app"],
+        "/var/www/app": [".crew", "README.md"],
+        "/var/www/app/.crew": ["sol", "vera"],
+      };
+      expect(
+        yield* cursorOwnSettings(
+          { reads: "/var/www", writes: "/var/www/app/.crew/sol" },
+          (directory) => Effect.succeed(entries[directory] ?? []),
+        ),
+      ).toEqual({
+        version: 1,
+        permissions: {
+          allow: [],
+          deny: [
+            "Read(/tmp)",
+            "Read(/tmp/**)",
+            "Read(/var/www/.*)",
+            "Read(/var/www/.*/**)",
+            "Write(/tmp)",
+            "Write(/tmp/**)",
+            "Write(/var/www/.mate)",
+            "Write(/var/www/.mate/**)",
+            "Write(/var/www/api)",
+            "Write(/var/www/api/**)",
+            "Write(/var/www/app/README.md)",
+            "Write(/var/www/app/README.md/**)",
+            "Write(/var/www/app/.crew/vera)",
+            "Write(/var/www/app/.crew/vera/**)",
+            "Write(/var/www/app/.crew/sol/.git)",
+            "Write(/var/www/app/.crew/sol/.git/**)",
+          ],
+        },
+      });
+    }),
+);
+
+// witness: apps/server/src/provider/acp/CursorAcpSupport.ts | if (input.runtimeMode === "approval-required" && !input.writes) { → if (input.runtimeMode === "approval-required") {
+it("AP+4: Cursor runs a supervised thread in its ask mode, which neither edits nor runs commands, except a profiled thread that changes files, which runs in agent mode, and plan stays plan", () => {
+  const modeState = {
+    currentModeId: "agent",
+    availableModes: [
+      { id: "agent", name: "Agent", description: "Full agent capabilities with tool access" },
+      { id: "plan", name: "Plan", description: "Read-only mode for planning" },
+      { id: "ask", name: "Ask", description: "Q&A mode - no edits or command execution" },
+    ],
+  };
+  const mode = (writes: boolean, interactionMode?: "plan") =>
+    resolveCursorModeId({
+      interactionMode,
+      runtimeMode: "approval-required",
+      writes,
+      modeState,
+    });
+  expect([mode(false), mode(true), mode(true, "plan")]).toEqual(["ask", "agent", "plan"]);
+});
 
 // witness: apps/server/src/provider/acp/CursorAcpSupport.ts | yield* input.runtime.setModel(resolveCursorAcpBaseModelId(input.model)).pipe( → yield* input.runtime.setModel(input.model ?? "").pipe(
 it.effect(

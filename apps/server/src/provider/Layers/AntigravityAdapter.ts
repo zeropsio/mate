@@ -49,7 +49,7 @@ import {
   type ProviderAdapterError,
   ProviderAdapterTurnEndedError,
 } from "../Errors.ts";
-import { mapAcpToAdapterError, readOnlyThreadDirectory } from "../acp/AcpAdapterSupport.ts";
+import { mapAcpToAdapterError, profiledThreadDirectory } from "../acp/AcpAdapterSupport.ts";
 import {
   makeAcpAssistantItemEvent,
   makeAcpContentDeltaEvent,
@@ -862,7 +862,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         // code, the crew's home or anything else reaches the gate.
         const ownFolder = profileSetup?.readOnly
           ? yield* Effect.gen(function* () {
-              const directory = readOnlyThreadDirectory(
+              const directory = profiledThreadDirectory(
                 serverConfig.stateDir,
                 PROVIDER,
                 input.threadId,

@@ -55,7 +55,7 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
-import { mapAcpToAdapterError, readOnlyThreadDirectory } from "../acp/AcpAdapterSupport.ts";
+import { mapAcpToAdapterError, profiledThreadDirectory } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
   makeAcpAssistantItemEvent,
@@ -65,16 +65,13 @@ import {
   makeAcpRequestResolvedEvent,
   makeAcpToolCallEvent,
 } from "../acp/AcpCoreRuntimeEvents.ts";
-import {
-  type AcpSessionMode,
-  type AcpSessionModeState,
-  parsePermissionRequest,
-} from "../acp/AcpRuntimeModel.ts";
+import { parsePermissionRequest } from "../acp/AcpRuntimeModel.ts";
 import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
 import {
   applyCursorAcpModelSelection,
-  cursorReadOnlySettings,
+  cursorOwnSettings,
   makeCursorAcpRuntime,
+  resolveCursorModeId,
 } from "../acp/CursorAcpSupport.ts";
 import { CursorTransportFailure } from "../acp/CursorTransportFailure.ts";
 import {
@@ -107,9 +104,6 @@ const PROVIDER = ProviderDriverKind.make("cursor");
 const CURSOR_RESUME_VERSION = 1 as const;
 /** The model option a thread profile's effort sets (`CursorProvider.ts`). */
 const CURSOR_EFFORT_OPTION = "reasoning";
-const ACP_PLAN_MODE_ALIASES = ["plan", "architect"];
-const ACP_IMPLEMENT_MODE_ALIASES = ["code", "agent", "default", "chat", "implement"];
-const ACP_APPROVAL_MODE_ALIASES = ["ask"];
 
 function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
   const result = encodeUnknownJsonStringExit(input);
@@ -170,6 +164,8 @@ interface CursorSessionContext {
   promptsInFlight: number;
   assistantReply: CursorTransportFailure;
   stopped: boolean;
+  /** A profiled thread that changes files: it runs in agent mode (`resolveCursorModeId`). */
+  readonly writes: boolean;
 }
 
 function settlePendingApprovalsAsCancelled(
@@ -209,77 +205,10 @@ function parseCursorResume(raw: unknown): { sessionId: string } | undefined {
   return { sessionId: raw.sessionId.trim() };
 }
 
-function normalizeModeSearchText(mode: AcpSessionMode): string {
-  return [mode.id, mode.name, mode.description]
-    .filter((value): value is string => typeof value === "string" && value.length > 0)
-    .join(" ")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function findModeByAliases(
-  modes: ReadonlyArray<AcpSessionMode>,
-  aliases: ReadonlyArray<string>,
-): AcpSessionMode | undefined {
-  const normalizedAliases = aliases.map((alias) => alias.toLowerCase());
-  for (const alias of normalizedAliases) {
-    const exact = modes.find((mode) => {
-      const id = mode.id.toLowerCase();
-      const name = mode.name.toLowerCase();
-      return id === alias || name === alias;
-    });
-    if (exact) {
-      return exact;
-    }
-  }
-  for (const alias of normalizedAliases) {
-    const partial = modes.find((mode) => normalizeModeSearchText(mode).includes(alias));
-    if (partial) {
-      return partial;
-    }
-  }
-  return undefined;
-}
-
-function isPlanMode(mode: AcpSessionMode): boolean {
-  return findModeByAliases([mode], ACP_PLAN_MODE_ALIASES) !== undefined;
-}
-
-function resolveRequestedModeId(input: {
-  readonly interactionMode: ProviderInteractionMode | undefined;
-  readonly runtimeMode: RuntimeMode;
-  readonly modeState: AcpSessionModeState | undefined;
-}): string | undefined {
-  const modeState = input.modeState;
-  if (!modeState) {
-    return undefined;
-  }
-
-  if (input.interactionMode === "plan") {
-    return findModeByAliases(modeState.availableModes, ACP_PLAN_MODE_ALIASES)?.id;
-  }
-
-  if (input.runtimeMode === "approval-required") {
-    return (
-      findModeByAliases(modeState.availableModes, ACP_APPROVAL_MODE_ALIASES)?.id ??
-      findModeByAliases(modeState.availableModes, ACP_IMPLEMENT_MODE_ALIASES)?.id ??
-      modeState.availableModes.find((mode) => !isPlanMode(mode))?.id ??
-      modeState.currentModeId
-    );
-  }
-
-  return (
-    findModeByAliases(modeState.availableModes, ACP_IMPLEMENT_MODE_ALIASES)?.id ??
-    findModeByAliases(modeState.availableModes, ACP_APPROVAL_MODE_ALIASES)?.id ??
-    modeState.availableModes.find((mode) => !isPlanMode(mode))?.id ??
-    modeState.currentModeId
-  );
-}
-
 function applyRequestedSessionConfiguration<E>(input: {
   readonly runtime: AcpSessionRuntime.AcpSessionRuntime["Service"];
   readonly runtimeMode: RuntimeMode;
+  readonly writes: boolean;
   readonly interactionMode: ProviderInteractionMode | undefined;
   readonly modelSelection:
     | {
@@ -306,9 +235,10 @@ function applyRequestedSessionConfiguration<E>(input: {
       });
     }
 
-    const requestedModeId = resolveRequestedModeId({
+    const requestedModeId = resolveCursorModeId({
       interactionMode: input.interactionMode,
       runtimeMode: input.runtimeMode,
+      writes: input.writes,
       modeState: yield* input.runtime.getModeState,
     });
     if (!requestedModeId) {
@@ -328,8 +258,7 @@ function applyRequestedSessionConfiguration<E>(input: {
 
 /**
  * What a person may answer Cursor: no "always", which Cursor saves in its global settings for
- * every later session, a crewmate's included, past the crew's gate (measured, cursor-agent
- * 2026.10.22).
+ * every later session (measured, cursor-agent 2026.10.22).
  */
 const CURSOR_APPROVAL_OPTIONS: ReadonlyArray<ProviderApprovalOption> = [
   { decision: "cancel", label: "Cancel" },
@@ -563,36 +492,41 @@ export function makeCursorAdapter(
           );
           // A crewmate asks before every call, whatever mode its thread names.
           const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
-          // A read-only crewmate's Cursor reads only below its working folder: its own settings,
-          // written anew for each session from what lies beside the way down.
-          const readOnlySettings = profileSetup?.readOnly
-            ? yield* Effect.gen(function* () {
-                const directory = readOnlyThreadDirectory(
-                  serverConfig.stateDir,
-                  PROVIDER,
-                  input.threadId,
+          // A profiled thread that changes files: a crew writer, working in its lane.
+          const writes = profileSetup !== undefined && !profileSetup.readOnly;
+          // A crewmate's Cursor works under its own settings, written anew for each session from
+          // what lies beside the way down: a reader reads only below its working folder; a writer
+          // changes files only in its lane, its working folder, and reads only in the code.
+          const ownSettings =
+            profileSetup === undefined
+              ? undefined
+              : yield* Effect.gen(function* () {
+                  const directory = profiledThreadDirectory(
+                    serverConfig.stateDir,
+                    PROVIDER,
+                    input.threadId,
+                  );
+                  const settings = yield* cursorOwnSettings(
+                    writes ? { reads: profileSetup.projectRoot, writes: cwd } : { reads: cwd },
+                    (entry) => fileSystem.readDirectory(entry),
+                  );
+                  yield* fileSystem.makeDirectory(directory, { recursive: true });
+                  yield* fileSystem.writeFileString(
+                    path.join(directory, "cli-config.json"),
+                    yield* encodeUnknownJsonString(settings),
+                  );
+                  return directory;
+                }).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ProviderAdapterProcessError({
+                        provider: PROVIDER,
+                        threadId: input.threadId,
+                        detail: "Could not write a crewmate's Cursor settings.",
+                        cause,
+                      }),
+                  ),
                 );
-                const settings = yield* cursorReadOnlySettings(cwd, (entry) =>
-                  fileSystem.readDirectory(entry),
-                );
-                yield* fileSystem.makeDirectory(directory, { recursive: true });
-                yield* fileSystem.writeFileString(
-                  path.join(directory, "cli-config.json"),
-                  yield* encodeUnknownJsonString(settings),
-                );
-                return directory;
-              }).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new ProviderAdapterProcessError({
-                      provider: PROVIDER,
-                      threadId: input.threadId,
-                      detail: "Could not write a read-only crewmate's Cursor settings.",
-                      cause,
-                    }),
-                ),
-              )
-            : undefined;
 
           const resumeSessionId = parseCursorResume(input.resumeCursor)?.sessionId;
           const acpNativeLoggers = makeAcpNativeLoggers({
@@ -619,7 +553,7 @@ export function makeCursorAdapter(
             childProcessSpawner,
             cwd,
             runtimeMode,
-            ...(readOnlySettings === undefined ? {} : { readOnlySettings }),
+            ...(ownSettings === undefined ? {} : { ownSettings }),
             ...(resumeSessionId ? { resumeSessionId } : {}),
             ...(profileSetup ? { mcpServers: profileSetup.mcpServers } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
@@ -817,6 +751,7 @@ export function makeCursorAdapter(
           yield* applyRequestedSessionConfiguration({
             runtime: acp,
             runtimeMode,
+            writes,
             interactionMode: undefined,
             modelSelection: cursorModelSelection,
             mapError: ({ cause, method }) =>
@@ -855,6 +790,7 @@ export function makeCursorAdapter(
             promptsInFlight: 0,
             assistantReply: new CursorTransportFailure(),
             stopped: false,
+            writes,
           };
 
           const nf = yield* Stream.runDrain(
@@ -1050,6 +986,7 @@ export function makeCursorAdapter(
           yield* applyRequestedSessionConfiguration({
             runtime: ctx.acp,
             runtimeMode: ctx.session.runtimeMode,
+            writes: ctx.writes,
             interactionMode: input.interactionMode,
             modelSelection:
               model === undefined
@@ -1402,12 +1339,9 @@ export function makeCursorAdapter(
         sessionModelSwitch: "in-session",
         supportsConversationRollback: false,
         // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model.
-        // Cursor reads `.cursor/cli.json` only from the git root it works in down, so zcp's,
-        // which lets Zerops tools run unasked, never reaches a writer's copy, a git root of its
-        // own: there it asks (measured, cursor-agent 2026.10.22). A read-only crewmate works in
-        // no git root and starts with project settings off (`buildCursorAcpSpawnInput`). An
-        // "always" it saved globally would skip the gate, so Mate never answers with one
-        // (`CURSOR_APPROVAL_OPTIONS`).
+        // Every crewmate starts with settings of its own and project settings off
+        // (`buildCursorAcpSpawnInput`), so neither zcp's `.cursor/cli.json`, which lets Zerops
+        // tools run unasked, nor anything saved in Cursor's global settings reaches it.
         threadProfile: { tools: true, reportsSpend: false },
       },
       compaction: { type: "slash-command", command: "/compress" },
