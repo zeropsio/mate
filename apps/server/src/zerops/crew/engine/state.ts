@@ -73,9 +73,12 @@ export interface SessionRecord {
   readonly count: number;
   /** Why the current one opened; `null` for the first. */
   readonly lastReason: CrewSessionReason | null;
-  /** The prompt versions it started with; `null` before its first turn. */
+  /**
+   * The prompt versions it runs: its first turn's, or for a new crewmate's first session those
+   * of the Apply that added it; `null` otherwise before its first turn.
+   */
   readonly running: PromptVersions | null;
-  /** Whose work it serves (the first task's starter); `null` before its first task. */
+  /** Whose work it serves (its first turn's starter); `null` before its first turn. */
   readonly principal: string | null;
   /** The login it started on. */
   readonly login: string;
@@ -567,6 +570,12 @@ export const isTurnPurpose = (purpose: DeliveryRecord["purpose"]): purpose is De
 /** The crewmate's conversation runs a turn, or one is on its way. */
 export const isWorking = (state: CrewState, handle: string): boolean =>
   state.members[handle]?.active != null || delivering(state, handle);
+
+/**
+ * A session has had a turn once one was sent into it: its first turn names whose work it serves.
+ * `running` is no such sign, since a new crewmate's session holds its versions from Apply.
+ */
+export const sessionHadTurn = (session: SessionRecord): boolean => session.principal !== null;
 
 /** A crewmate the crew may hand a turn to now: nothing runs in its conversation or its copy. */
 export const isFree = (state: CrewState, handle: string): boolean =>
