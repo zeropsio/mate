@@ -236,6 +236,11 @@ export interface ZeropsAgentActivity {
    */
   readonly task: string | undefined;
   /**
+   * Its latest ask, as its subject and task say it, is another Mate's message, its words already
+   * led by that Mate's name (`ConversationRow.subjectFrom`): nobody of the person's side asked it.
+   */
+  readonly askedByMate?: true;
+  /**
    * When the person last wrote into it: the time their own browser stamped
    * on the message, so a browser holding what it sent (`sentAsk.ts`) knows
    * the echo by its own clock.
@@ -793,6 +798,7 @@ export function rowAgentActivity(
     threadKey: scopedThreadKey(scopeThreadRef(environmentId, threadId)),
     ...(standUp ? { standUp: true as const } : {}),
     task: agentActivitySubject(words, "idle"),
+    ...(row.subjectFrom === undefined ? {} : { askedByMate: true as const }),
     // Engine rows own state and words; their matching overview still owns the live step.
     ...agentActivityLiveStep(main?.id === threadId ? main : {}, kind),
     ...(state.kind === "working" && state.waitsOnHelpers

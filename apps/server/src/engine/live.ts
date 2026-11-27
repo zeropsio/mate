@@ -54,6 +54,7 @@ import {
   readConversationView,
   readConversationViews,
 } from "./read/conversationView.ts";
+import { goesOnIn } from "./read/goesOn.ts";
 import * as EffectOutboxModule from "./outbox/EffectOutbox.ts";
 import * as TurnPumpModule from "./pump/TurnPump.ts";
 import * as EngineStoreModule from "./store/EngineStore.ts";
@@ -87,6 +88,13 @@ interface RunEndRow {
   readonly end_source: string | null;
   readonly started_at: number | null;
   readonly principal_json: string;
+}
+
+/** The run `runOf` found, the runs carrying a message's work on to it, and whether it awaits an answer. */
+interface FoundRun {
+  readonly row: RunEndRow;
+  readonly carriers: ReadonlyArray<string>;
+  readonly awaitsAnswer: boolean;
 }
 
 export interface LiveEngineOptions {
@@ -320,18 +328,22 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             ),
           );
 
-    /** The agent's last words said whole in the runs a Mate's message started; none when none. */
-    const messageWords = (find: {
-      readonly conversationId: ConversationId;
-      readonly messageId: string;
-    }) =>
+    /**
+     * The agent's last words said whole in the runs a Mate's message started and the runs that
+     * carry its work on, and the note that said them; none when none.
+     */
+    const messageWords = (
+      find: { readonly conversationId: ConversationId; readonly messageId: string },
+      carriers: ReadonlyArray<string>,
+    ) =>
       sql<{ readonly item_id: string; readonly body_json: string }>`
         SELECT item.item_id, item.body_json FROM engine_item AS item
         JOIN engine_run AS run ON run.run_id = item.run_id
         WHERE item.conversation_id = ${find.conversationId} AND item.kind = 'note'
           AND item.state = 'closed' AND json_extract(item.by_json, '$.kind') = 'mate'
-          AND json_extract(run.principal_json, '$.kind') = 'mate'
-          AND json_extract(run.principal_json, '$.messageId') = ${find.messageId}
+          AND ((json_extract(run.principal_json, '$.kind') = 'mate'
+            AND json_extract(run.principal_json, '$.messageId') = ${find.messageId})
+            ${carriers.length === 0 ? sql`` : sql`OR ${sql.in("run.run_id", carriers)}`})
         ORDER BY item.opened_seq DESC LIMIT 1
       `.pipe(
         Effect.map((rows) => {
@@ -366,14 +378,19 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         return undefined;
       }).pipe(Effect.orElseSucceed(() => undefined));
 
-    /** Whether the run is the one the message opened, and whether any run of it reached the agent. */
+    /**
+     * Whether the run is the one the message opened (never a run carrying its work on), and
+     * whether any run of it reached the agent.
+     */
     const messageRuns = (
       find: { readonly conversationId: ConversationId; readonly messageId: string },
       runId: string,
     ) =>
       sql<{ readonly trigger_kind: string | null; readonly reached: number }>`
         SELECT
-          (SELECT json_extract(trigger_json, '$.kind') FROM engine_run WHERE run_id = ${runId})
+          (SELECT json_extract(trigger_json, '$.kind') FROM engine_run
+            WHERE run_id = ${runId} AND json_extract(principal_json, '$.kind') = 'mate'
+              AND json_extract(principal_json, '$.messageId') = ${find.messageId})
             AS trigger_kind,
           EXISTS (
             SELECT 1 FROM engine_run
@@ -389,64 +406,110 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         })),
       );
 
-    const runOf: MateEngineService["runOf"] = (find) =>
-      ("wakeId" in find
-        ? sql<RunEndRow>`
+    /**
+     * The run a Mate's message is on: the latest it started, then each run its work goes on in
+     * (`goesOnIn`), with those carriers; and whether that run's work waits on its person's
+     * answer to a question asked again by message.
+     */
+    const messageRun = (find: {
+      readonly conversationId: ConversationId;
+      readonly messageId: string;
+    }) =>
+      Effect.gen(function* () {
+        let [row] = yield* sql<RunEndRow>`
+          SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
+          WHERE conversation_id = ${find.conversationId}
+            AND json_extract(principal_json, '$.kind') = 'mate'
+            AND json_extract(principal_json, '$.messageId') = ${find.messageId}
+          ORDER BY ordinal DESC LIMIT 1
+        `;
+        const carriers: Array<string> = [];
+        while (row !== undefined && row.end_json !== null) {
+          const asked = yield* sql<{ readonly state: string; readonly by_send: string | null }>`
+            SELECT state, json_extract(answer_json, '$.bySend') AS by_send FROM engine_request
+            WHERE conversation_id = ${find.conversationId} AND run_id = ${row.run_id}
+              AND kind = 'question' AND json_extract(ask_json, '$.dismissible') = 1
+            ORDER BY seq
+          `;
+          const on = goesOnIn(
+            yield* decodeEnd(row.end_json),
+            asked.map((request) => ({
+              state: request.state,
+              bySend: request.by_send === null ? null : RunId.make(request.by_send),
+            })),
+          );
+          if (on === undefined) break;
+          if (on.kind === "asked") return { row, carriers, awaitsAnswer: true } satisfies FoundRun;
+          const [next] = yield* sql<RunEndRow>`
+            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
+            WHERE run_id = ${on.runId}
+          `;
+          if (next === undefined) break;
+          carriers.push(next.run_id);
+          row = next;
+        }
+        return row === undefined
+          ? undefined
+          : ({ row, carriers, awaitsAnswer: false } satisfies FoundRun);
+      });
+
+    const runOf: MateEngineService["runOf"] = (find) => {
+      const found =
+        "messageId" in find
+          ? messageRun(find)
+          : Effect.map(
+              "wakeId" in find
+                ? sql<RunEndRow>`
             SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
             WHERE json_extract(trigger_json, '$.wakeId') = ${find.wakeId}
             ORDER BY ordinal DESC LIMIT 1
           `
-        : "providerTurnId" in find
-          ? sql<RunEndRow>`
+                : "providerTurnId" in find
+                  ? sql<RunEndRow>`
             SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
             WHERE provider_turn_id = ${find.providerTurnId}
             ORDER BY ordinal DESC LIMIT 1
           `
-          : "taskId" in find
-            ? sql<RunEndRow>`
+                  : sql<RunEndRow>`
             SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
             WHERE conversation_id = ${find.conversationId}
               AND json_extract(principal_json, '$.kind') = 'task'
               AND json_extract(principal_json, '$.taskId') = ${find.taskId}
             ORDER BY ordinal DESC LIMIT 1
-          `
-            : sql<RunEndRow>`
-            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
-            WHERE conversation_id = ${find.conversationId}
-              AND json_extract(principal_json, '$.kind') = 'mate'
-              AND json_extract(principal_json, '$.messageId') = ${find.messageId}
-            ORDER BY ordinal DESC LIMIT 1
-          `
-      ).pipe(
-        Effect.flatMap((rows) => {
-          const row = rows[0];
-          if (row === undefined) return Effect.succeed(undefined);
-          return Effect.all({
-            end: row.end_json === null ? Effect.succeed(null) : decodeEnd(row.end_json),
-            source: row.end_source === null ? Effect.succeed(null) : decodeSource(row.end_source),
-            principal: decodePrincipal(row.principal_json),
-            reachedAgent: reachedAgent(row),
-            // Read once its run ended: what its asker hears back, never mid-run.
-            lastWords:
-              "messageId" in find && row.end_json !== null
-                ? messageWords(find)
-                : Effect.succeed(undefined),
-            message:
-              "messageId" in find ? messageRuns(find, row.run_id) : Effect.succeed(undefined),
-          }).pipe(
-            Effect.map(({ end, source, principal, reachedAgent, lastWords, message }) => ({
-              runId: RunId.make(row.run_id),
-              end,
-              source,
-              principal,
-              reachedAgent,
-              ...(lastWords === undefined ? {} : { lastWords }),
-              ...(message === undefined ? {} : { message }),
-            })),
-          );
-        }),
-        Effect.orElseSucceed(() => undefined),
-      );
+          `,
+              (rows) =>
+                rows[0] === undefined
+                  ? undefined
+                  : { row: rows[0], carriers: [], awaitsAnswer: false },
+            );
+      return Effect.flatMap(found, (run: FoundRun | undefined) => {
+        if (run === undefined) return Effect.succeed(undefined);
+        const { row, carriers, awaitsAnswer } = run;
+        return Effect.all({
+          end: row.end_json === null ? Effect.succeed(null) : decodeEnd(row.end_json),
+          source: row.end_source === null ? Effect.succeed(null) : decodeSource(row.end_source),
+          principal: decodePrincipal(row.principal_json),
+          reachedAgent: reachedAgent(row),
+          // Read once its run ended: what its asker hears back, never mid-run.
+          lastWords:
+            "messageId" in find && row.end_json !== null
+              ? messageWords(find, carriers)
+              : Effect.succeed(undefined),
+          message: "messageId" in find ? messageRuns(find, row.run_id) : Effect.succeed(undefined),
+        }).pipe(
+          Effect.map(({ end, source, principal, reachedAgent, lastWords, message }) => ({
+            runId: RunId.make(row.run_id),
+            end,
+            source,
+            principal,
+            reachedAgent,
+            ...(lastWords === undefined ? {} : { lastWords }),
+            ...(message === undefined ? {} : { message }),
+            ...(awaitsAnswer ? { awaitsAnswer: true as const } : {}),
+          })),
+        );
+      }).pipe(Effect.orElseSucceed(() => undefined));
+    };
 
     const store = yield* EngineStoreModule.EngineStore;
     const workspace = yield* AgentWorkspace;

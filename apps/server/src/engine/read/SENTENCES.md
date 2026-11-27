@@ -1,4 +1,4 @@
-next: RS28
+next: RS29
 
 - RS1 — A run reads as a running turn from its admission until it ends and as none while queued or in a state this build does not know; its end reads completed, interrupted when stopped, cut by a restart or held by a usage limit, broken when it failed or crashed, and none for an end kind this build does not know; breaks: a stopped turn shows as an error, or a queued message as working
 - RS2 — An attempt admission refused because the sender may not use the login or nobody is on record for it never ran: it reads interrupted and leaves its conversation ready, while a refusal whose reason this build does not know reads broken; breaks: another person's refused message marks the conversation failed
@@ -27,3 +27,4 @@ next: RS28
 - RS25 — A streamed call's input time belongs to the model until its input is complete, and its execution time belongs to the tool; breaks: the model writing a long command looks like a slow tool
 - RS26 — A command is timed by its whole text even when the displayed line is cut; breaks: a zcp run on a later line is counted as another tool
 - RS27 — A question to the person is timed as person even while the run is waiting; breaks: waiting for an answer is counted as another tool or lost among other waits
+- RS28 — A run a restart or crash cut goes on in its restart's continuation, or, when it waited on a question asked again by message, in the run its person's answer started, and waits on that answer while the question is open; one whose question was dismissed, that waited on none, or that ended otherwise goes on nowhere; breaks: a Mate's message is told stopped after a restart while its question still waits for its person, and their answer never reaches the sender
