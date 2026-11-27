@@ -2617,12 +2617,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   return (
     <nav
       aria-label="Mates"
-      // The list stands 16 px under the logo row: the row and the projects
-      // are two groups, and the first project's name reads as the start of
-      // another, 43 px under the mark's foot (the owner, 2026-09-29: "first
-      // project is too close to logo"). Its own stacking context, so the
-      // selected band stands behind every row.
-      className={cn("relative isolate flex flex-col gap-1.5 pt-4", className)}
+      // The list starts straight under the headline; under the Chief's row it stands 6 px off
+      // (`SidebarChiefRow`). Its own stacking context, so the selected band stands behind every
+      // row.
+      className={cn("relative isolate flex flex-col gap-1.5", className)}
       data-zerops-surface="sidebar-environments"
       onPointerEnter={holdOrder.hold}
       onPointerLeave={holdOrder.release}

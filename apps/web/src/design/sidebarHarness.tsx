@@ -1426,14 +1426,16 @@ function SidebarFrame({
           Its inset is the app's list's (`Sidebar`): the menu's 0.75rem, a pixel more at the start. */}
       <SidebarContent>
         <div className="ps-3.25 pe-3 pb-1">
-          {/* The person's Chief, the list's first row. */}
-          <SidebarChiefRow
-            current={false}
-            onOpen={() => {
-              menuActions.push("chief");
-              setOpen("");
-            }}
-          />
+          {/* The person's Chief, the list's first row; `?chief=none`, an organization without one. */}
+          {NO_CHIEF ? null : (
+            <SidebarChiefRow
+              current={false}
+              onOpen={() => {
+                menuActions.push("chief");
+                setOpen("");
+              }}
+            />
+          )}
           <RegistryContext value={comingRegistry ?? outerRegistry}>
             <SidebarZeropsTree
               candidates={RELOAD_MS === null ? candidates : reloaded.rows}
@@ -1709,6 +1711,9 @@ function HarnessJumpBox({
  * `?menu=closed`: the menu closed to its rail on a desktop (`RailFrame`), the harness's open menu
  * docking from it as the app's does (`SidebarStage`).
  */
+/** `?chief=none`: no Chief listed, the Mates straight under the headline. */
+const NO_CHIEF = new URLSearchParams(location.search).get("chief") === "none";
+
 const MENU_CLOSED = new URLSearchParams(location.search).get("menu") === "closed";
 
 /** `?w=` px, else the width the app opens the menu at in this window. */
