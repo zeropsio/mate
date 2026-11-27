@@ -31,6 +31,11 @@ import {
   type MatePartLease,
 } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
+import {
+  yourAppHas,
+  type YourAppChange,
+  type YourAppHas,
+} from "@t3tools/client-runtime/zerops/yourAppHas";
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 
 import {
@@ -256,6 +261,8 @@ export interface SitesService {
   readonly more: ReadonlyArray<string>;
   /** Only where it has no address, in plain words: its tooltip. */
   readonly why: string | undefined;
+  /** A stage that is Your app: the change it has (`yourAppHas`); none where that is not known. */
+  readonly has?: YourAppHas | undefined;
 }
 
 /** A Mate's addresses: its parts' services, then its other addresses. */
@@ -288,6 +295,13 @@ export interface SitesMateFacts {
   readonly poolPairs: ReadonlyArray<PoolPair> | undefined;
   /** The services its envelope marks as a repository's stand-in (`standInsOf`); none unread. */
   readonly standIns?: ReadonlyArray<string> | undefined;
+  /** Its application's merged changes, as HQ lists them; undefined unread. */
+  readonly merged?: ReadonlyArray<YourAppChange> | undefined;
+  /**
+   * When the deploy each of its services runs was made, by hostname (null: it runs none);
+   * undefined unread.
+   */
+  readonly deployedAt?: ReadonlyMap<string, string | null> | undefined;
 }
 
 /**
@@ -316,10 +330,22 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
   });
   // Pool workspaces end with their lease; only a part's stage is its durable address.
   const services = new Map<string, SitesService>();
-  for (const part of parts)
+  const stages = parts.filter((part) => part.preview !== undefined).length;
+  for (const part of parts) {
+    const stage = part.preview;
+    const has =
+      stage === undefined
+        ? undefined
+        : yourAppHas({
+            mateProjectId: mate.projectId,
+            repository: stages === 1 ? undefined : part.devService,
+            merged: mate.merged,
+            deployedAt:
+              mate.deployedAt === undefined ? undefined : mate.deployedAt.get(stage.service),
+          });
     for (const entry of [
       ...(part.pooled ? [] : part.dev.length === 0 ? [devPlaceholder(mate, part)] : part.dev),
-      ...(part.preview === undefined ? [] : [part.preview]),
+      ...(stage === undefined ? [] : [stage]),
     ])
       if (!services.has(entry.key))
         services.set(entry.key, {
@@ -329,7 +355,9 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
           host: entry.host,
           more: entry.more,
           why: entry.why,
+          ...(entry === stage && has !== undefined ? { has } : {}),
         });
+  }
   return { services: [...services.values()], links: ownDomainsFirst(others) };
 }
 

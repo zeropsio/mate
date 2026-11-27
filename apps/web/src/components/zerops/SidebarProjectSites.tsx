@@ -23,7 +23,7 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  *
  * What it says is `SidebarProjectSites.logic.ts`'s; this draws it.
  */
-import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ZeropsPublicRoute, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import {
   ArrowUpRightIcon,
@@ -61,6 +61,8 @@ import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
+import { useAppsChanges } from "~/zerops/projectFlows";
+import { useProjectsServiceValues } from "~/zerops/accountData";
 import { usePutLiveStanding } from "~/zerops/putLive";
 import { applicationOperationAtom } from "~/zerops/useEnvironmentOperation";
 
@@ -101,6 +103,7 @@ import {
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
 import { RealName } from "~/components/ui/real-name";
+import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { Text } from "~/components/ui/text";
 
 /** One of the project's Mates, as its section and the fix list it. */
@@ -147,8 +150,34 @@ const COPIED_MS = 1_200;
 /** How long the section the tag spoke of stays lit. */
 const FLASH_MS = 1_200;
 
+/** What a Mate's stage that is Your app has: its application's merged changes, its deploys. */
+interface SitesYourApp {
+  readonly merged: SitesMateFacts["merged"];
+  readonly services: Readonly<
+    Record<string, ReadonlyArray<Pick<ZeropsService, "name" | "activeAppVersion">> | undefined>
+  >;
+}
+
+/** When each service's running deploy was made, by hostname; undefined while unread. */
+const deploysOf = (
+  services: ReadonlyArray<Pick<ZeropsService, "name" | "activeAppVersion">> | undefined,
+): ReadonlyMap<string, string | null> | undefined =>
+  services === undefined
+    ? undefined
+    : new Map(
+        services.flatMap((service) =>
+          service.activeAppVersion === undefined
+            ? []
+            : [[service.name, service.activeAppVersion?.created ?? null] as const],
+        ),
+      );
+
 /** A Mate as its section is read, with zcp's leases and pool pairs where a conversation of it read them. */
-const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => ({
+const factsOf = (
+  mate: SitesMate,
+  leases: MatesLeases = {},
+  app?: SitesYourApp,
+): SitesMateFacts => ({
   projectId: mate.candidate.project.id,
   name: mate.name,
   owner: mate.owner === undefined || mate.owner.isViewer ? undefined : mate.owner.called,
@@ -159,6 +188,8 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   leases: leases[mate.candidate.project.id]?.leases,
   poolPairs: leases[mate.candidate.project.id]?.poolPairs,
   standIns: leases[mate.candidate.project.id]?.standIns,
+  merged: app?.merged,
+  deployedAt: deploysOf(app?.services[mate.candidate.project.id]),
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -484,6 +515,12 @@ export function SitesPanel({
       .filter((mate) => readsLeases(factsOf(mate)))
       .map((mate) => ({ projectId: mate.candidate.project.id })),
   );
+  // What each Mate's stage that is Your app has: the application's merges and the stage's deploy.
+  const appIds = useMemo(() => [groupId], [groupId]);
+  const merged = useAppsChanges(appIds).changes.get(groupId)?.merged;
+  const mateServices = useProjectsServiceValues(
+    useMemo(() => mates.map((mate) => mate.candidate.project.id), [mates]),
+  );
   const every = projectSitesSections({
     production: prod,
     productionUnread: prod === undefined && line?.production !== undefined,
@@ -491,7 +528,7 @@ export function SitesPanel({
     unreadStages: stg === undefined ? (line?.stages.map((stage) => stage.name) ?? []) : [],
     placeRoutes: (stop) =>
       (stop.projectId === undefined ? undefined : bound.get(stop.projectId)) ?? stop.routes,
-    mates: mates.map((mate) => factsOf(mate, leases)),
+    mates: mates.map((mate) => factsOf(mate, leases, { merged, services: mateServices })),
   });
   const sections = answering ? answeringSections(every) : every;
   const filtering = query.trim() !== "";
@@ -1314,6 +1351,12 @@ function SitesServices({
     const host = row.host ?? url;
     const link = {
       href: url,
+      // A stage that is Your app says what it has, in the chat script's words (`yourAppHas`).
+      ...(row.has === undefined
+        ? {}
+        : {
+            line: `Your app has "${row.has.title}" · added ${formatDayAwareTimestamp(row.has.at, "locale")}`,
+          }),
       onCopyKey: () => {
         onCopy({ key: row.key, url });
       },
