@@ -263,7 +263,7 @@ export function ProjectAutomationRowView({
             variant="secondary"
           >
             <PlusIcon aria-hidden="true" />
-            Add automated mate
+            Add automated Mates
           </Button>
         )}
       </SetupRow>
