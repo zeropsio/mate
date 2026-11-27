@@ -519,6 +519,10 @@
       "types": "./src/zerops/releaseFacts.ts",
       "default": "./src/zerops/releaseFacts.ts"
     },
+    "./zerops/draftAddress": {
+      "types": "./src/zerops/draftAddress.ts",
+      "default": "./src/zerops/draftAddress.ts"
+    },
     "./zerops/draftLook": {
       "types": "./src/zerops/draftLook.ts",
       "default": "./src/zerops/draftLook.ts"

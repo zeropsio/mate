@@ -42,6 +42,7 @@ import type {
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import { keptAgentPanelModel } from "./chat/keptAgentPanelModel";
 import { ServiceBrowserScope } from "./ServiceBrowserLink";
+import { useDraftAddresses } from "../zerops/useDraftAddresses";
 import { feedbackNotice } from "./chat/FeedbackNotice";
 import { ComposerPlaceLine, composerPlaceNotice } from "./chat/ComposerPlace";
 import {
@@ -3051,6 +3052,8 @@ function ConversationView(props: ChatViewProps) {
     (href: string) => resolveChangeLink(href) ?? resolveExpressDesign(href),
     [resolveChangeLink, resolveExpressDesign],
   );
+  // A draft's address the Mate wrote opens its draft, or Your app once the draft is gone.
+  const resolveDraftAddress = useDraftAddresses(activeThreadRef);
   const editPictureInExpress = useEditPictureInExpress(activeThreadRef, expressOn);
   // A picture ask's answer: its pictures into the composer, sent with the words that say what
   // they are, after whatever the person had typed.
@@ -7299,6 +7302,7 @@ function ConversationView(props: ChatViewProps) {
       threadRef={activeThreadRef}
       services={zeropsTopology?.services}
       resolveAppLink={resolveAppLink}
+      resolveDraftAddress={resolveDraftAddress}
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? panelLayoutControls : null}

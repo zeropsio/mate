@@ -34,7 +34,7 @@ import { formatDayAwareTimestamp } from "../../timestampFormat";
 import { FixAction } from "./FixAction";
 import { RestartAction } from "./RestartAction";
 import { useOpenReview } from "../../zerops/review";
-import { ServiceBrowserLink } from "../ServiceBrowserLink";
+import { ServiceBrowserLink, useLinkDestination } from "../ServiceBrowserLink";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewTryIt } from "../zerops/crew/CrewTryIt";
 import type { OutcomeModel } from "./conversation.logic";
@@ -115,7 +115,9 @@ type MateOfRun = ResultFacts["mate"];
 
 function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfRun }) {
   const openReview = useOpenReview();
-  const { action, url, tryIt } = row;
+  const { action, tryIt } = row;
+  // A draft's address it checked opens what stands there now, or nothing (`useDraftAddresses`).
+  const url = useLinkDestination(row.url ?? undefined).href ?? null;
   const review = action?.kind === "review" ? action.target : null;
   const fix = action?.kind === "fix" ? action.problem : null;
   const restart = action?.kind === "restart" ? action.services : null;

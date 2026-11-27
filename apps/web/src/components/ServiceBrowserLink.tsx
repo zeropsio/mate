@@ -5,6 +5,7 @@ import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topol
 import { isBrowsableUrl } from "@t3tools/client-runtime/zerops/mateParts";
 import { serviceForPreview } from "@t3tools/client-runtime/zerops/serviceBrowserPolicy";
 import { useRightPanelStore } from "../rightPanelStore";
+import type { DraftAddressResolver } from "../zerops/useDraftAddresses";
 
 export type ServicePreviewResolver = (url: string) => (() => void) | null;
 export const ServiceBrowserLinkContext = createContext<ServicePreviewResolver | null>(null);
@@ -23,6 +24,12 @@ export const ServiceBrowserLinkContext = createContext<ServicePreviewResolver | 
  */
 type AppLinkResolver = (url: string) => (() => void) | null;
 export const AppLinkContext = createContext<AppLinkResolver | null>(null);
+
+/**
+ * A draft's address goes where `useDraftAddresses` says: its draft, Your app, or nowhere. It
+ * outranks both other resolvers, since the address itself may be dead.
+ */
+const DraftAddressContext = createContext<DraftAddressResolver | null>(null);
 
 /**
  * Where a link goes: a small mark after its words, or — inside running text —
@@ -72,22 +79,34 @@ type LinkDestination = "app" | "preview" | "external";
 
 /**
  * Where a web link goes and what a click on it does: a page of this app, the
- * side panel's preview, or a new tab. Undefined for a link that is not a web
- * address (mail, a fragment, a file).
+ * side panel's preview, or a new tab, and the address it carries (a draft's
+ * address may carry Your app's, or none). Undefined for a link that is not a
+ * web address (mail, a fragment, a file).
  */
 export function useLinkDestination(
   href: string | undefined,
   resolvePreview?: ServicePreviewResolver,
-): { destination: LinkDestination | undefined; open: (() => void) | null } {
+): {
+  destination: LinkDestination | undefined;
+  open: (() => void) | null;
+  href: string | undefined;
+} {
   const contextResolve = useContext(ServiceBrowserLinkContext);
   const resolveApp = useContext(AppLinkContext);
-  if (href === undefined || !isBrowsableUrl(href)) return { destination: undefined, open: null };
+  const resolveDraft = useContext(DraftAddressContext);
+  if (href === undefined || !isBrowsableUrl(href))
+    return { destination: undefined, open: null, href };
+  const draft = resolveDraft?.(href) ?? null;
+  if (draft !== null)
+    return draft.href === undefined
+      ? { destination: undefined, open: null, href: undefined }
+      : { destination: "preview", open: draft.open, href: draft.href };
   // A page inside this app wins over both a preview and a new tab: it is the
   // same change, drawn by the surface that owns it.
   const openInApp = resolveApp?.(href) ?? null;
-  if (openInApp) return { destination: "app", open: openInApp };
+  if (openInApp) return { destination: "app", open: openInApp, href };
   const open = (resolvePreview ?? contextResolve)?.(href) ?? null;
-  return { destination: open ? "preview" : "external", open };
+  return { destination: open ? "preview" : "external", open, href };
 }
 
 /** The same resolved destination drives the indicator and the click. */
@@ -103,10 +122,11 @@ export function ServiceBrowserLink({
   showIndicator?: boolean;
   indicator?: LinkIndicator | undefined;
 }) {
-  const { destination, open } = useLinkDestination(props.href, resolvePreview);
+  const { destination, open, href } = useLinkDestination(props.href, resolvePreview);
   return (
     <a
       {...props}
+      href={href}
       data-link-destination={destination}
       onClick={(event) => {
         onClick?.(event);
@@ -137,6 +157,7 @@ export function ServiceBrowserScope({
   threadRef,
   services,
   resolveAppLink,
+  resolveDraftAddress,
   children,
   ...props
 }: ComponentProps<"div"> & {
@@ -144,6 +165,8 @@ export function ServiceBrowserScope({
   services: readonly ZeropsTopologyService[] | undefined;
   /** Links this app answers itself — a change's address, above all. */
   resolveAppLink?: AppLinkResolver | undefined;
+  /** Where a link to one of the Mate's draft addresses goes (`useDraftAddresses`). */
+  resolveDraftAddress?: DraftAddressResolver | undefined;
 }) {
   const resolve = useCallback<ServicePreviewResolver>(
     (url) => {
@@ -154,10 +177,12 @@ export function ServiceBrowserScope({
     [threadRef, services],
   );
   return (
-    <AppLinkContext value={resolveAppLink ?? null}>
-      <ServiceBrowserLinkContext value={resolve}>
-        <div {...props}>{children}</div>
-      </ServiceBrowserLinkContext>
-    </AppLinkContext>
+    <DraftAddressContext value={resolveDraftAddress ?? null}>
+      <AppLinkContext value={resolveAppLink ?? null}>
+        <ServiceBrowserLinkContext value={resolve}>
+          <div {...props}>{children}</div>
+        </ServiceBrowserLinkContext>
+      </AppLinkContext>
+    </DraftAddressContext>
   );
 }
