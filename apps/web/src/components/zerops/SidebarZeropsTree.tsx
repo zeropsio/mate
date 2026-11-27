@@ -839,7 +839,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const memberKeys = menuMateKeys(menu);
   const mateKeyOf = (item: T): string => memberKeys.get(item.project.id) ?? item.project.id;
   // Platform's own projects shown are rows to draw; hidden, a zcp container in one is no Mate. Which
-  // project is one is the tree's word: HQ names it nowhere and it carries no birth tag.
+  // project is one is the tree's word: HQ names it nowhere.
   const menuPlatform = new Set(menu.platform.map((project) => project.id));
   const platformOnly = (candidate: T) =>
     menuPlatform.has(candidate.project.id) && (platformProject?.(candidate) ?? false);

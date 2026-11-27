@@ -51,7 +51,7 @@ const generations = NAV.map((scope) => ({ scope, generation: 1 }));
 /** HQ's navigation said these records, and the roster of `user` lists these projects. */
 function treeOf(
   records: ReadonlyArray<Row>,
-  roster: ReadonlyArray<{ readonly id: string; readonly tagList?: ReadonlyArray<string> }> = [],
+  roster: ReadonlyArray<{ readonly id: string }> = [],
   then: ReadonlyArray<AccountInput> = [],
 ) {
   const state = apply(emptyAccount, [
@@ -191,19 +191,6 @@ it("PJ114: Groups are HQ's applications in their creation order and members keep
   ]);
   // The roster arriving, in its own order, moves nothing.
   expect(order(treeOf(records, [{ id: "bea" }, { id: "ann" }, { id: "zed" }]))).toEqual(first);
-});
-
-// witness: packages/client-runtime/src/data/projections/menuTree.ts | project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) !== true → project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) === true
-it("PJ115: A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate", () => {
-  const tree = treeOf(
-    [placed("ada", null, "2026-10-01T00:00:00.000Z")],
-    [
-      { id: "ada" },
-      { id: "plain", tagList: ["shop"] },
-      { id: "making", tagList: ["mb-0123456789abcdef0123456789abcdef"] },
-    ],
-  );
-  expect(tree.platform.map((project) => project.id)).toEqual(["plain"]);
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | placements.filter(({ value }) => value.appId == null || !listedApps.has(value.appId)), → placements.filter(({ id, value }) => (value.appId == null || !listedApps.has(value.appId)) && read.fact("project", id).kind === "known"),

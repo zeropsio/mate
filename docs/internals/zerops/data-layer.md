@@ -93,7 +93,7 @@ in no application are the ungrouped ones, its Chiefs placed by HQ's Chief fields
 live and New Mate read their group from it as the menu and the projects page do. Each member is joined by
 project id to the person's Zerops roster, which adds facts and never removes a member. A birth and
 the Mate born of it are one member under one key, the birth's id, from its first frame on. A roster
-project HQ names nowhere and without HQ's birth tag is a Platform project. Every order is HQ's own
+project HQ names nowhere is a Platform project. Every order is HQ's own
 times; nothing of the tab's own state (a press, its clock) adds, keys or orders a row. The menu
 paints at HQ's first answer, never waiting on the roster or a timer; with HQ unreachable on a cold
 load it shows no project rows and says so.

@@ -3,8 +3,7 @@
 - A **Mate** is a coding environment in a Zerops project: its code, coding agents and durable work.
 - A **Zerops project** groups services on the platform. It is distinct from an application.
 - A **Platform project** is a Zerops project of the organization that HQ names nowhere (no Mate,
-  environment or birth of it) and that carries no birth tag (`mb-<birthId>`, written by HQ's birth
-  job); the menu lists it apart from the applications, never as a Mate.
+  environment or birth of it); the menu lists it apart from the applications, never as a Mate.
 - **HQ** is the shared authority for applications, repositories, changes and deployments, one
   service for every organization (mate-hq).
 - **Zerops HQ** is Zerops's own sign-in service, shared by every Zerops app (hq.zerops.io); it is

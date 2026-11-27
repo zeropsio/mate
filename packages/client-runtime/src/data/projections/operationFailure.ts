@@ -173,10 +173,6 @@ const HQ_STOPPED = new Map<string, string>([
     "ended",
     "It was ended while it waited. Anything it made stays and can be deleted, and a request already at Zerops may still finish.",
   ],
-  [
-    "project_ambiguous",
-    "Several Zerops projects carry this Mate's tag, so HQ cannot tell which one is its own.",
-  ],
   ["several_containers", "The project holds several Mate services."],
   ["mate_service_unknown", "HQ could not find this Mate's service to give it a new key."],
   ["another_persons_chief", "The project is registered as another person's Chief."],

@@ -1,6 +1,6 @@
 /**
  * The menu's rows: the projects HQ's records place (`menuTree`), as HQ places them, then the
- * Platform projects — the roster's projects HQ names nowhere, without its birth tag. HQ decides
+ * Platform projects — the roster's projects HQ names nowhere. HQ decides
  * what the person sees: no row is made here, and none is filtered. A Mate HQ is still making has no
  * row: the tree draws it from its birth (`comingMember`). Where HQ refuses, the organization's
  * Mates as Zerops lists them, ungrouped. Each project is the store's; inventory and admission

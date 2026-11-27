@@ -24,7 +24,7 @@ export function menuRows<Row extends CandidateRow>(input: {
   readonly placed: ReadonlyArray<Row | CandidateRow>;
   /** The organization's roster: whatever of it is read yet. */
   readonly candidates: ReadonlyArray<Row>;
-  /** The roster's projects HQ names nowhere and that carry no birth tag (`menuTree.platform`). */
+  /** The roster's projects HQ names nowhere (`menuTree.platform`). */
   readonly platform: ReadonlySet<string>;
   /** A roster project is a Mate HQ's directory or its own listing names (`isListedMateProject`). */
   readonly listedMate: (row: Row) => boolean;

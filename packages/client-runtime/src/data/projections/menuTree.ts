@@ -7,9 +7,9 @@
  * and the Mate born of it are one member, keyed by the birth from its first frame to long after its
  * hello, so a new Mate's row is never drawn twice and never changes key. The roster never removes a
  * member: one whose project it does not list yet keeps its place. A roster project HQ names
- * nowhere, without HQ's birth tag, is a Platform project. HQ listing nothing for the person is the
- * account's first run (`listsNothing`), so the menu and the first run move at the same HQ frame
- * and a roster that lags HQ hides no member HQ lists. Every order is HQ's own times; no clock
+ * nowhere is a Platform project. HQ listing nothing for the person is the account's first run
+ * (`listsNothing`), so the menu and the first run move at the same HQ frame and a roster that lags
+ * HQ hides no member HQ lists. Every order is HQ's own times; no clock
  * of this tab, no press of its own. Until every record HQ lists is read, the tree holds nothing and
  * says where HQ's first answer stands (`MenuTreeState`): the menu paints at that answer, never
  * before it and never later.
@@ -38,9 +38,6 @@ import { streamTrouble } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
 import { hqLinkOf } from "./hqLink.ts";
 import { hqPersonFacts } from "./hqNavigation.ts";
-
-/** The tag HQ puts on the project of a birth it runs: `mb-` and the birth's id (mate-hq `birth.Tag`). */
-const BIRTH_TAG_PREFIX = "mb-";
 
 /** A Mate HQ holds, or one it is making: its open birth, its placement from the hello on, or both. */
 export interface MenuMate {
@@ -114,7 +111,7 @@ export interface MenuTree {
    * longer lists, so a Mate is never lost with its application's record.
    */
   readonly ungrouped: ReadonlyArray<MenuMate>;
-  /** Roster projects HQ names nowhere and that carry no birth tag, newest first. */
+  /** Roster projects HQ names nowhere, newest first. */
   readonly platform: ReadonlyArray<ProjectValue>;
   /** HQ's open or listed verdict by project it places; any other project is absent. */
   readonly projectVisibilities: Readonly<Record<string, MateVisibility>>;
@@ -373,8 +370,7 @@ export const menuTree: Projection<string, MenuTree> = {
       const project = read.fact("project", projectId);
       switch (project.kind) {
         case "known":
-          if (project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) !== true)
-            platform.push(project.value);
+          platform.push(project.value);
           break;
         // Not read yet, or no longer the person's: nothing of it to offer.
         case "unknown":

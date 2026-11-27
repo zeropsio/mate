@@ -105,7 +105,6 @@ next: PJ165
 - PJ112 — A Mate HQ says is linked is never said to have failed because Zerops marks its service FAILED, and one with no link is offered its restart; breaks: a working Mate's page hides its conversation behind "couldn't restart" (2026-11-20, 16 Mates)
 - PJ113 — A birth and the Mate born of it are one member under the birth's id, before and after the hello; breaks: a new Mate's row is drawn twice or changes key
 - PJ114 — Groups are HQ's applications in their creation order and members keep HQ's order from the first frame; breaks: the menu reorders when the roster or a Mate arrives
-- PJ115 — A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate
 - PJ116 — A member HQ sends stays drawn until HQ removes it. The roster lacking its project, the person's membership, or an absence being verified never takes it away; breaks: a just-made Mate vanishes until search lists it, or rows leave, return and leave during a demotion
 - PJ117 — The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu
 - PJ118 — An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out
