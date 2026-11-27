@@ -19,8 +19,8 @@ const session = (overrides: Partial<ProviderSession>): ProviderSession => ({
   ...overrides,
 });
 
-// witness: apps/server/src/spi/ProviderUpdateSafety.ts | !["ready", "closed"].includes(session.status) → !["ready", "closed", "error"].includes(session.status)
-it("SP3: A provider update waits while any session is opening, running, on a turn or failed for an unknown reason; only idle sessions let it go", () => {
+// witness: apps/server/src/spi/ProviderUpdateSafety.ts | !["ready", "closed", "error"].includes(session.status) → !["ready", "closed"].includes(session.status)
+it("SP3: A provider update waits while any session is opening, running or on a turn, failed ones included; an idle session, or one that failed with no turn open, lets it go. Breaks: one failed run keeps its Mate from every release, the release that fixes it among them.", () => {
   const sessions = {
     ready: session({ status: "ready" }),
     closed: session({ status: "closed" }),
@@ -28,6 +28,7 @@ it("SP3: A provider update waits while any session is opening, running, on a tur
     running: session({ status: "running" }),
     onTurn: session({ status: "ready", activeTurnId: TurnId.make("turn") }),
     failed: session({ status: "error" }),
+    failedOnTurn: session({ status: "error", activeTurnId: TurnId.make("turn") }),
   };
   const holdsUpdate = Object.fromEntries(
     Object.entries(sessions).map(([name, one]) => [
@@ -41,12 +42,13 @@ it("SP3: A provider update waits while any session is opening, running, on a tur
     opening: true,
     running: true,
     onTurn: true,
-    failed: true,
+    failed: false,
+    failedOnTurn: true,
   });
   // One busy session among idle ones still holds the update.
   expect(
     providerUpdateBlockers({
-      sessions: [sessions.ready, sessions.failed, sessions.closed],
+      sessions: [sessions.ready, sessions.failed, sessions.running, sessions.closed],
       leftToRestart: new Set(),
     }).length,
   ).toBe(1);

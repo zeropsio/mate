@@ -16,7 +16,8 @@ export function providerUpdateBlockers(input: {
   const blockers: string[] = [];
   for (const session of input.sessions) {
     if (input.leftToRestart.has(session.threadId)) continue;
-    if (session.activeTurnId != null || !["ready", "closed"].includes(session.status))
+    // A session that failed with no turn open holds no work, and a restart is what clears it.
+    if (session.activeTurnId != null || !["ready", "closed", "error"].includes(session.status))
       blockers.push(`provider:${session.threadId}`);
   }
   return blockers;
