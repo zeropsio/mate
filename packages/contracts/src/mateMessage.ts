@@ -27,8 +27,18 @@ export const MateMessageKind = Schema.Literals(["ask", "answer", NOTICE]);
 export type MateMessageKind = typeof MateMessageKind.Type;
 
 /** How the run a message started ended; `declined`: the Mate would not work it. */
-export const MateMessageEnd = Schema.Literals(["answered", "failed", "stopped", "declined"]);
+export const MateMessageEnd = Schema.Literals([
+  "answered",
+  "failed",
+  "stopped",
+  "declined",
+  "not-admitted",
+]);
 export type MateMessageEnd = typeof MateMessageEnd.Type;
+
+/** Why a taken check notice could not be worked. */
+export const MateMessageNotAdmittedReason = Schema.Literals(["no-agent", "usage-limit"]);
+export type MateMessageNotAdmittedReason = typeof MateMessageNotAdmittedReason.Type;
 
 /** The Mate a message comes from, as HQ names it: `""` where HQ holds no name. */
 export const MateMessageFrom = Schema.Struct({

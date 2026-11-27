@@ -47,6 +47,7 @@ import {
   MateHealth,
   MateMessage,
   MateMessageEnd,
+  MateMessageNotAdmittedReason,
   MatePersona,
   MateTask,
   MateTaskMessage,
@@ -610,6 +611,7 @@ export const KeyLinkUp = Schema.Union([
     type: Schema.Literal("message-ended"),
     id: Schema.String,
     end: MateMessageEnd,
+    reason: Schema.optionalKey(MateMessageNotAdmittedReason),
     words: Schema.optionalKey(Schema.String),
   }),
 ]);

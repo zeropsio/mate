@@ -173,3 +173,4 @@ next: ZV205
 - ZV202 — Only an open change offers its own live workspace; a merged or closed change never does, even while a lease remains visible; breaks: a person opens a workspace after its change ended.
 - ZV203 — A routed app stage is offered only for the change's repository, including after its build report leaves; breaks: a merged change loses its app address or opens another repository's app.
 - ZV204 — A public app address remains available while a Review build runs or its report is for another head; breaks: a person loses their app address during another build.
+- ZV+1 — A change handed to a person for failed checks says whether its Mate ran out of tries, has no usable agent or reached a usage limit, on the Review build and GitHub verdicts; breaks: the person cannot tell what to do next

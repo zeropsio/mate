@@ -12,7 +12,7 @@
  *
  * @module ZeropsMateMessageLedger
  */
-import { MateMessage, MateMessageEnd } from "@t3tools/contracts";
+import { MateMessage, MateMessageEnd, MateMessageNotAdmittedReason } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -66,6 +66,8 @@ const MessageEntry = Schema.Struct({
   /** The conversation its run went into, once the engine recorded its message there. */
   conversationId: Schema.optionalKey(Schema.String),
   end: Schema.optionalKey(MateMessageEnd),
+  /** The reason an unadmitted check notice ended, kept with the end until HQ acknowledges it. */
+  reason: Schema.optionalKey(MateMessageNotAdmittedReason),
   /** An ask's answer, as `message-ended` carries it. */
   words: Schema.optionalKey(Schema.String),
   /** HQ recorded the end (`message-ack`): it is told no more. */

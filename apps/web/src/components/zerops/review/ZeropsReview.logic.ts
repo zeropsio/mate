@@ -562,7 +562,7 @@ export function whySaid(verdict: ReviewVerdict, more: boolean): boolean {
   if (
     verdict.why === "" ||
     verdict.state === "release-ready" ||
-    verdict.state === "github-checks-failed"
+    (verdict.state === "github-checks-failed" && verdict.showWhy !== true)
   ) {
     return false;
   }

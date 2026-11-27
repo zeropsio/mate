@@ -154,7 +154,7 @@ export interface FlowPullRequest {
   readonly corePush?: HqCorePush | undefined;
   /** HQ's Review build for this change. */
   readonly reviewBuild?: HqChange["reviewBuild"];
-  readonly checksGivenUp?: true | undefined;
+  readonly checksGivenUp?: HqChange["checksGivenUp"];
   /** The pull request it is mirrored to on GitHub (`HqChange.pullRequest`); absent where none. */
   readonly pullRequest?: HqPullRequest | undefined;
   readonly mergeRoute?: HqChange["mergeRoute"];
@@ -283,7 +283,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(change.draftReason === undefined ? {} : { draftReason: change.draftReason }),
     ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
     ...(change.reviewBuild === undefined ? {} : { reviewBuild: change.reviewBuild }),
-    ...(change.checksGivenUp === true ? { checksGivenUp: true as const } : {}),
+    ...(change.checksGivenUp == null ? {} : { checksGivenUp: change.checksGivenUp }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
     ...(change.mergeRoute === undefined ? {} : { mergeRoute: change.mergeRoute }),
     ...standingFacts(change),
@@ -355,7 +355,7 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
     updatedAt: change.updatedAt,
     ready: change.ready,
     ...(change.reviewBuild !== undefined ? { reviewBuild: change.reviewBuild } : {}),
-    ...(change.checksGivenUp === true ? { checksGivenUp: true as const } : {}),
+    ...(change.checksGivenUp == null ? {} : { checksGivenUp: change.checksGivenUp }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
     ...(change.mergeRoute === undefined ? {} : { mergeRoute: change.mergeRoute }),
     ...standingFacts(change),
@@ -735,7 +735,7 @@ export function changeState(
     readonly ready?: boolean | undefined;
     readonly mateGone?: true | undefined;
     readonly reviewBuild?: HqChange["reviewBuild"];
-    readonly checksGivenUp?: true | undefined;
+    readonly checksGivenUp?: HqChange["checksGivenUp"];
     readonly kind: FlowPullRequestKind;
     readonly title: string;
     readonly state?: string | undefined;
@@ -771,7 +771,7 @@ export function changeState(
   // (`changeMergeVerdict`'s `github-checks-failed`), and no row reads "Ready to merge" over it.
   if (githubChecksFailed(pull))
     return {
-      word: `${GITHUB_CHECKS_FAILED}${pull.checksGivenUp === true && build === undefined ? " · over to you" : ""}${build === undefined ? "" : ` · ${build.word}`}`,
+      word: `${GITHUB_CHECKS_FAILED}${pull.checksGivenUp != null && build === undefined ? " · over to you" : ""}${build === undefined ? "" : ` · ${build.word}`}`,
       tone: "attention",
     };
   // Behind `main` and still merging cleanly reads as ready, as its review does: `main` moves every

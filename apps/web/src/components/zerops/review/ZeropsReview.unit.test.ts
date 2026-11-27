@@ -191,3 +191,27 @@ it("RV11: A ready, current change says its Review build result once, and stays q
   );
   expect(shown(undefined)).toBeUndefined();
 });
+
+// witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | (verdict.state === "github-checks-failed" && verdict.showWhy !== true) → verdict.state === "github-checks-failed"
+it("RV+1: A GitHub failure handed to a person shows its given-up reason in the review; breaks: the reason reaches the verdict but the review hides it.", () => {
+  const pull: ChangeReviewInput["pull"] = {
+    number: 7,
+    kind: "code",
+    baseBranch: "main",
+    mergeability: "mergeable",
+    merged: false,
+    mergedAt: undefined,
+    state: "open",
+    behind: false,
+    ready: true,
+    pullRequest: { state: "open", checks: "failing", url: "https://github.com/o/r/pull/7" },
+  };
+  const handed = changeMergeVerdict({
+    pull: { ...pull, checksGivenUp: { reason: "no-agent" } },
+    mateName: "Nova",
+  }).verdict;
+  expect(whySaid(handed, false) ? handed.why : undefined).toBe(
+    "No agent can work on this Mate: sign one in, then ask it to fix the check.",
+  );
+  expect(whySaid(changeMergeVerdict({ pull, mateName: "Nova" }).verdict, false)).toBe(false);
+});
