@@ -19,8 +19,10 @@ import {
   openTaskOf,
   questionKey,
   reviewKey,
+  reviewUnderWay,
   runElapsedMs,
   runningRun,
+  sessionHadTurn,
   tasksInOrder,
   usagePercentOf,
   type CrewState,
@@ -46,10 +48,14 @@ const HOUR_MS = 3_600_000;
 
 const nextWake = (state: CrewState): { wake: LeadWake; card: SentCard } | undefined => {
   for (const task of tasksInOrder(state)) {
-    if (task.state === "review" && state.lead.woken[reviewKey(task)] === undefined) {
+    if (
+      task.state === "review" &&
+      state.lead.woken[reviewKey(task)] === undefined &&
+      !reviewUnderWay(state, task)
+    ) {
       return {
         wake: { key: reviewKey(task), kind: "review", taskId: task.id },
-        card: reviewCard(task),
+        card: reviewCard(state, task),
       };
     }
     const question = task.report?.question;
@@ -268,12 +274,13 @@ export const followClock = (b: Builder): void => {
 };
 
 /**
- * A run's cap reaches the crew's sessions: one with no turn rotates now (its copy's work aside: a
- * session is not its copy), a working one at its turn's end.
+ * A run's cap reaches the crew's sessions that have had a turn: a free one rotates now (its copy's
+ * work aside: a session is not its copy), a working one at its turn's end. A session with no turn
+ * yet opens under the cap at its first, so it stays as it is.
  */
 const rotateForBudget = (b: Builder): void => {
   for (const member of membersInOrder(b.state)) {
-    if (member.session.running === null) continue;
+    if (!sessionHadTurn(member.session)) continue;
     if (!isWorking(b.state, member.handle)) {
       rotateSession(b, member, "budget", b.envelope.principal);
     } else {

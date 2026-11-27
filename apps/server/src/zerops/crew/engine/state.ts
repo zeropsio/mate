@@ -73,9 +73,12 @@ export interface SessionRecord {
   readonly count: number;
   /** Why the current one opened; `null` for the first. */
   readonly lastReason: CrewSessionReason | null;
-  /** The prompt versions it started with; `null` before its first turn. */
+  /**
+   * The prompt versions it runs: its first turn's, or for a new crewmate's first session those
+   * of the Apply that added it; `null` otherwise before its first turn.
+   */
   readonly running: PromptVersions | null;
-  /** Whose work it serves (the first task's starter); `null` before its first task. */
+  /** Whose work it serves (its first turn's starter); `null` before its first turn. */
   readonly principal: string | null;
   /** The login it started on. */
   readonly login: string;
@@ -189,6 +192,10 @@ export interface TaskRecord {
   /** When its crewmate asked its open question. */
   readonly askedAt: number | null;
   readonly review: CrewReview | null;
+  /** The task this reader's task reviews: the lead's plan names it. */
+  readonly reviews?: string;
+  /** This reader's verdict on the task it reviews: it decides nothing, the lead acts on it. */
+  readonly verdict?: { readonly verdict: CrewReview["verdict"]; readonly note: string };
   readonly check: (CrewCheck & { readonly tip: string | null }) | null;
   readonly landedCommit: string | null;
   readonly landedAt: number | null;
@@ -490,6 +497,25 @@ export const isOpenTask = (state: CrewTaskState): boolean => !NOT_OPEN.has(state
 export const tasksInOrder = (state: CrewState): ReadonlyArray<TaskRecord> =>
   Object.values(state.tasks).toSorted((a, b) => a.number - b.number);
 
+/** A reader's task before its report: its verdict is not in yet. */
+const REVIEW_UNDER_WAY: ReadonlySet<CrewTaskState> = new Set([
+  "proposed",
+  "queued",
+  "working",
+  "rework",
+  "blocked",
+  "merging",
+  "checking",
+]);
+
+/** The readers' tasks that review `task`, in board order. */
+export const reviewsOf = (state: CrewState, task: TaskRecord): ReadonlyArray<TaskRecord> =>
+  tasksInOrder(state).filter((other) => other.reviews === task.id);
+
+/** A reader still reviews `task`: the lead's verdict waits for theirs. */
+export const reviewUnderWay = (state: CrewState, task: TaskRecord): boolean =>
+  reviewsOf(state, task).some((other) => REVIEW_UNDER_WAY.has(other.state));
+
 export const tasksOf = (state: CrewState, handle: string): ReadonlyArray<TaskRecord> =>
   tasksInOrder(state).filter((task) => task.owner === handle);
 
@@ -567,6 +593,12 @@ export const isTurnPurpose = (purpose: DeliveryRecord["purpose"]): purpose is De
 /** The crewmate's conversation runs a turn, or one is on its way. */
 export const isWorking = (state: CrewState, handle: string): boolean =>
   state.members[handle]?.active != null || delivering(state, handle);
+
+/**
+ * A session has had a turn once one was sent into it: its first turn names whose work it serves.
+ * `running` is no such sign, since a new crewmate's session holds its versions from Apply.
+ */
+export const sessionHadTurn = (session: SessionRecord): boolean => session.principal !== null;
 
 /** A crewmate the crew may hand a turn to now: nothing runs in its conversation or its copy. */
 export const isFree = (state: CrewState, handle: string): boolean =>

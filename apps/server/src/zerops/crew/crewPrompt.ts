@@ -62,7 +62,10 @@ const readerRules = (handle: string, crewTools: boolean): ReadonlyArray<string> 
   `You are @${handle}, a read-only crewmate of this Mate: you have no copy of the code and you never change files.`,
   "",
   ...(crewTools
-    ? ["- You read files and the crew's changes, and you report what you find with crew_report."]
+    ? [
+        "- You read files and the crew's changes, and you report what you find with crew_report.",
+        "- When your task reviews a crewmate's task, give your verdict on that task with crew_review before you report: the lead decides on it.",
+      ]
     : ["- You read files and the crew's changes.", READER_NO_CREW_TOOLS]),
 ];
 
@@ -71,12 +74,15 @@ const leadRules = (handle: string): ReadonlyArray<string> => [
   "",
   "- Split the work into tasks, one area of the code per crewmate, each with a brief and a Done when, and propose them with crew_propose. Nothing starts until the person accepts, unless the run allows it.",
   "- Who is on the crew and what they work on is on the board (crew_board). Read a crewmate's changes with crew_diff and review them with crew_review.",
+  "- For a reader to review a writer's task, propose the reader a task whose reviews names it: the reader's verdict comes to you first, and only yours lands the work.",
 ];
 
 const commonRules = (memory: boolean, crewTools: boolean): ReadonlyArray<string> => [
   "- Your context is compacted automatically; do not stop early. Files are the truth: re-read a file before you edit or judge it.",
   ...(memory && crewTools
-    ? ["- Record decisions, lessons and your handoff with crew_memory as you go."]
+    ? [
+        "- Record decisions and lessons with crew_memory as you go. A handoff belongs to a task: write it once a task of yours is open, never before.",
+      ]
     : []),
   ...(memory ? ["- The brief outranks your memory: when they disagree, follow the brief."] : []),
 ];

@@ -44,7 +44,8 @@ export const pump = (
       task.starting === null &&
       task.cantStart === null &&
       (task.source !== "lead" || run !== undefined) &&
-      task.dependsOn.every((id) => landed(b.state, id)),
+      task.dependsOn.every((id) => landed(b.state, id)) &&
+      (task.reviews === undefined || b.state.tasks[task.reviews]?.state === "review"),
   );
   const next = startable.find((task) => task.id === own?.taskId) ?? startable[0];
   if (next === undefined) return;

@@ -1,11 +1,15 @@
+import type { CrewMemberKind } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 
+import { crewLane } from "./CrewDefinition.ts";
 import {
   applyMemoryOp,
+  copyOf,
   crewPacketInput,
   recordLessons,
   type CrewMemoryEntry,
 } from "./CrewMemory.ts";
+import type { CrewPromptMember } from "./crewPrompt.ts";
 import {
   crewResumeDelta,
   crewStatePacket,
@@ -107,6 +111,38 @@ it("CM35: A crewmate's state packet stays within 8,000 characters, giving up mem
 it("CM36: A crewmate's state packet names ground truth it could not read, with the reason, instead of leaving it out", () => {
   const packet = crewStatePacket({ ...base, ground: { unavailable: "ssh timed out after 5 s" } });
   expect(packet).toContain("ssh timed out after 5 s");
+});
+
+/** A crewmate of `kind` whose prompt the directory shaped as `shaped`. */
+const crewmate = (kind: CrewMemberKind, shaped: CrewPromptMember) => ({
+  kind,
+  prompt: {
+    member: shaped,
+    brief: { title: "Snake", text: "Build a snake game.", doneWhen: [] },
+    briefVersion: 1,
+    job: "The API.",
+    jobVersion: 1,
+    memory: true,
+  },
+});
+
+// witness: apps/server/src/zerops/crew/CrewMemory.ts | if (member.kind !== "writer") return { kind: "none" }; → if (member.prompt.member.kind !== "writer") return { kind: "none" };
+it("CM61: A writer's packet reads its own copy on its host, and a writer whose copy is not ready yet is told so, never that it has no copy; a reader and the lead have none", () => {
+  const lane = crewLane(
+    { host: "appdev", mountPath: "/var/www/appdev", remotePath: "/var/www" },
+    "builder",
+  );
+  expect([
+    copyOf(crewmate("writer", { handle: "builder", kind: "writer", lane })),
+    copyOf(crewmate("writer", { handle: "builder", kind: "reader" })),
+    copyOf(crewmate("reader", { handle: "reviewer", kind: "reader" })),
+    copyOf(crewmate("lead", { handle: "lead", kind: "lead" })),
+  ]).toEqual([
+    { kind: "on", host: "appdev" },
+    { kind: "not-ready" },
+    { kind: "none" },
+    { kind: "none" },
+  ]);
 });
 
 const note = entry({ id: "m3", kind: "note", topic: "api", text: "The API notes." });
