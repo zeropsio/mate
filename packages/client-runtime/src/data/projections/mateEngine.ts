@@ -882,6 +882,51 @@ function mirrorAskActivity(
   );
 }
 
+/** The activity work proposed for the Board is: one card in its run. */
+export const BOARD_ASK_ACTIVITY_KIND = "board.proposed";
+
+/**
+ * What the card for work the agent proposed for the Board reads: its title and brief as proposed
+ * (the person may edit both before putting it), and how the ask stands — open, put on the Board,
+ * declined, who and when, or closed some other way.
+ */
+export interface BoardAskActivityPayload {
+  readonly requestId: string;
+  readonly title: string;
+  readonly brief: string;
+  readonly state: "open" | "put" | "declined" | "closed";
+  readonly answer: { readonly by: Principal; readonly at: number } | null;
+}
+
+const BOARD_ASK_STATES: Readonly<Record<string, BoardAskActivityPayload["state"]>> = {
+  open: "open",
+  answered: "put",
+  declined: "declined",
+};
+
+function boardAskActivity(
+  request: Request,
+  ask: Extract<RequestAsk, { readonly kind: "board" }>,
+  card: string | null,
+): OrchestrationThreadActivity {
+  const payload: BoardAskActivityPayload = {
+    requestId: request.id,
+    title: ask.title,
+    brief: ask.brief,
+    state: BOARD_ASK_STATES[request.state] ?? "closed",
+    answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
+  };
+  return activity(
+    `${request.id}#board`,
+    BOARD_ASK_ACTIVITY_KIND,
+    "Proposed for the Board",
+    { ...payload },
+    card,
+    request.at,
+    request.seq,
+  );
+}
+
 /** A request as the asks the panels answer, and its resolution once it is no longer open. */
 function requestActivities(
   request: Request,
@@ -892,6 +937,7 @@ function requestActivities(
   if (ask.kind === "vault" || ask.kind === "secret") return [vaultAskActivity(request, ask, card)];
   if (ask.kind === "origin") return [originAskActivity(request, ask, card)];
   if (ask.kind === "mirror") return [mirrorAskActivity(request, ask, card)];
+  if (ask.kind === "board") return [boardAskActivity(request, ask, card)];
   const asked =
     ask.kind === "approval"
       ? activity(

@@ -180,6 +180,12 @@ export type ProviderSignal =
       readonly how: "connected" | "withdrawn";
     }
   | {
+      /** zcp answered a change open in HQ to the agent's `open-change`: its repository and number. */
+      readonly kind: "change-opened";
+      readonly repo: string;
+      readonly number: number;
+    }
+  | {
       readonly kind: "turn-ended";
       readonly turn: TurnHandle;
       readonly outcome: TurnOutcome;

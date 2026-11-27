@@ -105,6 +105,14 @@ export const MateTaskSource = Schema.Union([
 ]);
 export type MateTaskSource = typeof MateTaskSource.Type;
 
+/**
+ * A task of the Board a person took for one of their own Mates, as its conversation's first message
+ * carries it: HQ's id of the task and where it came from. The message is its brief, sent as the
+ * person, and the conversation is the task's from then on.
+ */
+export const TakenTask = Schema.Struct({ taskId: TrimmedNonEmptyString, source: MateTaskSource });
+export type TakenTask = typeof TakenTask.Type;
+
 /** What a task may spend before its Mate stops it and says where it got to. */
 export const MateTaskLimits = Schema.Struct({
   /** Minutes of the agent at work on it. */

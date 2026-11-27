@@ -1208,6 +1208,11 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                         : { interactionMode: input.interactionMode }),
                       ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
                       ...(input.about === undefined ? {} : { about: input.about }),
+                      // A task the person took from the Board: its brief, drawn as its card, and
+                      // the conversation the task's from then on.
+                      ...(input.taken === undefined
+                        ? {}
+                        : { task: input.taken.source, taskId: input.taken.taskId }),
                     }),
                   ),
             ),
@@ -1285,10 +1290,18 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                               outcome: answer.outcome,
                               ...(answer.url === undefined ? {} : { url: answer.url }),
                             }
-                          : null,
+                          : answer.kind === "board"
+                            ? {
+                                outcome: answer.outcome,
+                                ...(answer.taskId === undefined ? {} : { taskId: answer.taskId }),
+                              }
+                            : null,
               // A card's record is worded by the engine: the client's words never reach it.
               summary:
-                answer.kind === "secret" || answer.kind === "origin" || answer.kind === "mirror"
+                answer.kind === "secret" ||
+                answer.kind === "origin" ||
+                answer.kind === "mirror" ||
+                answer.kind === "board"
                   ? ""
                   : input.summary,
             };

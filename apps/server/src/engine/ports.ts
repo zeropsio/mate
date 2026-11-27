@@ -5,7 +5,8 @@
  * (`AgentWorkspace`), how a call's pictures are claimed (`MessagePictures`), what
  * another instance of a driver left on a thread (`HandedOverResume`) and what each provider
  * reports of its signed-in account's usage (`ProviderUsageFeed`) and how an archived conversation's
- * branch goes back to its pool (`LeaseRelease`), and where the work stands (`WorkWhere`). The engine imports these,
+ * branch goes back to its pool (`LeaseRelease`), how a taken task's change is linked to it
+ * (`TaskChangeLink`), and where the work stands (`WorkWhere`). The engine imports these,
  * never `zerops/` and no provider file but `ProviderService`;
  * `zerops/engineAdapters.ts` implements them, and outside Zerops they allow
  * and read nothing.
@@ -190,6 +191,31 @@ export class LeaseRelease extends Context.Service<
     }) => Effect.Effect<LeaseReleaseResult>;
   }
 >()("t3/engine/ports/LeaseRelease") {}
+
+/**
+ * How HQ answered a taken task's change link (`POST /api/mate/tasks/:taskId/change` by the Mate's
+ * own key): `linked`; `refused` with its status and code (a task not taken on this Mate, a change
+ * not its own or not open); `unreachable`, no answer HQ gave, so it is asked again.
+ */
+export type TaskChangeLinkResult =
+  | { readonly outcome: "linked" }
+  | { readonly outcome: "refused"; readonly status: number; readonly code: string | null }
+  | { readonly outcome: "unreachable"; readonly why: string };
+
+/**
+ * A change a taken task's conversation opened, linked to that task in HQ, so the task ends when it
+ * merges. Absent outside Zerops: no HQ, nothing linked.
+ */
+export class TaskChangeLink extends Context.Service<
+  TaskChangeLink,
+  {
+    readonly link: (input: {
+      readonly taskId: string;
+      readonly repo: string;
+      readonly number: number;
+    }) => Effect.Effect<TaskChangeLinkResult>;
+  }
+>()("t3/engine/ports/TaskChangeLink") {}
 
 /** The work's current orientation for a run, absent outside a Zerops project. */
 export class WorkWhere extends Context.Service<

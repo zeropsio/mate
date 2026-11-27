@@ -64,6 +64,8 @@ export const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutco
   const closing = b.state.closing?.effectId === id ? b.state.closing : null;
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
   if (effect.kind === "lease.release") return leaseReleaseSettled(b, outcome);
+  // The link's receipt is its outcome, recorded above: nothing in the conversation waits on it.
+  if (effect.kind === "task.change") return;
   const failure =
     outcome.kind === "ok"
       ? null

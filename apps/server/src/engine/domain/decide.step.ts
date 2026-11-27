@@ -36,6 +36,8 @@ export const EFFECT_KINDS = {
   "provider.steer": { lane: "turn", class: "process-bound" },
   // Its own lane, run by the Mate-wide fibers: a parked container waking holds no session's work.
   "lease.release": { lane: "workspace", class: "replay-safe" },
+  // HQ's write by the Mate's own key, beside the lease's: a wait on HQ holds no session's work.
+  "task.change": { lane: "workspace", class: "replay-safe" },
 } as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 

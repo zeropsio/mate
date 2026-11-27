@@ -317,6 +317,11 @@ export const HqAppTask = Schema.Struct({
    * Where it came from (a person's Put on board is `conversation`).
    */
   source: Schema.optionalKey(MateTaskSource),
+  /**
+   * Its brief, the ask's text as its Mate gets it (`MateTask.body`): what a Take sends as its
+   * conversation's first message, and what the Board shows every member.
+   */
+  brief: Schema.optionalKey(Schema.String),
   /** Who has it; `null`: nobody (queued, or ended). */
   taker: Schema.optionalKey(Schema.NullOr(HqTaskTaker)),
   /** When a person took it, while `taken` (ISO). */

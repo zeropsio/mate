@@ -4,6 +4,7 @@
  * @module engine/domain/decide.send
  */
 import {
+  isMateTaskConversation,
   itemId as deriveItemId,
   runId as deriveRunId,
   type RunId,
@@ -27,6 +28,13 @@ export const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>
   if (b.state.archived) throw new Rejected("archived");
   const attachments = command.attachments ?? [];
   if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
+  // A taken task's brief opens a conversation of its own: never a message into one under way.
+  if (
+    command.taskId !== undefined &&
+    !isMateTaskConversation(b.state.conversationId) &&
+    (b.state.lastPersonSeq > 0 || b.state.takenTask !== undefined)
+  )
+    throw new Rejected("unknown", "A task taken from the Board opens a conversation of its own.");
   refuseOverWork(b);
   // The agent hears the context with the words; the person's item keeps only what they typed.
   const told =

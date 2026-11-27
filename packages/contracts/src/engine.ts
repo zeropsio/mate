@@ -725,7 +725,17 @@ export type Item = typeof Item.Type;
 
 export const RequestAsk = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "question", "vault", "secret", "origin", "mirror", "plan", "unknown"],
+  known: [
+    "approval",
+    "question",
+    "vault",
+    "secret",
+    "origin",
+    "mirror",
+    "board",
+    "plan",
+    "unknown",
+  ],
   members: [
     Schema.Struct({
       kind: Schema.Literal("approval"),
@@ -796,6 +806,16 @@ export const RequestAsk = forwardCompatibleUnion({
       repo: Schema.String,
       reason: Schema.NullOr(Schema.String),
     }),
+    /**
+     * Work the agent proposes to put on its application's Board (`zerops_board_propose`): a title
+     * and a self-contained brief, which the person may edit on its card before their client puts it
+     * on the Board as them. The agent never writes a task.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("board"),
+      title: Schema.String,
+      brief: Schema.String,
+    }),
     Schema.Struct({ kind: Schema.Literal("plan"), planItemId: ItemId }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),
@@ -804,13 +824,17 @@ export const RequestAsk = forwardCompatibleUnion({
 export type RequestAsk = typeof RequestAsk.Type;
 
 /**
- * Asked of the person on a card — a value, an origin to connect, or a repository to connect to
- * GitHub: it outlives the turn that
+ * Asked of the person on a card — a value, an origin to connect, a repository to connect to
+ * GitHub, or work to put on the Board: it outlives the turn that
  * asked, holds no run, no session and no update, and is answered with how it ended, never with
  * the value or a token. Takes an ask's kind, as a request or a row's `on` names it.
  */
 export const isCardAsk = (kind: string | undefined): boolean =>
-  kind === "vault" || kind === "secret" || kind === "origin" || kind === "mirror";
+  kind === "vault" ||
+  kind === "secret" ||
+  kind === "origin" ||
+  kind === "mirror" ||
+  kind === "board";
 
 /** `expired`: answered, but the driver could no longer take an answer (its callback was gone). */
 const REQUEST_STATES = ["open", "answered", "declined", "dismissed", "lapsed", "expired"] as const;
@@ -902,7 +926,15 @@ export const ConversationRowState = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("waiting"),
       /** What it waits on; one a later engine adds reads as `unknown`, never a refusal. */
-      on: forwardCompatibleLiterals(["approval", "question", "vault", "origin", "mirror", "plan"]),
+      on: forwardCompatibleLiterals([
+        "approval",
+        "question",
+        "vault",
+        "origin",
+        "mirror",
+        "board",
+        "plan",
+      ]),
       words: Schema.NullOr(Schema.String),
     }),
     Schema.Struct({ kind: Schema.Literal("paused"), resetsAt: Schema.NullOr(Millis) }),

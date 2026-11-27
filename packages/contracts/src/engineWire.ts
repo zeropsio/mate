@@ -51,6 +51,7 @@ import {
   RuntimeMode,
   UserInputAttachments,
 } from "./orchestration.ts";
+import { TakenTask } from "./mateTask.ts";
 import { MessageAbout } from "./messageAbout.ts";
 import { ThreadTokenUsageSnapshot } from "./providerRuntime.ts";
 
@@ -469,6 +470,12 @@ export const EngineSendInput = Schema.Struct({
   fromPanel: Schema.optionalKey(Schema.Literal(true)),
   /** What a page wrote it about (`MessageAbout`): the row's `workingOn` while its run is on. */
   about: Schema.optionalKey(MessageAbout),
+  /**
+   * A task of the Board the person took for this Mate (HQ's `take` answered first): the message is
+   * its brief, drawn as the task's card, and the conversation is the task's from then on — a change
+   * it opens is linked to the task. Only a conversation's first message carries it.
+   */
+  taken: Schema.optionalKey(TakenTask),
 });
 export type EngineSendInput = typeof EngineSendInput.Type;
 
@@ -486,7 +493,7 @@ export type EngineStopInput = typeof EngineStopInput.Type;
 /** The person's answer to a request, as its kind takes it. */
 export const EngineAnswer = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "input", "secret", "origin", "mirror", "unknown"],
+  known: ["approval", "input", "secret", "origin", "mirror", "board", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("approval"), decision: ProviderApprovalDecision }),
     Schema.Struct({
@@ -537,6 +544,15 @@ export const EngineAnswer = forwardCompatibleUnion({
       kind: Schema.Literal("mirror"),
       outcome: Schema.Literals(["connected", "declined"]),
       url: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
+    }),
+    /**
+     * Work proposed for the Board (a `board` request): `put`, with HQ's id of the task the person's
+     * client put on the Board as them; `declined`, not put. Never the brief.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("board"),
+      outcome: Schema.Literals(["put", "declined"]),
+      taskId: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(128))),
     }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),

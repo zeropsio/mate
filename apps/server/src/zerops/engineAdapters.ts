@@ -19,6 +19,7 @@ import * as Stream from "effect/Stream";
 import type { Principal, RunTrigger, ServerProvider } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
+import * as ZeropsTaskChangeLink from "./ZeropsTaskChangeLink.ts";
 import {
   claimMessageAttachments,
   releaseClaimedAttachments,
@@ -33,6 +34,7 @@ import {
   RestartEvidence,
   RunAdmission,
   RunRefused,
+  TaskChangeLink,
   WorkWhere,
   type InstanceUsage,
   type RestartFacts,
@@ -263,6 +265,10 @@ const zeropsWorkWhere = Layer.effect(
 const zeropsAdapters = Layer.mergeAll(
   zeropsRunAdmission,
   zeropsLeaseRelease,
+  Layer.effect(
+    TaskChangeLink,
+    Effect.map(ZeropsTaskChangeLink.make, (link) => TaskChangeLink.of(link)),
+  ),
   zeropsWorkWhere,
   Layer.effect(
     RestartEvidence,

@@ -6,6 +6,7 @@
  */
 import {
   ENGINE_EVENT_VERSION,
+  isMateTaskConversation,
   type EngineEvent,
   type ItemActor,
   type ItemBody,
@@ -313,9 +314,16 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         };
         // Only a message waiting for its own run is newer work; another Mate's is never the
         // person writing, so it holds back no resume or continuation of theirs.
+        // A taken task's brief opens its conversation: the conversation is the task's from then on.
+        const taken =
+          body.taskId !== undefined &&
+          answered.takenTask === undefined &&
+          !isMateTaskConversation(answered.conversationId)
+            ? { ...answered, takenTask: body.taskId }
+            : answered;
         return body.delivery.state === "queued" && body.mateMessage === undefined
-          ? { ...answered, lastPersonSeq: event.seq }
-          : answered;
+          ? { ...taken, lastPersonSeq: event.seq }
+          : taken;
       }
       // A steered message joins the run, open with it: its steer's outcome may still change it.
       return {
@@ -453,6 +461,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
               ? { origin: { url: event.ask.url, repo: event.ask.repo } }
               : {}),
             ...(event.ask.kind === "mirror" ? { mirror: { repo: event.ask.repo } } : {}),
+            ...(event.ask.kind === "board" ? { board: { title: event.ask.title } } : {}),
           },
         },
       };
@@ -495,6 +504,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(answered?.secret === undefined ? {} : { secret: answered.secret }),
             ...(answered?.origin === undefined ? {} : { origin: answered.origin }),
             ...(answered?.mirror === undefined ? {} : { mirror: answered.mirror }),
+            ...(answered?.board === undefined ? {} : { board: answered.board }),
           },
         },
         answering: Object.fromEntries(

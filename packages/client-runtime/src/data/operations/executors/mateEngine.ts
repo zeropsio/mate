@@ -25,6 +25,7 @@ import {
   type ChatFileAttachment,
   type ChatImageAttachment,
   type MessageAbout,
+  type TakenTask,
   type ProviderInteractionMode,
   type ProviderOptionSelection,
   type RuntimeMode,
@@ -87,6 +88,8 @@ export interface EngineCallWire {
           readonly fromPanel?: true;
           /** What a page wrote it about: its row's `workingOn` while its run is on. */
           readonly about?: MessageAbout;
+          /** A task of the Board taken for this Mate: the message is its brief (`EngineSendInput.taken`). */
+          readonly taken?: TakenTask;
         }
       | {
           readonly kind: "stop";
@@ -185,6 +188,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
                 : { interactionMode: command.interactionMode }),
               ...(command.fromPanel === true ? { fromPanel: true as const } : {}),
               ...(command.about === undefined ? {} : { about: command.about }),
+              ...(command.taken === undefined ? {} : { taken: command.taken }),
             }),
           );
         case "stop":
@@ -506,6 +510,8 @@ export function makeMateEngineOperations(options: {
         readonly fromPanel?: true;
         /** What a page wrote it about: its row's `workingOn` while its run is on. */
         readonly about?: MessageAbout;
+        /** A task of the Board taken for this Mate: the message is its brief. */
+        readonly taken?: TakenTask;
       },
     ) =>
       execute(
@@ -528,6 +534,7 @@ export function makeMateEngineOperations(options: {
             : { interactionMode: target.interactionMode }),
           ...(target.fromPanel === true ? { fromPanel: true as const } : {}),
           ...(target.about === undefined ? {} : { about: target.about }),
+          ...(target.taken === undefined ? {} : { taken: target.taken }),
         }),
         target.commandId,
       ),

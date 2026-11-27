@@ -159,14 +159,16 @@ export const engineStartTurn =
           ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
           ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
           ...(input.about === undefined ? {} : { about: input.about }),
+          ...(input.taken === undefined ? {} : { taken: input.taken }),
           commandId,
         });
       // Into the run that works, as V1 sends a message into its running turn, its pictures and files
       // with it where the session's steer carries them; else, for a plan (the run keeps the mode it
       // began in) and for a message the person queued, as the next run: the conversation holds it
       // whatever becomes of the tab that queued it.
+      // A taken task's brief opens its own conversation: never steered into a run.
       const steered =
-        input.interactionMode !== "plan" && input.queued !== true
+        input.interactionMode !== "plan" && input.queued !== true && input.taken === undefined
           ? engineSteerTarget(readsOfState(host.store.state()), target, attachments.length > 0)
           : null;
       if (steered === null) return yield* send(input.message.messageId);
@@ -344,6 +346,29 @@ export const engineAnswerMirrorAsk =
         input.outcome === "connected"
           ? { kind: "mirror", outcome: "connected", url: input.url }
           : { kind: "mirror", outcome: "declined" },
+      summary: input.outcome,
+    });
+
+/**
+ * How work the Mate proposed for the Board ended, on its card: `put`, with HQ's id of the task the
+ * card put on the Board as the person; `declined`, not put.
+ */
+export type BoardAskAnswerInput = {
+  readonly threadId: string;
+  readonly requestId: string;
+} & ({ readonly outcome: "put"; readonly taskId: string } | { readonly outcome: "declined" });
+
+/** Work proposed for the Board, answered: put (with its task's id) or declined. */
+export const engineAnswerBoardAsk =
+  (environmentId: string, input: BoardAskAnswerInput) => (host: MateEngineHost) =>
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer:
+        input.outcome === "put"
+          ? { kind: "board", outcome: "put", taskId: input.taskId }
+          : { kind: "board", outcome: "declined" },
       summary: input.outcome,
     });
 

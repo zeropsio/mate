@@ -1338,7 +1338,14 @@ function itemBody(
   const payload = event.payload;
   const itemType = payload.itemType;
   if (isToolLifecycleItemType(itemType)) {
-    const call = event.toolCall ?? applyToolCall(event).toolCall;
+    const said = event.toolCall ?? applyToolCall(event).toolCall;
+    // Its arguments, as the call's start gave them where its end repeats none: what it was asked
+    // to do (`changeOpenedOfCall` reads its action).
+    const before = previous?.kind === "tool" ? previous.call?.arguments : undefined;
+    const call =
+      said !== undefined && said.arguments === undefined && before !== undefined
+        ? { ...said, arguments: before }
+        : said;
     // A driver names a call's presentation once it knows it; a later step that does not repeat
     // it keeps the one it gave.
     const presentation =

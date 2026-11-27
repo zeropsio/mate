@@ -94,12 +94,14 @@ const askWords = (request: ViewRequest): string | null => {
       return rowText(ask.reason ?? ask.url);
     case "mirror":
       return rowText(ask.reason ?? `Connect ${ask.repo} to GitHub`);
+    case "board":
+      return rowText(`Put on board: ${ask.title}`);
     default:
       return null;
   }
 };
 
-const WAITS_ON = ["approval", "question", "vault", "origin", "mirror", "plan"] as const;
+const WAITS_ON = ["approval", "question", "vault", "origin", "mirror", "board", "plan"] as const;
 type WaitsOn = (typeof WAITS_ON)[number];
 const waitsOn = (kind: string): kind is WaitsOn =>
   (WAITS_ON as ReadonlyArray<string>).includes(kind);

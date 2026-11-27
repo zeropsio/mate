@@ -57,6 +57,7 @@ import {
 } from "./decide.asks.ts";
 import { resumeIfAnswered } from "./decide.questions.ts";
 import { sendsAgain } from "./decide.effects.ts";
+import { askTaskChangeLink } from "./decide.taskChange.ts";
 import {
   selfJoins,
   steerOpened,
@@ -336,6 +337,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         b,
         (asked) => sameOriginAddress(asked.url, url) && (repo === undefined || asked.repo === repo),
       );
+      return;
+    }
+    case "change-opened": {
+      // A change this conversation opened: a taken task's conversation links it to its task.
+      askTaskChangeLink(b, signal);
       return;
     }
     case "mirror-settled": {

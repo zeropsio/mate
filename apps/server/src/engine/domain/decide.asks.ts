@@ -1,5 +1,5 @@
 /**
- * The asks answered on a card (a vault value, a secret, an origin, a mirror): their outcomes, their words and what settles them.
+ * The asks answered on a card (a vault value, a secret, an origin, a mirror, work for the Board): their outcomes, their words and what settles them.
  *
  * @module engine/domain/decide.asks
  */
@@ -9,6 +9,7 @@ import { HqRemoteUrl } from "@t3tools/shared/hqChanges";
 
 import type { Command } from "./command.ts";
 import type {
+  BoardAsk,
   ConversationState,
   OpenRequest,
   MirrorAsk,
@@ -34,6 +35,14 @@ export type MirrorOutcome =
   | {
       readonly kind: "declined";
     };
+
+/**
+ * How work proposed for the Board ended: `put`, with HQ's id of the task the person's client put
+ * there as them (the title and brief as they last edited them); `declined`, not put.
+ */
+export type BoardOutcome =
+  | { readonly kind: "put"; readonly taskId: string }
+  | { readonly kind: "declined" };
 
 /** An answer that says only how it ended (`{ outcome }`), as one of `outcomes`; anything more is none. */
 const cardOutcome = <Outcome extends string>(
@@ -420,6 +429,51 @@ export const answerMirror = (
   });
 };
 
+/** The agent's line on work it proposed for the Board: the task it became, or that it was not put. */
+export const boardAnswerWords = (ask: Pick<BoardAsk, "title">, outcome: BoardOutcome): string =>
+  outcome.kind === "put"
+    ? `The person put "${ask.title}" on the Board as task ${outcome.taskId}. Leave it there: whoever takes it does the work.`
+    : `The person did not put "${ask.title}" on the Board.`;
+
+/** The longest task id the agent's line carries (as `EngineAnswer`'s). */
+const TASK_ID_MAX = 128;
+
+/** A board ask's answer (`{ outcome: "put", taskId }` or `{ outcome: "declined" }`); anything more is none. */
+const boardOutcome = (answer: unknown): BoardOutcome | null => {
+  if (cardOutcome(answer, ["declined"]) === "declined") return { kind: "declined" };
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
+  const { outcome, taskId, ...rest } = answer as Record<string, unknown>;
+  return outcome === "put" &&
+    typeof taskId === "string" &&
+    taskId.trim() !== "" &&
+    taskId.length <= TASK_ID_MAX &&
+    Object.keys(rest).length === 0
+    ? { kind: "put", taskId: taskId.trim() }
+    : null;
+};
+
+export const answerBoard = (
+  b: StepBuilder,
+  request: OpenRequest,
+  command: Extract<Command, { _tag: "Answer" }>,
+): void => {
+  const outcome = boardOutcome(command.answer);
+  if (outcome === null || request.board === undefined) {
+    throw new Rejected(
+      "not-answerable",
+      "Work proposed for the Board is answered put, with its task's id, or declined.",
+    );
+  }
+  answerOnCard(b, request, {
+    declined: outcome.kind === "declined",
+    summary: outcome.kind === "put" ? "On the board" : "Not put on the board",
+    wake: BOARD_ANSWER_WAKE,
+    text: boardAnswerWords(request.board, outcome),
+  });
+};
+
+/** The wake that tells the agent how work it proposed for the Board ended. */
+export const BOARD_ANSWER_WAKE = "board-answer";
 /** The wake that tells the agent how a value it asked for ended. */
 export const VAULT_ANSWER_WAKE = "vault-answer";
 /** The wake that tells the agent how an origin it asked for ended. */

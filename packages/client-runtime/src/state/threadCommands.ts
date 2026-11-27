@@ -30,6 +30,7 @@ import {
   engineContinueAfterLimit,
   engineCreateThread,
   engineAnswerMirrorAsk,
+  engineAnswerBoardAsk,
   engineAnswerOriginAsk,
   engineAnswerVaultAsk,
   engineSetArchived,
@@ -44,6 +45,7 @@ import {
   engineStartTurn,
   viaEngine,
   type MirrorAskAnswerInput,
+  type BoardAskAnswerInput,
   type OriginAskAnswerInput,
   type VaultAskAnswerInput,
 } from "../data/engineCommands.ts";
@@ -172,6 +174,17 @@ export function createThreadEnvironmentAtoms<R, E>(
       label: "environment-data:commands:thread:answer-mirror-ask",
       execute: (input: MirrorAskAnswerInput, registry, environmentId) =>
         viaEngine(registry, environmentId, engineAnswerMirrorAsk(environmentId, input)),
+      scheduler,
+      concurrency,
+    }),
+    /**
+     * Work the Mate proposed for the Board, answered on its card: put (the card put it on the
+     * Board as the person, HQ's id of the task) or declined.
+     */
+    answerBoardAsk: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:answer-board-ask",
+      execute: (input: BoardAskAnswerInput, registry, environmentId) =>
+        viaEngine(registry, environmentId, engineAnswerBoardAsk(environmentId, input)),
       scheduler,
       concurrency,
     }),

@@ -214,6 +214,8 @@ export interface OpenRequest {
   readonly origin?: Pick<OriginAsk, "url" | "repo">;
   /** A repository asked to be connected to GitHub: its name, to word the agent's line. */
   readonly mirror?: Pick<MirrorAsk, "repo">;
+  /** Work proposed for the Board: its title as proposed, to word the agent's line. */
+  readonly board?: Pick<BoardAsk, "title">;
 }
 
 /**
@@ -237,6 +239,7 @@ export type VaultAsk = Extract<RequestAsk, { readonly kind: "vault" }>;
 export type SecretAsk = Extract<RequestAsk, { readonly kind: "secret" }>;
 export type OriginAsk = Extract<RequestAsk, { readonly kind: "origin" }>;
 export type MirrorAsk = Extract<RequestAsk, { readonly kind: "mirror" }>;
+export type BoardAsk = Extract<RequestAsk, { readonly kind: "board" }>;
 
 export interface ArmedWake {
   readonly id: WakeId;
@@ -348,6 +351,13 @@ export interface ConversationState {
    * afresh (`dispatch`).
    */
   readonly sessionTask: string | null;
+  /**
+   * The task of the Board a person took for this Mate that this conversation works (its first
+   * message's `taskId`, in a conversation that is not the Mate's tasks one): a change it opens is
+   * linked to that task (`task.change`). Read loosely: absent from a snapshot before it, and
+   * from every other conversation.
+   */
+  readonly takenTask?: string;
   /**
    * A usage limit holds the queue until then; `"unknown"` until a probe or a known reset ends it,
    * or the person writes again.

@@ -18,6 +18,7 @@ import { makeProviderSteer } from "./providerSteer.ts";
 import { makeRunPrepare } from "./runPrepare.ts";
 import { makeSessionClose } from "./sessionClose.ts";
 import { makeSessionOpen } from "./sessionOpen.ts";
+import { makeTaskChange } from "./taskChange.ts";
 
 /**
  * Handlers of another owner kind's effects (the crew's), built with the engine's own conversations
@@ -42,6 +43,7 @@ export const layer = Layer.effect(
       yield* makeProviderRespond,
       yield* makeSessionClose,
       yield* makeLeaseRelease,
+      yield* makeTaskChange,
       ...extra,
     );
   }),

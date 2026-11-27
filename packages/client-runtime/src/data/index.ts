@@ -586,6 +586,8 @@ export {
   overlayEngineShell,
   MIRROR_ASK_ACTIVITY_KIND,
   type MirrorAskActivityPayload,
+  BOARD_ASK_ACTIVITY_KIND,
+  type BoardAskActivityPayload,
   ORIGIN_ASK_ACTIVITY_KIND,
   type OriginAskActivityPayload,
   VAULT_ASK_ACTIVITY_KIND,
