@@ -213,6 +213,7 @@ import { useEditPictureInExpress, useOpenExpressDesign } from "./express/useOpen
 import { ExpressHistoryContext, useExpressHistoryScope } from "./express/useExpressHistory";
 import { CrewAskSignInContext } from "./ask/CrewAsk";
 import { PictureAskContext, usePictureAsks } from "./ask/PictureAsk";
+import { ScheduleAskContext, useScheduleAsksSetAside } from "./ask/ScheduleAsk";
 import { useExpressGate } from "./express/useExpressGate";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
@@ -3044,6 +3045,7 @@ function ConversationView(props: ChatViewProps) {
     [activeThreadRef],
   );
   const pictureAsks = usePictureAsks(activeThreadMessages);
+  const scheduleAsksSetAside = useScheduleAsksSetAside(activeThreadMessages);
   const pictureAskScope = useMemo(
     () => ({
       answers: pictureAsks.answers,
@@ -7936,7 +7938,9 @@ function ConversationView(props: ChatViewProps) {
     <ExpressHistoryContext value={expressHistory}>
       <PictureAskContext value={pictureAskScope}>
         <CrewAskSignInContext value={zeropsSignInDialog.openFor}>
-          <LocalPreviewRelease value={releaseLocalPreview}>{page}</LocalPreviewRelease>
+          <ScheduleAskContext value={scheduleAsksSetAside}>
+            <LocalPreviewRelease value={releaseLocalPreview}>{page}</LocalPreviewRelease>
+          </ScheduleAskContext>
         </CrewAskSignInContext>
       </PictureAskContext>
     </ExpressHistoryContext>

@@ -232,6 +232,15 @@ export function useAutomationStanding(groupId: string): boolean {
   return usePool(groupId).pool.length > 0;
 }
 
+/**
+ * How many automated Mates the project has, for what is offered to run on them; `null` while the
+ * listing, read only in part, may still hold one.
+ */
+export function useAutomatedMateCount(groupId: string): number | null {
+  const { pool, complete } = usePool(groupId);
+  return pool.length > 0 || complete ? pool.length : null;
+}
+
 /** What an automated Mate is for, where the project has none. */
 const AUTOMATION_IS_FOR =
   "A Mate that takes tasks from GitHub issues, Slack, Discord or a schedule.";
@@ -287,16 +296,19 @@ const WITHHELD = { state: "withheld" } as const;
 /**
  * The pool: the project's automated Mates, as HQ places them, each with what it is on; and what
  * HQ's navigation says of the task each is on — by the task's id, for the board's live rows, and
- * as a list, for how many rows the board will hold while it reads.
+ * as a list, for how many rows the board will hold while it reads; and whether the listing is
+ * read whole, so a pool of none is known to be none.
  */
 function usePool(groupId: string): {
   readonly pool: ReadonlyArray<PoolMate>;
   readonly live: ReadonlyMap<string, HqNavigationMateTask>;
   readonly tasks: ReadonlyArray<HqNavigationMateTask | null>;
+  readonly complete: boolean;
 } {
   const { listing } = useZeropsCandidates();
   const key = useAutomatedKey();
-  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  const held = useMemo(() => heldCandidates(listing), [listing]);
+  const candidates = held.rows;
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const automated = useMemo(
     () =>
@@ -331,7 +343,7 @@ function usePool(groupId: string): {
       ),
     [automated],
   );
-  return { pool, live, tasks };
+  return { pool, live, tasks, complete: held.complete };
 }
 
 /** How many rows each group will hold while the board reads (`predictedBoard`); none, no group. */

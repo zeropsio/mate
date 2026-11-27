@@ -4,6 +4,7 @@ import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { renderBareChangeNumbers } from "./zerops/BareChangeNumber";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
 import { CrewAskFence } from "./ask/CrewAsk";
+import { ScheduleAskFence } from "./ask/ScheduleAsk";
 import { PictureAskFence } from "./ask/PictureAsk";
 import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
 import { useAtomValue } from "@effect/atom-react";
@@ -2741,6 +2742,22 @@ const CHAT_MARKDOWN_COMPONENTS = {
             {highlightedCode}
           </MarkdownCodeBlock>
         </CrewAskFence>
+      );
+    }
+    // A schedule the Mate proposed for the project's automated Mates (`ScheduleAsk`).
+    if (language === "schedule-ask" && variant !== "person") {
+      return (
+        <ScheduleAskFence code={codeBlock.code} isStreaming={isStreaming} threadRef={threadRef}>
+          <MarkdownCodeBlock
+            code={codeBlock.code}
+            language={language}
+            fenceTitle={fenceTitle}
+            theme={resolvedTheme}
+            isStreaming={isStreaming}
+          >
+            {highlightedCode}
+          </MarkdownCodeBlock>
+        </ScheduleAskFence>
       );
     }
     if (language === "mermaid") {
