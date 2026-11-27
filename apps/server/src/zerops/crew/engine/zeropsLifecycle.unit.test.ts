@@ -939,7 +939,7 @@ it.effect("CD76: A conversation that never called zcp sees the Mate's leases", (
   ),
 );
 
-// witness: apps/server/src/zerops/ZeropsLifecycle.ts | ...(status.devServices === null ? {} : { devServices: status.devServices }), → ...{},
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | ...(status.devServices === null → ...(true
 it.effect(
   "CD77: A classic dev service's branch and dev server appear together on its Mate's copy feed",
   () =>
@@ -955,6 +955,31 @@ it.effect(
         };
         yield* lifecycle.ingestCopies({ leases: null, devServices: [dev] });
         expect((yield* lifecycle.copies).devServices).toEqual([dev]);
+      }),
+    ),
+);
+
+// witness: apps/server/src/zerops/ZeropsLifecycle.ts | const lease = { ...read, ...copyStateOf(state, stateAt) }; → const lease = { ...read };
+it.effect(
+  "CD+1: A copy's state from zcp's status file reaches the Mate's copy feed beside its lease's own state, and a later envelope read of that lease keeps it; breaks: a Draft shows no state, or its lease stops reading as held",
+  () =>
+    withLifecycle((lifecycle) =>
+      Effect.gen(function* () {
+        const stateAt = "2026-11-27T18:00:00Z";
+        yield* lifecycle.ingestCopies({
+          leases: [{ ...fileLease, state: "stopped", stateAt }],
+          devServices: [{ hostname: "webdev", branch: "feat-x", state: "running", stateAt }],
+        });
+        const copies = yield* lifecycle.copies;
+        const lease = copies.leases?.[0];
+        expect([lease?.state, lease?.copyState, lease?.copyStateAt]).toEqual([
+          "held",
+          "stopped",
+          stateAt,
+        ]);
+        expect(copies.devServices?.[0]?.copyState).toBe("running");
+        yield* lifecycle.ingest(statusReading([{ ...fileLease, state: "held" }]));
+        expect((yield* lifecycle.copies).leases?.[0]?.copyState).toBe("stopped");
       }),
     ),
 );

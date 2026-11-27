@@ -19,7 +19,8 @@
  * The Mate's copy record holds the lease set and classic working copies from
  * zcp's status file, plus service and dev-server observations from any tool
  * envelope. A file read replaces the lease set, while a later envelope can
- * enrich only leases still present. These are observations, not liveness.
+ * enrich only leases still present. These are observations, not liveness; a copy's state
+ * (`copyState`) is zcp's own, its one writer's, carried as written and never derived here.
  * Which lease a conversation works in is the conversation's own fact: its
  * agent acquiring a lease (`zerops_lease`) binds that
  * conversation's record (`recordLease`) — the first lease a group acquire lists,
@@ -179,6 +180,15 @@ const stampMs = (at: string | undefined): number => {
   return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
 };
 
+/** A copy's state as zcp's status file wrote it, under the name the Mate's copies give it. */
+const copyStateOf = (
+  state: string | undefined,
+  stateAt: string | undefined,
+): Pick<ZeropsLease, "copyState" | "copyStateAt"> => ({
+  ...(state === undefined ? {} : { copyState: state }),
+  ...(stateAt === undefined ? {} : { copyStateAt: stateAt }),
+});
+
 /**
  * The newer of two reads of a lease's dev servers: this call's where it read them and the last
  * read did not, the last where this call did not; where both did, the one zcp stamped later
@@ -219,8 +229,12 @@ const withLastRead = (lease: ZeropsLease, last: ZeropsLease): ZeropsLease => {
       ? last.activity
       : (lease.activity ?? last.activity);
   const unsaved = newer ? lease.unsaved : (lease.unsaved ?? last.unsaved);
+  // Only zcp's status file carries a copy's state; an envelope's read of the same lease keeps it.
+  const copyState =
+    lease.copyState === undefined ? copyStateOf(last.copyState, last.copyStateAt) : {};
   return {
     ...lease,
+    ...copyState,
     ...(devServers === undefined ? {} : { devServers }),
     ...(servers.devServersReadAt === undefined
       ? {}
@@ -620,7 +634,9 @@ export const make = (options: ZeropsLifecycleOptions) =>
             let facts: LeaseFacts | undefined;
             if (status.leases !== null) {
               yield* Ref.set(statusHasLeases, true);
-              leases = status.leases.map((lease): ZeropsLease => {
+              leases = status.leases.map(({ state, stateAt, ...read }): ZeropsLease => {
+                // The file's `state` is the copy's, not the lease's (zcp spec-mate §1.0a).
+                const lease = { ...read, ...copyStateOf(state, stateAt) };
                 const last = before.leases?.find(
                   (old) =>
                     old.alias === lease.alias &&
@@ -647,7 +663,14 @@ export const make = (options: ZeropsLifecycleOptions) =>
             yield* publishCopies(before, {
               ...before,
               ...(leases === undefined ? {} : { leases }),
-              ...(status.devServices === null ? {} : { devServices: status.devServices }),
+              ...(status.devServices === null
+                ? {}
+                : {
+                    devServices: status.devServices.map(({ state, stateAt, ...read }) => ({
+                      ...read,
+                      ...copyStateOf(state, stateAt),
+                    })),
+                  }),
             });
             return facts;
           }),

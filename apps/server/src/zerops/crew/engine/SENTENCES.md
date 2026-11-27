@@ -77,6 +77,7 @@ next: CD93
 - CD76 — A conversation that never called zcp sees the Mate's leases
 - CD77 — A classic dev service's branch and dev server appear together on its Mate's copy feed
 - CD78 — A tool result reads the current copy file before binding, so a late acquire cannot bind a released lease
+- CD+1 — A copy's state from zcp's status file reaches the Mate's copy feed beside its lease's own state, and a later envelope read of that lease keeps it; breaks: a Draft shows no state, or its lease stops reading as held
 - CD80 — A reader's verdict lands nothing: it waits on the reader's own task for the lead, and only the lead's accept lands the task it reviews
 - CD81 — A reader gives its verdict only on the task its own task reviews: one on another task is refused and changes nothing
 - CD82 — A reader's task that reviews another starts only once that task is in review, and the lead is woken for that task only once the reader reported

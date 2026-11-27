@@ -280,6 +280,18 @@ export const ZeropsLeaseUnsaved = Schema.Struct({
 export type ZeropsLeaseUnsaved = typeof ZeropsLeaseUnsaved.Type;
 
 /**
+ * A working copy's preview-server state as zcp, its one writer, last emitted it (zcp
+ * `docs/spec-mate.md` §1.0a): `parked`, `starting`, `running`, `stopped`, `failed` or `unknown`
+ * (zcp lost its link to the copy's writer). A string, so a state a later zcp adds never drops the
+ * copy; absent from a zcp that writes none.
+ */
+const ZeropsCopyStateFields = {
+  copyState: Schema.optional(Schema.String),
+  /** When zcp emitted `copyState`; shown nowhere, and nothing is derived from it. */
+  copyStateAt: Schema.optional(Schema.String),
+};
+
+/**
  * One pool container this project's zcp holds a lease on (`zerops_lease`) — zcp
  * `workflow.LeaseSnapshot`. zcp mounts it at `/var/www/<alias>` and checks `branch` out there.
  */
@@ -317,6 +329,8 @@ export const ZeropsLease = Schema.Struct({
   devServersReadAt: Schema.optional(Schema.String),
   /** The application part the lease serves ("web"); absent where zcp names none. */
   part: Schema.optional(Schema.String),
+  /** The copy's state from zcp's status file (`ZeropsCopyStateFields`); no envelope carries it. */
+  ...ZeropsCopyStateFields,
   /** The hostname of that part's stage, which runs what is merged; absent where zcp names none. */
   stage: Schema.optional(Schema.String),
   /**
@@ -382,6 +396,7 @@ export const ZeropsClassicCopy = Schema.Struct({
   hostname: Schema.String,
   branch: Schema.optional(Schema.NullOr(Schema.String)),
   branchReadAt: Schema.optional(Schema.String),
+  ...ZeropsCopyStateFields,
   devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
   devServersReadAt: Schema.optional(Schema.String),
 });
@@ -398,12 +413,28 @@ export const ZeropsCopyStatus = Schema.Struct({
         branch: Schema.String,
         repo: Schema.optional(Schema.String),
         acquiredAt: Schema.String,
+        /** The copy's state, `ZeropsLease.copyState` once read. */
+        state: Schema.optional(Schema.String),
+        stateAt: Schema.optional(Schema.String),
         devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
         devServersReadAt: Schema.optional(Schema.String),
       }),
     ),
   ),
-  devServices: Schema.NullOr(Schema.Array(ZeropsClassicCopy)),
+  devServices: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        hostname: Schema.String,
+        branch: Schema.optional(Schema.NullOr(Schema.String)),
+        branchReadAt: Schema.optional(Schema.String),
+        /** The copy's state, `ZeropsClassicCopy.copyState` once read. */
+        state: Schema.optional(Schema.String),
+        stateAt: Schema.optional(Schema.String),
+        devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+        devServersReadAt: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
 });
 export type ZeropsCopyStatus = typeof ZeropsCopyStatus.Type;
 
