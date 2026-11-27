@@ -4,7 +4,7 @@
  */
 import { changeOfZcpAnswer } from "@t3tools/shared/hqChanges";
 
-import type { ZeropsOperationPullRequest } from "./types.ts";
+import type { ZeropsOperationPullRequest, ZeropsTimelineEntry } from "./types.ts";
 
 /** zcp's tool whose actions open and describe a change. */
 const CHANGE_TOOL = "zerops_workflow";
@@ -41,4 +41,29 @@ export function handedChangeOfCall(call: {
   if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
   const change = changeOfZcpAnswer(answer as Readonly<Record<string, unknown>>);
   return change === null ? null : { repository: change.repo, number: change.number };
+}
+
+const NO_CHANGES: ReadonlySet<string> = new Set();
+
+/**
+ * The changes a conversation's own runs left for the person, as `repo#number`: each one a push
+ * carried, and each Draft zcp's handover named (`handedChangeOfCall`). A conversation places their
+ * landings, whether or not a message of it names them.
+ */
+export function changesLeftIn(entries: ReadonlyArray<ZeropsTimelineEntry>): ReadonlySet<string> {
+  const left = entries.flatMap((entry) => {
+    const change =
+      entry.kind === "operation"
+        ? entry.operation.pullRequest
+        : handedChangeOfCall({
+            toolName: entry.call.toolName,
+            input: entry.call.input,
+            completed: entry.call.status === "completed",
+            resultText: entry.call.resultText,
+          });
+    return change === undefined || change === null
+      ? []
+      : [`${change.repository}#${String(change.number)}`];
+  });
+  return left.length === 0 ? NO_CHANGES : new Set(left);
 }

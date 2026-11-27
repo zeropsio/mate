@@ -1,5 +1,6 @@
 import { expect, it } from "vite-plus/test";
-import { handedChangeOfCall } from "./model/handedChange.ts";
+import { changesLeftIn, handedChangeOfCall } from "./model/handedChange.ts";
+import type { ZeropsCallStatus, ZeropsTimelineEntry } from "./model/types.ts";
 
 const answer = (pullRequest: unknown, repo = "site") =>
   JSON.stringify({
@@ -32,4 +33,40 @@ it("ZV217: The change a call hands the person is the one zcp's answer to its ope
   expect(call("open-change", undefined)).toBeNull();
   expect(call("open-change", "Change #7 is open.")).toBeNull();
   expect(call("open-change", answer(7), { toolName: "zerops_deploy" })).toBeNull();
+});
+
+const callEntry = (
+  id: string,
+  action: string,
+  status: ZeropsCallStatus,
+  resultText: string | undefined,
+): ZeropsTimelineEntry => ({
+  kind: "generic-call",
+  key: id,
+  anchorAt: "2026-11-27T22:31:00.000Z",
+  anchorActivityId: id,
+  call: {
+    id,
+    turnId: "turn-1",
+    toolName: "zerops_workflow",
+    input: { action },
+    status,
+    ...(resultText === undefined ? {} : { resultText }),
+    truncated: false,
+    startedAt: "2026-11-27T22:31:00.000Z",
+    anchorActivityId: id,
+    rowIds: new Set([id]),
+    agentInternal: false,
+  },
+});
+
+// witness: packages/client-runtime/src/zerops/model/handedChange.ts | completed: entry.call.status === "completed", → completed: entry.call.status !== "completed",
+it("ZV+1: A conversation's own changes are each one its runs pushed or a finished zcp handover named, though no message links it, and never one a call is still opening or closes; breaks: after Add to your app the conversation draws no row saying the app has the change", () => {
+  expect([
+    ...changesLeftIn([
+      callEntry("a", "open-change", "completed", answer(7)),
+      callEntry("b", "open-change", "inProgress", undefined),
+      callEntry("c", "close-change", "completed", answer(7, "api")),
+    ]),
+  ]).toEqual(["site#7"]);
 });
