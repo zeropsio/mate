@@ -141,6 +141,7 @@ const toTask = (state: CrewState, task: TaskRecord, view: CrewView): CrewTask =>
     landedCommit: task.landedCommit,
     landedAt: task.state === "landed" && task.landedAt !== null ? iso(task.landedAt) : null,
     delivered: task.state === "landed" && view.delivered.has(task.id),
+    askedIn: task.askedIn === undefined ? null : ThreadId.make(task.askedIn.conversationId),
   };
 };
 

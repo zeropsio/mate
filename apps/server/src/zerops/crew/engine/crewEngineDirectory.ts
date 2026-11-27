@@ -35,6 +35,7 @@ import { type GateContext, type GateTurn } from "../CrewPolicy.ts";
 import type { CrewPromptMember } from "../crewPrompt.ts";
 import type { CrewReadsService } from "../CrewReads.ts";
 import type {
+  CrewHandOff,
   CrewSessionStart,
   CrewThreadMember,
   CrewToolHost,
@@ -92,6 +93,11 @@ export interface EngineCrewDirectoryInputs {
   ) => Effect.Effect<CrewAccepted, CrewCommandError>;
   readonly memory: CrewMemoryService;
   readonly reads: Pick<CrewReadsService, "diff" | "openApp">;
+  /** A conversation's hand-off, admitted and decided as its running turn's principal. */
+  readonly handOff: (
+    conversationId: ConversationId,
+    task: CrewHandOff,
+  ) => Effect.Effect<CrewAccepted, CrewCommandError>;
 }
 
 /** A path on an app: from its root, one line, no spaces. */
@@ -309,6 +315,18 @@ export const makeEngineCrewDirectory = (inputs: EngineCrewDirectoryInputs) => {
   });
 
   const toolHost: CrewToolHost["Service"] = {
+    handOff: (thread, input) =>
+      Effect.gen(function* () {
+        const conversationId = conversationOfThread(thread);
+        if (conversationId === undefined) {
+          return error("crew_hand_off runs only in a conversation of this Mate.");
+        }
+        if (memberOfConversation(yield* inputs.state, conversationId) !== undefined) {
+          return error("A crewmate hands no work off: the lead plans the crew's tasks.");
+        }
+        const accepted = yield* inputs.handOff(conversationId, input);
+        return accepted.reply ?? text(`Handed to @${input.owner}.`);
+      }).pipe(Effect.catch((refusal) => Effect.succeed(error(refusal.detail ?? refusal.message)))),
     report: (member, input) =>
       Effect.gen(function* () {
         if (input.lessons !== undefined && input.lessons.length > 0) {

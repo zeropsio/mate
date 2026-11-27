@@ -10,7 +10,10 @@ import {
   readClaudeThreadRegistries,
   resolveClaudeThreadSetup,
 } from "../../spi/claudeThreadProfile.ts";
-import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
+import {
+  threadConversationToolsFor,
+  ThreadToolPolicyRegistry,
+} from "../../spi/threadToolPolicy.ts";
 import { crewLane } from "./CrewDefinition.ts";
 import { decideCrewTool, type LiveGateContext } from "./CrewPolicy.ts";
 import { CrewThreadDirectory, type CrewThreadMember, CrewToolHost } from "./crewSeams.ts";
@@ -85,6 +88,8 @@ const makeHost = (calls: Ref.Ref<ReadonlyArray<HostCall>>) => {
     review: answer("review"),
     finish: answer("finish"),
     memory: answer("memory"),
+    handOff: (thread, input) =>
+      record(["handOff", thread, input]).pipe(Effect.as({ text: "handOff done", isError: false })),
     sessionStart: (member, event) =>
       record(["sessionStart", member.handle, event.source]).pipe(
         Effect.as(`seed for ${member.handle}`),
@@ -326,4 +331,35 @@ it.effect("CM56: crew_report hands the report to the crew as the crewmate that c
       ["report", "backend", { status: "done", summary: "The API serves /scores." }],
     ]);
   }),
+);
+
+const conversationToolsOf = (threadId: ThreadId) =>
+  Effect.flatMap(Effect.serviceOption(ThreadToolPolicyRegistry), (policies) =>
+    threadConversationToolsFor(policies, { threadId, instanceId: INSTANCE }),
+  );
+
+// witness: apps/server/src/zerops/crew/CrewThreadPolicy.ts | Option.isNone(member) ? conversationTools(host, thread.threadId) : [], → Option.isSome(member) ? conversationTools(host, thread.threadId) : [],
+it.effect(
+  "CM+1: A person's conversation gets crew_hand_off, which hands the crew the work as that conversation's; a crewmate's conversation gets no conversation tool",
+  () =>
+    withPolicy(new Map([[CREW_THREAD, backend]]), ({ calls }) =>
+      Effect.gen(function* () {
+        expect(yield* conversationToolsOf(CREW_THREAD)).toEqual([]);
+        const tools = yield* conversationToolsOf(PERSON_THREAD);
+        expect(tools.map((tool) => tool.name)).toEqual(["crew_hand_off"]);
+        const result = yield* tools[0]!.run({
+          to: "@backend ",
+          title: " The scores API ",
+          brief: "Serve /scores.",
+        });
+        expect(result.isError).toBe(false);
+        expect(yield* Ref.get(calls)).toEqual([
+          [
+            "handOff",
+            PERSON_THREAD,
+            { owner: "backend", title: "The scores API", brief: "Serve /scores.", doneWhen: "" },
+          ],
+        ]);
+      }),
+    ),
 );

@@ -82,6 +82,7 @@ import {
   type ZeropsRepositories,
 } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
+import { turnPrincipalOf } from "../../engineAdapters.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { crewLane } from "../CrewDefinition.ts";
 import { proposeCrewPorts, readDeclaredPorts } from "../crewPorts.ts";
@@ -92,7 +93,7 @@ import { CREW_ID, CrewHome, refusalOf } from "../CrewHome.ts";
 import { makeOver, type CrewMemoryRecords } from "../CrewMemory.ts";
 import { CrewReads } from "../CrewReads.ts";
 import { CrewRuntime } from "../CrewRuntime.ts";
-import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
+import { type CrewHandOff, CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
 import { CrewShell } from "../CrewShell.ts";
 import { CrewStoreError, type CrewMemoryRow } from "../CrewStore.ts";
 import { closedSeamWords, landedSeamWords, sweptSeamWords } from "../crewCards.ts";
@@ -103,7 +104,7 @@ import { CrewInputUnrecorded, observeCrew } from "./CrewObserver.ts";
 import { crewDomain, crewRefusalOf, type CrewAccepted } from "./CrewOwner.ts";
 import { makeEngineCrewDirectory } from "./crewEngineDirectory.ts";
 import { CrewWorkspaceDirectory } from "./CrewWorkspaceDirectory.ts";
-import { doorLogins, filesDoorLogins } from "./decide.home.ts";
+import { doorLogins, filesDoorLogins, handOffDoorLogins } from "./decide.home.ts";
 import { noDevServerWords } from "./decide.claims.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
 import { movedPlanUsage } from "./planUsage.ts";
@@ -568,6 +569,38 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       return counts;
     });
 
+    const admitAt = (logins: ReadonlyArray<string>, principal: TurnPrincipal) =>
+      logins.length === 0
+        ? Effect.succeed<string | null>(null)
+        : admission.admitOperator({ instanceIds: logins, principal }).pipe(
+            Effect.as<string | null>(null),
+            Effect.catch((error) => Effect.succeed<string | null>(error.message)),
+          );
+
+    /**
+     * A conversation's agent hands work off as the principal its running turn acts for: admitted
+     * for the logins the hand-off reaches, as that person's press would be, then decided.
+     */
+    const handOff = (conversationId: ConversationId, task: CrewHandOff) =>
+      Effect.gen(function* () {
+        const view = yield* engine
+          .conversation(conversationId)
+          .pipe(Effect.orElseSucceed(() => undefined));
+        const run = view?.activeRun ?? null;
+        const turn = run === null ? null : turnPrincipalOf(run.principal, run.trigger);
+        if (run === null || turn === null) {
+          return yield* refuse(
+            "not-allowed",
+            "Only a running turn of a conversation hands work off.",
+          );
+        }
+        const refusal = yield* admitAt(handOffDoorLogins(yield* state, task.owner), turn);
+        return yield* askAs(
+          { _tag: "HandOff", conversationId, task, door: { refusal } },
+          run.principal,
+        );
+      });
+
     /* ------------------------------------------------------- directory and tools */
 
     const { directory, toolHost, memberOfConversation, sessionPacket } = makeEngineCrewDirectory({
@@ -579,6 +612,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       ask: askAs,
       memory,
       reads,
+      handOff,
     });
 
     /* ------------------------------------------------------- the feed */
@@ -834,14 +868,6 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         yield* checkHosts({ ...home, members: acquired }, listed);
         return { ...home, members };
       });
-
-    const admitAt = (logins: ReadonlyArray<string>, principal: TurnPrincipal) =>
-      logins.length === 0
-        ? Effect.succeed<string | null>(null)
-        : admission.admitOperator({ instanceIds: logins, principal }).pipe(
-            Effect.as<string | null>(null),
-            Effect.catch((error) => Effect.succeed<string | null>(error.message)),
-          );
 
     /**
      * A press waits its turn while its crewmate's copy is being brought back (the boot sweep, a

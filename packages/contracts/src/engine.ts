@@ -420,6 +420,8 @@ export const CREW_CARD_KINDS = [
   "nudge",
   "claim-start",
   "claim-release",
+  /** How a task a conversation handed off went, told to that conversation. */
+  "hand-off",
 ] as const;
 
 /** Something a card names that a client can open. */
@@ -464,7 +466,7 @@ export type CrewCard = typeof CrewCard.Type;
 /** A crew seam as a `crew.seam` marker holds it: a seam from a newer build decodes as unknown. */
 export const RecordedCrewSeam = forwardCompatibleUnion({
   key: "seam",
-  known: ["landed", "closed", "saved", "stint", "swept", "unknown"],
+  known: ["landed", "closed", "saved", "stint", "swept", "handed", "unknown"],
   members: CrewSeam.members,
   fallback: Schema.Struct({ seam: Schema.Literal("unknown"), type: Schema.String }),
   toFallback: (_raw, type) => ({ seam: "unknown" as const, type }),

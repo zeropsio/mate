@@ -9,6 +9,7 @@ import {
   OriginRequestTimelineRow,
   MirrorRequestTimelineRow,
   ProposalTimelineRow,
+  HandOffTimelineRow,
 } from "./TimelineAskRows";
 import {
   TaskCardTimelineRow,
@@ -357,6 +358,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "origin-request" ? <OriginRequestTimelineRow row={row} /> : null}
       {row.kind === "mirror-request" ? <MirrorRequestTimelineRow row={row} /> : null}
       {row.kind === "proposal" ? <ProposalTimelineRow row={row} /> : null}
+      {row.kind === "hand-off" ? <HandOffTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "crew-seam" ? (
         <CrewSeamActivity asEvent seam={row.seam} words={row.words} />

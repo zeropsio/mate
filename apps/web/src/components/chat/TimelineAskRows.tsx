@@ -3,6 +3,7 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import { TimelineRowCtx } from "./timelineContext";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
+import { CrewHandOffCard } from "../zerops/crew/CrewHandOffCard";
 import { MirrorAskCardContainer } from "../zerops/mirror/MirrorAskCardContainer";
 import { OriginAskCardContainer } from "../zerops/origin/OriginAskCardContainer";
 import { VaultRequestCardContainer } from "../zerops/vault/VaultAskContainer";
@@ -134,6 +135,25 @@ export const ProposalTimelineRow = memo(function ProposalTimelineRow({
         environmentId={ctx.activeThreadEnvironmentId}
         operation={row.operation}
         threadId={ctx.threadRef?.threadId ?? null}
+      />
+    </div>
+  );
+});
+
+/** A task the Mate handed to a crewmate, after its run: the card that follows the task. */
+export const HandOffTimelineRow = memo(function HandOffTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "hand-off" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <CrewHandOffCard
+        environmentId={ctx.activeThreadEnvironmentId}
+        mateName={ctx.speaker.name}
+        number={row.number}
+        taskId={row.taskId}
       />
     </div>
   );

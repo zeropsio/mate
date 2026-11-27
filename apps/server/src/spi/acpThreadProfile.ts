@@ -27,6 +27,7 @@ import { shellCommand } from "./codexThreadProfile.ts";
 import {
   type InstallSlot,
   profileModelSelection,
+  threadConversationToolsFor,
   threadProfileFor,
   type ThreadToolPolicy,
   ThreadToolPolicyRegistry,
@@ -429,6 +430,20 @@ export const acpThreadSetup = (
       readOnly: profile.readOnly === true,
       ...(profile.projectRoot === undefined ? {} : { projectRoot: profile.projectRoot }),
     };
+  });
+
+/**
+ * A thread with no profile: its policy's conversation tools, served for the session in its scope
+ * and laid into `session/new`, `session/load` and `session/resume` beside the agent's own
+ * servers. None for a profiled thread, or a thread the policy gives none.
+ */
+export const acpConversationServers = (
+  policies: Option.Option<InstallSlot<ThreadToolPolicy>>,
+  thread: ThreadRef,
+): Effect.Effect<AcpThreadSetup["mcpServers"], never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const tools = yield* threadConversationToolsFor(policies, thread);
+    return tools.length === 0 ? [] : [{ ...(yield* serveThreadTools(THREAD_TOOLS_SERVER, tools)) }];
   });
 
 /**

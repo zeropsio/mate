@@ -185,6 +185,7 @@ const task = (
   landedCommit: null,
   landedAt: null,
   delivered: false,
+  askedIn: null,
   ...fields,
 });
 

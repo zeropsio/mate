@@ -690,6 +690,8 @@ type MessagesTimelineRowBody =
     }
   /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
   | { kind: "crew-seam"; id: string; createdAt: string; seam: CrewSeam; words: string }
+  /** A task this conversation handed to a crewmate (`crew_hand_off`): its card follows the task. */
+  | { kind: "hand-off"; id: string; createdAt: string; taskId: string; number: number }
   | {
       /** The bottom edge of a stretch's card: nothing but the frame closing. */
       kind: "card-end";
@@ -1364,6 +1366,34 @@ function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work
     else if (entry.entry.sourceActivityKind === "approval.resolved") open.shift();
   }
   return open.at(-1) ?? null;
+}
+
+function handOffRow(
+  id: string,
+  createdAt: string,
+  seam: Extract<CrewSeam, { seam: "handed" }>,
+): Extract<MessagesTimelineRow, { kind: "hand-off" }> {
+  return {
+    kind: "hand-off",
+    id: `hand-off:${id}`,
+    createdAt,
+    taskId: seam.taskId,
+    number: seam.number,
+  };
+}
+
+/** The tasks a turn handed to crewmates (`crew_hand_off`), by the seams the crew marked them with. */
+function turnHandOffs(
+  turn: ConversationTurn,
+): Array<Extract<MessagesTimelineRow, { kind: "hand-off" }>> {
+  const rows: Array<Extract<MessagesTimelineRow, { kind: "hand-off" }>> = [];
+  for (const stretch of turn.stretches)
+    for (const candidate of stretch.entries) {
+      if (candidate.kind !== "work") continue;
+      const seam = candidate.entry.crewSeam;
+      if (seam?.seam === "handed") rows.push(handOffRow(candidate.id, candidate.createdAt, seam));
+    }
+  return rows;
 }
 
 /**
@@ -2142,13 +2172,15 @@ function stretchRecord(input: {
         if (work.interruption !== undefined) {
           break;
         } else if (work.crewSeam !== undefined) {
-          push({
-            kind: "crew-seam",
-            key: `crew-seam:${entry.id}`,
-            at: entry.createdAt,
-            seam: work.crewSeam,
-            words: work.label,
-          });
+          // A hand-off's card stands after the turn's words, outside its card (`turnHandOffs`).
+          if (work.crewSeam.seam !== "handed")
+            push({
+              kind: "crew-seam",
+              key: `crew-seam:${entry.id}`,
+              at: entry.createdAt,
+              seam: work.crewSeam,
+              words: work.label,
+            });
         } else if (work.sourceActivityKind === "context-compaction") {
           push({
             kind: "event",
@@ -3639,6 +3671,8 @@ export function deriveMessagesTimelineRows(input: {
           operation: item.operation,
         });
     }
+    // What it handed to the crew follows too: the person follows each task on its card.
+    for (const handOff of turnHandOffs(turn)) rows.push(handOff);
     const turnIds = new Set([turn.turnId, ...turn.stretches.map((stretch) => stretch.turnId)]);
     for (const ask of input.originAsks ?? []) {
       if (!turnIds.has(ask.turnId)) continue;
@@ -3745,7 +3779,12 @@ export function deriveMessagesTimelineRows(input: {
           event: { type: "release", event: entry.event },
         });
       } else if (entry.kind === "work" && entry.entry.crewSeam !== undefined) {
-        rows.push(crewSeamRow(entry.id, entry.entry, entry.entry.crewSeam));
+        const seam = entry.entry.crewSeam;
+        rows.push(
+          seam.seam === "handed"
+            ? handOffRow(entry.id, entry.createdAt, seam)
+            : crewSeamRow(entry.id, entry.entry, seam),
+        );
       } else if (entry.kind === "work" && entry.entry.sourceActivityKind === AGENT_SWITCHED_KIND) {
         rows.push({
           kind: "seam",

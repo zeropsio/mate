@@ -25,7 +25,7 @@ import { settle } from "./decide.advance.ts";
 import { tool } from "./decide.tools.ts";
 import { observed } from "./decide.observed.ts";
 import { readDeploy, recovering, loginsChanged, recovered } from "./decide.host.ts";
-import { pressed } from "./decide.presses.ts";
+import { handOff, pressed } from "./decide.presses.ts";
 import { settled } from "./decide.effects.ts";
 import { wakeFired } from "./decide.wakes.ts";
 
@@ -61,6 +61,8 @@ const handle = (b: Builder, input: CrewInput): void => {
       return pressed(b, input.press, input.door.refusal, input.home, input.seen, input.hosts);
     case "Tool":
       return tool(b, input.handle, input.call);
+    case "HandOff":
+      return handOff(b, input.conversationId, input.task, input.door.refusal);
     case "Observed":
       return observed(b, input.conversationId, input.from, input.upTo, input.events);
     case "Gauge":

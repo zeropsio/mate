@@ -62,3 +62,4 @@ next: CM63
 - CM60 — A write to the crew home that changes the crew's name, its goal's title or its goal's text reaches every crewmate; any other write reaches exactly the crewmates whose entry or job it adds, removes or changes, and a home written for the first time is all new
 - CM61 — A writer's packet reads its own copy on its host, and a writer whose copy is not ready yet is told so, never that it has no copy; a reader and the lead have none
 - CM62 — A reader's browser opens only the own app of the writer whose task it reviews: any other port or host is refused, as is the browser for a reader that reviews nothing
+- CM+1 — A person's conversation gets crew_hand_off, which hands the crew the work as that conversation's; a crewmate's conversation gets no conversation tool

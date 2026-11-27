@@ -78,6 +78,7 @@ export const crewLayerInert = Layer.succeedContext(
       board: () => notYet("crew_board"),
       diff: () => notYet("crew_diff"),
       openApp: () => notYet("crew_open_app"),
+      handOff: () => notYet("crew_hand_off"),
       showOnDev: () => notYet("crew_show_on_dev"),
       propose: () => notYet("crew_propose"),
       review: () => notYet("crew_review"),

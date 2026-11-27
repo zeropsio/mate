@@ -87,6 +87,7 @@ import {
 import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
   acpTerminalReason,
+  acpConversationServers,
   acpThreadSetup,
   acpTurnProfile,
   readAcpThreadPolicies,
@@ -855,6 +856,13 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
           Effect.provideService(Scope.Scope, sessionScope),
         );
+        // A person's thread: the conversation's tools beside the agent's own servers.
+        const conversationServers =
+          profileSetup === undefined
+            ? yield* acpConversationServers(threadPolicies, threadRef).pipe(
+                Effect.provideService(Scope.Scope, sessionScope),
+              )
+            : [];
         // A crewmate asks before every call, whatever mode its thread names.
         const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
         // A read-only crewmate's agy works in a folder of its own, also its temporary folder: agy
@@ -902,8 +910,9 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
             ...(Option.isSome(cursor) ? { resumeSessionId: cursor.value.sessionId } : {}),
             // No `apps/server/src/mcp/**` here (deleted zone) — the in-app
             // preview-browser MCP server it would wire in does not exist
-            // in this fork; a crewmate's own tools are the one server.
-            mcpServers: profileSetup?.mcpServers ?? [],
+            // in this fork; a crewmate's own tools, or a person's conversation's, are the one
+            // server.
+            mcpServers: profileSetup?.mcpServers ?? conversationServers,
             ...makeNativeLoggers({
               nativeEventLogger: options.nativeEventLogger,
               provider: PROVIDER,

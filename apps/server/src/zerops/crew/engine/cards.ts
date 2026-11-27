@@ -8,7 +8,13 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { CrewCard, CrewTaskSource } from "@t3tools/contracts";
 
 import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "../crewShowOnDev.ts";
-import { opensApp, reviewsOf, type CrewState, type TaskRecord } from "./state.ts";
+import {
+  opensApp,
+  reviewsOf,
+  type CrewState,
+  type HandOffOutcome,
+  type TaskRecord,
+} from "./state.ts";
 
 export interface SentCard {
   readonly text: string;
@@ -258,3 +264,67 @@ export const claimReleaseCard = (host: string, handle: string, devServer: DevSer
       `${backToTreeCommand(host, handle, devServer)}. Nothing else.`,
     host,
   );
+
+const HANDED_OFF: Readonly<Record<HandOffOutcome, string>> = {
+  ready: "is ready",
+  asks: "asks",
+  "needs-you": "waits for the person",
+  landed: "landed",
+  parked: "is parked",
+  discarded: "was discarded",
+};
+
+/** What the task's state says, in the crew's own words. */
+const handOffWhy = (task: TaskRecord, outcome: HandOffOutcome): string => {
+  switch (outcome) {
+    case "ready":
+      return task.report?.summary.trim() || "Its check passed.";
+    case "asks":
+      return task.report?.question?.trim() ?? "";
+    case "needs-you":
+      return `Its landing waits on files edited in your tree: ${(task.wait?.paths ?? []).join(", ")}`;
+    case "landed":
+      return task.landedCommit === null
+        ? "It is in your tree."
+        : `It is in your tree as ${short(task.landedCommit)}.`;
+    case "parked":
+      return task.wait?.reason ?? "";
+    case "discarded":
+      return "";
+  }
+};
+
+/** What the conversation's agent does next: carries on, or tells the person what only they do. */
+const handOffNext = (task: TaskRecord, outcome: HandOffOutcome): string => {
+  switch (outcome) {
+    case "ready":
+      return (
+        "Tell the person it is ready: they land it, or send it back with a note, from its card " +
+        "in this conversation. Carry on with what does not wait on it."
+      );
+    case "asks":
+      return `Tell the person: they answer @${task.owner} in its conversation, and it goes on.`;
+    case "needs-you":
+      return "Tell the person: it lands once those files are committed or put away.";
+    case "landed":
+      return "Carry on with what it unblocks.";
+    case "parked":
+      return "Tell the person: they retry it, or drop it, from its card.";
+    case "discarded":
+      return "Carry on without it.";
+  }
+};
+
+/** How a task this conversation handed off went: its agent hears it as a turn and carries on. */
+export const handOffCard = (task: TaskRecord, outcome: HandOffOutcome): SentCard => {
+  const why = handOffWhy(task, outcome);
+  return {
+    text: lines(`#${task.number} ${task.title} · @${task.owner} ${HANDED_OFF[outcome]}`, [
+      ...(why === "" ? [] : [why, ""]),
+      handOffNext(task, outcome),
+    ]),
+    card: taskCardOf(task, "hand-off", why, {
+      links: [{ kind: "crewmate", handle: task.owner }],
+    }),
+  };
+};

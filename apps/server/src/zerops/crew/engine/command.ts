@@ -37,7 +37,12 @@ import type {
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 import type { DevServerReading } from "../CrewRuntime.ts";
-import type { CrewProposedTask, CrewReportInput, CrewReviewInput } from "../crewSeams.ts";
+import type {
+  CrewHandOff,
+  CrewProposedTask,
+  CrewReportInput,
+  CrewReviewInput,
+} from "../crewSeams.ts";
 import type { CrewEventDraft } from "./events.ts";
 import type { CrewTiming } from "./state.ts";
 
@@ -91,6 +96,16 @@ export type CrewInput =
       readonly handle: string;
       readonly runId: RunId | null;
       readonly call: CrewToolCall;
+    }
+  /**
+   * A conversation's agent hands work to a writer (`crew_hand_off`), as the principal the
+   * conversation's run acts for; the door answered for the logins it reaches first.
+   */
+  | {
+      readonly _tag: "HandOff";
+      readonly conversationId: ConversationId;
+      readonly task: CrewHandOff;
+      readonly door: DoorAnswer;
     }
   /**
    * A range of an observed conversation's record, `from` (at most the crew's cursor + 1) to

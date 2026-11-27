@@ -5,8 +5,10 @@
  */
 import {
   type ChatAttachment,
+  type ConversationId,
   type CrewCommand,
   crewCommandReach,
+  type CrewRunOptions,
   type Principal,
   WakeId,
 } from "@t3tools/contracts";
@@ -14,6 +16,7 @@ import type { CrewDefinition } from "@t3tools/shared/crewHome";
 import { runTransition } from "../crewMachines.ts";
 import { implicitTaskTitle, routeCrewMessage } from "../crewRouting.ts";
 import { answerCard, fixCard, resolveCard } from "./cards.ts";
+import type { CrewHandOff } from "../crewSeams.ts";
 import { type CrewEffectPayload, type HostRead, taskAssignment, type TaskSeen } from "./command.ts";
 import {
   copyWriting,
@@ -571,4 +574,90 @@ const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boole
     members: membersInOrder(b.state).filter((other) => other.handle !== member.handle),
     removed: [member.handle],
   });
+};
+
+/** The limits of a run a hand-off starts: two hours, stopping at 80 % of the plan's usage, no dollar cap. */
+export const HAND_OFF_RUN_LIMITS = {
+  budgetUsd: "unlimited",
+  timeLimitHours: 2,
+  stopAtUsagePercent: 80,
+} as const satisfies Partial<CrewRunOptions>;
+
+/**
+ * A conversation hands a writer work (`crew_hand_off`): the person's own task, made as the
+ * principal the conversation's run acts for, which that conversation hears about as it settles
+ * (`tellHandOffs`). With no run going it starts one with {@link HAND_OFF_RUN_LIMITS}, landing and
+ * the dev grant as the crew's last run had them.
+ */
+export const handOff = (
+  b: Builder,
+  conversationId: ConversationId,
+  input: CrewHandOff,
+  refusal: string | null,
+): void => {
+  if (refusal !== null) throw new Rejected("not-allowed", refusal);
+  requireApplied(b);
+  const writers = membersInOrder(b.state).filter((member) => member.kind === "writer");
+  const owner = b.state.members[input.owner];
+  if (owner?.kind !== "writer") {
+    const named =
+      owner === undefined
+        ? `There is no crewmate @${input.owner}`
+        : `@${input.owner} is ${owner.kind === "lead" ? "the lead" : "a reader"}`;
+    throw wrongState(
+      writers.length === 0
+        ? `${named}, and the crew has no writer to hand work to.`
+        : `${named}: hand work to a writer, ${writers.map((member) => `@${member.handle}`).join(", ")}.`,
+    );
+  }
+  requireFreeCopy(b, owner.handle);
+  const as = b.envelope.principal;
+  const going = runFrom(b.state.run);
+  const started = going === "none";
+  if (started) {
+    const last = b.state.run?.options;
+    startRun(b, {
+      ...HAND_OFF_RUN_LIMITS,
+      landing: last?.landing ?? "person",
+      devGrant: last?.devGrant ?? false,
+      leadMayStart: last?.leadMayStart ?? false,
+    });
+  }
+  const task = createTask(b, {
+    owner: owner.handle,
+    title: input.title,
+    source: "you",
+    createdBy: userOf(as),
+    brief: input.brief,
+    doneWhen: input.doneWhen,
+    note: null,
+    dependsOn: [],
+    askedIn: { conversationId, principal: as, told: null },
+  });
+  // The asking conversation's card follows the task from here; it opens no turn.
+  b.effect(
+    {
+      kind: "crew.deliver",
+      conversationId,
+      handle: null,
+      command: { _tag: "Seam", seam: { seam: "handed", taskId: task.id, number: task.number } },
+      principal: { kind: "engine" },
+    },
+    conversationId,
+    { taskId: task.id },
+  );
+  pump(b, owner.handle, { taskId: task.id, principal: as });
+  b.reply = {
+    text:
+      `Handed to @${owner.handle} as #${task.number} "${task.title}". ` +
+      "This conversation hears how it goes as a turn of its own: when it is ready, asks, lands " +
+      "or stops; the person follows it on its card here. " +
+      (started
+        ? `A crew run started for it, of up to ${HAND_OFF_RUN_LIMITS.timeLimitHours} hours, ` +
+          `stopping at ${HAND_OFF_RUN_LIMITS.stopAtUsagePercent}% of the plan's usage.`
+        : going === "running"
+          ? "It goes in the crew's running run."
+          : `The crew's run is ${going}: it starts, and what follows waits until the run goes on.`),
+    isError: false,
+  };
 };

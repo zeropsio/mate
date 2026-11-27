@@ -64,6 +64,7 @@ import { makeOpenCodeTurnUsage, openCodeContextUsage } from "../../spi/responseU
 import {
   type OpenCodeThreadSetup,
   type OpenCodeToolInput,
+  openCodeConversationMcp,
   openCodeThreadSetup,
   openCodeTurnProfile,
   readOpenCodeThreadPolicies,
@@ -2959,11 +2960,12 @@ export function makeOpenCodeAdapter(
             // we provide below — closing `sessionScope` kills the child
             // process automatically. No manual `server.close()` needed.
             // A crewmate's thread: its tools served for this session, its gate in the person's place.
-            const threadSetup = yield* openCodeThreadSetup(threadPolicies, {
+            const threadRef = {
               threadId: input.threadId,
               instanceId: boundInstanceId,
               cwd: directory,
-            });
+            };
+            const threadSetup = yield* openCodeThreadSetup(threadPolicies, threadRef);
             const permissionRules = threadSetup
               ? [...threadSetup.permission]
               : buildOpenCodePermissionRules(input.runtimeMode);
@@ -2979,7 +2981,10 @@ export function makeOpenCodeAdapter(
               directory,
               ...(server.serverPassword ? { serverPassword: server.serverPassword } : {}),
             });
-            const crewMcp = threadSetup?.mcp;
+            // A person's thread: the conversation's tools beside its own servers.
+            const crewMcp = threadSetup
+              ? threadSetup.mcp
+              : yield* openCodeConversationMcp(threadPolicies, threadRef);
             if (crewMcp) {
               yield* runOpenCodeSdk("mcp.add", () =>
                 client.mcp.add({ name: crewMcp.name, config: crewMcp.config }),

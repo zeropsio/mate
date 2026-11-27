@@ -37,6 +37,7 @@ import {
 } from "./decide.step.ts";
 import { deliver, rotateSession } from "./decide.turns.ts";
 import { seam } from "./decide.land.ts";
+import { runFrom } from "./decide.run.ts";
 
 /** A crew home's crewmates and the login each would run on. */
 const homeLogins = (definition: CrewDefinition | undefined) =>
@@ -53,9 +54,24 @@ export const doorLogins = (
   state: CrewState,
   press: CrewCommand,
   home?: CrewDefinition,
-): ReadonlyArray<string> => {
-  const reach: CrewCommandReach = crewCommandReach(press);
-  return crewReachLogins(reach, {
+): ReadonlyArray<string> => reachLogins(state, crewCommandReach(press), home);
+
+/**
+ * The logins a hand-off reaches: its writer's, as a person's task does, and every crewmate's
+ * when no run is going, since it starts one.
+ */
+export const handOffDoorLogins = (state: CrewState, owner: string): ReadonlyArray<string> =>
+  reachLogins(
+    state,
+    runFrom(state.run) === "none" ? { kind: "crew" } : { kind: "crewmates", handles: [owner] },
+  );
+
+const reachLogins = (
+  state: CrewState,
+  reach: CrewCommandReach,
+  home?: CrewDefinition,
+): ReadonlyArray<string> =>
+  crewReachLogins(reach, {
     crewmates: membersInOrder(state).map((member) => ({
       handle: member.handle,
       kind: member.kind,
@@ -65,7 +81,6 @@ export const doorLogins = (
     claimOf: (host) => state.claims[host]?.handle,
     ...(reach.kind === "home" || reach.kind === "job" ? { home: homeLogins(home) } : {}),
   });
-};
 
 /**
  * The logins a write to the crew home reaches: the crewmates it changes, before and after, and

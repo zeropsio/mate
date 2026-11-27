@@ -229,7 +229,41 @@ export interface TaskRecord {
   readonly runId: string | null;
   /** The turns its attempt was sent so far, for its WIP commits' subjects. */
   readonly turns?: { readonly attempt: number; readonly count: number };
+  /**
+   * The conversation that handed it to its crewmate (`crew_hand_off`), as whom, and what that
+   * conversation was last told of it: it hears once each time the task settles another way.
+   */
+  readonly askedIn?: {
+    readonly conversationId: ConversationId;
+    readonly principal: Principal;
+    readonly told: HandOffOutcome | null;
+  };
 }
+
+/** Where a handed-off task came to rest, as the conversation that handed it off hears it. */
+export type HandOffOutcome = "ready" | "asks" | "needs-you" | "landed" | "parked" | "discarded";
+
+/**
+ * Where a task came to rest for the conversation that handed it off; `null` while the crew is
+ * still on it: its crewmate at work, fixing a failed check or a conflict, or the lead reviewing it
+ * or sending it back.
+ */
+export const handOffOutcome = (task: TaskRecord): HandOffOutcome | null => {
+  switch (task.state) {
+    case "ready":
+      return "ready";
+    case "blocked":
+      return "asks";
+    case "waiting-on-you":
+      return "needs-you";
+    case "landed":
+    case "parked":
+    case "discarded":
+      return task.state;
+    default:
+      return null;
+  }
+};
 
 /** One attempt at a task: how and when it ended (open while `endedAt` is `null`), what it cost. */
 export interface AttemptRow {

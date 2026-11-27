@@ -359,6 +359,11 @@ export const CrewTask = Schema.Struct({
   landedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   /** A landed task whose change has gone out with *Deliver*. */
   delivered: Schema.Boolean,
+  /**
+   * The conversation that handed it to its crewmate (`crew_hand_off`), which hears how it went;
+   * `null` for a task made on the board, by the lead or from a message.
+   */
+  askedIn: Schema.NullOr(ThreadId).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
 });
 export type CrewTask = typeof CrewTask.Type;
 
@@ -505,6 +510,8 @@ export type CrewSummary = typeof CrewSummary.Type;
  * reason; one opened for a turn carries the reason in that turn's card.
  * `swept`: work a restart left uncommitted in the crewmate's copy, saved by
  * the boot sweep as a WIP commit on its branch — the files and the commit.
+ * `handed`: a task a person's conversation handed to a crewmate (`crew_hand_off`), on that
+ * conversation, where its card follows the task.
  */
 export const CREW_SEAM_ACTIVITY_KIND = "crew.seam";
 
@@ -524,6 +531,7 @@ export const CrewSeam = Schema.Union([
     commit: TrimmedNonEmptyString,
     paths: Schema.Array(Schema.String),
   }),
+  Schema.Struct({ seam: Schema.Literal("handed"), taskId: CrewTaskId, number: PositiveInt }),
 ]);
 export type CrewSeam = typeof CrewSeam.Type;
 

@@ -28,6 +28,7 @@ import {
   type InstallSlot,
   makeInstallSlot,
   type ThreadTool,
+  threadConversationToolsFor,
   threadProfileFor,
   type ThreadToolPolicy,
   ThreadToolPolicyRegistry,
@@ -252,6 +253,19 @@ const crewToolServer = (
     instance: instance as unknown as McpSdkServerConfigWithInstance["instance"],
   };
 };
+
+/**
+ * A thread with no profile: its policy's conversation tools as the session's in-process `crew`
+ * server, beside zcp's; none for a profiled thread, or a thread the policy gives none.
+ */
+export const claudeConversationServers = (
+  registries: ClaudeThreadRegistries,
+  thread: Parameters<ThreadToolPolicy["profileFor"]>[0],
+  runPromise: RunPromise,
+): Effect.Effect<Readonly<Record<string, McpSdkServerConfigWithInstance>>> =>
+  Effect.map(threadConversationToolsFor(registries.policies, thread), (tools) =>
+    tools.length === 0 ? {} : { crew: crewToolServer(tools, runPromise) },
+  );
 
 /** How the adapter started the CLI session: a new conversation, or a resumed transcript. */
 export type ClaudeSessionStart = "startup" | "resume";

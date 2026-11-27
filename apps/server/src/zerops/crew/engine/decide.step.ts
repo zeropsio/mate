@@ -244,6 +244,7 @@ export const createTask = (
     readonly note: string | null;
     readonly dependsOn: ReadonlyArray<string>;
     readonly state?: TaskRecord["state"];
+    readonly askedIn?: TaskRecord["askedIn"];
   },
 ): TaskRecord => {
   const number = b.state.nextTaskNumber;
@@ -277,6 +278,7 @@ export const createTask = (
     landRetriedAttempt: null,
     checkpointing: false,
     runId: runningRun(b.state)?.id ?? null,
+    ...(input.askedIn === undefined ? {} : { askedIn: input.askedIn }),
   };
   b.emit({ _tag: "TaskCreated", task });
   b.taskIds.push(task.id);

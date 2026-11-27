@@ -138,6 +138,14 @@ export interface ThreadToolPolicy {
     readonly instanceId: ProviderInstanceId;
     readonly cwd?: string;
   }) => Effect.Effect<ThreadToolProfile | undefined>;
+  /**
+   * Tools for a thread the policy gives no profile (a person's conversation), served to its model
+   * beside the tools it already has. Nothing else of the thread changes: no gate, mode, context or
+   * override, so a driver runs it as it would without this file, plus these tools.
+   */
+  readonly conversationToolsFor?: (
+    thread: Parameters<ThreadToolPolicy["profileFor"]>[0],
+  ) => Effect.Effect<ReadonlyArray<ThreadTool>>;
 }
 
 export interface InstallSlot<P> {
@@ -172,6 +180,25 @@ export const threadProfileFor = (
     : Effect.flatMap(policies.value.current, (policy) =>
         Option.isNone(policy) ? Effect.succeed(undefined) : policy.value.profileFor(thread),
       );
+
+/**
+ * A thread's conversation tools, from whatever policy is installed now: none installed, none
+ * given, or a thread with a profile (whose tools are the profile's), and there are none.
+ */
+export const threadConversationToolsFor = (
+  policies: Option.Option<InstallSlot<ThreadToolPolicy>>,
+  thread: Parameters<ThreadToolPolicy["profileFor"]>[0],
+): Effect.Effect<ReadonlyArray<ThreadTool>> =>
+  Option.isNone(policies)
+    ? Effect.succeed([])
+    : Effect.flatMap(policies.value.current, (policy) => {
+        if (Option.isNone(policy)) return Effect.succeed([]);
+        const toolsFor = policy.value.conversationToolsFor;
+        if (toolsFor === undefined) return Effect.succeed([]);
+        return Effect.flatMap(policy.value.profileFor(thread), (profile) =>
+          profile === undefined ? toolsFor(thread) : Effect.succeed([]),
+        );
+      });
 
 export class ThreadToolPolicyRegistry extends Context.Service<
   ThreadToolPolicyRegistry,

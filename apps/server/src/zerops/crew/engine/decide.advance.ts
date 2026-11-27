@@ -4,13 +4,15 @@
  * @module crew/engine/decide.advance
  */
 import { type Principal } from "@t3tools/contracts";
-import { continueCard, fixCard, nudgeCard, resolveCard, reworkCard } from "./cards.ts";
+import { continueCard, fixCard, handOffCard, nudgeCard, resolveCard, reworkCard } from "./cards.ts";
 import {
+  handOffOutcome,
   hostFrozen,
   isFree,
   membersInOrder,
   openTaskOf,
   runningRun,
+  tasksInOrder,
   tasksOf,
   type MemberRecord,
   type TaskRecord,
@@ -130,10 +132,45 @@ export const advanceMember = (b: Builder, handle: string): void => {
   carryOn(b, b.state.members[handle]!, open);
 };
 
-/** The run's clock follows its crew's work, its limits are checked, and the crew advances. */
+/**
+ * A conversation that handed a task off hears once each time the task comes to rest, as a turn of
+ * its own under the principal that handed it off, so its agent carries on; a task back at work is
+ * heard of again when it next comes to rest.
+ */
+const tellHandOffs = (b: Builder): void => {
+  for (const task of tasksInOrder(b.state)) {
+    const asked = task.askedIn;
+    if (asked === undefined) continue;
+    const outcome = handOffOutcome(task);
+    if (outcome === asked.told) continue;
+    if (outcome === null) {
+      b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { askedIn: { ...asked, told: null } } });
+      continue;
+    }
+    const sent = handOffCard(task, outcome);
+    b.effect(
+      {
+        kind: "crew.deliver",
+        conversationId: asked.conversationId,
+        handle: null,
+        command: { _tag: "Send", text: sent.text, card: sent.card, principal: asked.principal },
+        principal: asked.principal,
+      },
+      asked.conversationId,
+      { taskId: task.id },
+    );
+    b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { askedIn: { ...asked, told: outcome } } });
+  }
+};
+
+/**
+ * The run's clock follows its crew's work, its limits are checked, the crew advances, and the
+ * conversations that handed work off hear how it went.
+ */
 export const settle = (b: Builder): void => {
   checkLimits(b);
   for (const member of membersInOrder(b.state)) advanceMember(b, member.handle);
   wakeLead(b);
   followClock(b);
+  tellHandOffs(b);
 };

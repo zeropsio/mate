@@ -17,7 +17,7 @@
  *
  * @module CrewTools
  */
-import type { CrewMemberKind } from "@t3tools/contracts";
+import type { CrewMemberKind, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import type * as JsonSchema from "effect/JsonSchema";
 import * as Option from "effect/Option";
@@ -38,6 +38,9 @@ export type CrewToolName =
   | "crew_review"
   | "crew_finish"
   | "crew_memory";
+
+/** A tool of a person's conversation while a crew is applied, never a crewmate's. */
+export type ConversationToolName = "crew_hand_off";
 
 /**
  * The board is read-only, so every kind reads it; only the lead plans and finishes. Those who
@@ -66,7 +69,11 @@ interface CrewToolDefinition<A> {
   readonly run: (host: Host, member: CrewThreadMember, input: A) => Effect.Effect<CrewToolText>;
 }
 
-const refusal = (tool: CrewToolName, field: string, message: string): CrewToolText => ({
+const refusal = (
+  tool: CrewToolName | ConversationToolName,
+  field: string,
+  message: string,
+): CrewToolText => ({
   text: `${tool} was not run: ${field}: ${message}.`,
   isError: true,
 });
@@ -332,7 +339,10 @@ const fieldOf = (path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }
         })
         .join("");
 
-const refused = (tool: CrewToolName, issue: SchemaIssue.Issue): CrewToolText => {
+const refused = (
+  tool: CrewToolName | ConversationToolName,
+  issue: SchemaIssue.Issue,
+): CrewToolText => {
   const [first] = formatIssue(issue).issues;
   return refusal(tool, fieldOf(first?.path ?? []), first?.message ?? "Invalid input");
 };
@@ -349,12 +359,17 @@ type Caller = Effect.Effect<Option.Option<CrewThreadMember>>;
 /** A tool bound to a host and a caller, as the SPI runs it. */
 type CrewToolBinding = (host: Host, caller: Caller) => ThreadTool;
 
-/** Builds the tool's JSON Schema and decoder once; each binding only closes over them. */
-const prepare = <A>(definition: CrewToolDefinition<A>): CrewToolBinding => {
-  const { schema } = Schema.toJsonSchemaDocument(Schema.toType(definition.input), {
+/** An input's JSON Schema, one object at its root as the model's tool API takes it. */
+const inputSchemaOf = <A>(input: Schema.Decoder<A>): JsonSchema.JsonSchema => {
+  const { schema } = Schema.toJsonSchemaDocument(Schema.toType(input), {
     onExcessProperty: "error",
   });
-  const inputSchema = schema.type === "object" ? schema : EMPTY_OBJECT;
+  return schema.type === "object" ? schema : EMPTY_OBJECT;
+};
+
+/** Builds the tool's JSON Schema and decoder once; each binding only closes over them. */
+const prepare = <A>(definition: CrewToolDefinition<A>): CrewToolBinding => {
+  const inputSchema = inputSchemaOf(definition.input);
   const decode = Schema.decodeUnknownEffect(definition.input);
   return (host, caller) => ({
     name: definition.name,
@@ -403,3 +418,54 @@ export const crewThreadTools = (
     (name === "crew_report" && crewmate.memory ? REPORT_WITH_LESSONS : TOOLS[name])(host, caller),
   );
 };
+
+const HandOffInput = Schema.Struct({
+  to: Schema.String.annotate({
+    description: "The writer who does it: a crewmate's handle, without the @.",
+  }),
+  title: Schema.String.annotate({ description: "What the work is, in a few words." }),
+  brief: Schema.String.annotate({
+    description:
+      "The whole brief: what to build or fix, where, and why. The writer has not seen this conversation.",
+  }),
+  doneWhen: Schema.optionalKey(
+    Schema.String.annotate({ description: "How the work is known to be done." }),
+  ),
+});
+const HAND_OFF_INPUT = inputSchemaOf(HandOffInput);
+const decodeHandOff = Schema.decodeUnknownEffect(HandOffInput);
+
+/**
+ * A person's conversation's tools while a crew is applied: handing work to a writer, which the
+ * conversation then hears about (`crew_hand_off`). `thread` is the conversation's provider thread.
+ */
+export const conversationTools = (host: Host, thread: ThreadId): ReadonlyArray<ThreadTool> => [
+  {
+    name: "crew_hand_off",
+    description:
+      "Hand a piece of work to a writer on this Mate's crew. It does the work in its own copy of the code; this conversation hears back, as a turn of its own, when the work is ready, asks, lands or stops, so you carry on from there. The person follows it on a card in this conversation and lands it or sends it back. With no crew run going, it starts one of up to 2 hours that stops at 80% of the plan's usage. A handle that is no writer's answers with the crew's writers.",
+    inputSchema: HAND_OFF_INPUT,
+    run: (input) =>
+      decodeHandOff(input).pipe(
+        Effect.matchEffect({
+          onFailure: (error) => Effect.succeed(refused("crew_hand_off", error.issue)),
+          onSuccess: (decoded) => {
+            const handOff = {
+              owner: decoded.to.trim().replace(/^@/u, ""),
+              title: decoded.title.trim(),
+              brief: decoded.brief.trim(),
+              doneWhen: decoded.doneWhen?.trim() ?? "",
+            };
+            const empty = (["owner", "title", "brief"] as const).find(
+              (field) => handOff[field] === "",
+            );
+            return empty === undefined
+              ? host.handOff(thread, handOff)
+              : Effect.succeed(
+                  refusal("crew_hand_off", empty === "owner" ? "to" : empty, "it is empty"),
+                );
+          },
+        }),
+      ),
+  },
+];

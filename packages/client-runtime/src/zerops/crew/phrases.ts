@@ -430,6 +430,18 @@ export const crewAskedLeadWord = (question: string | null): string =>
     ? "Asked the lead a question"
     : `Asked the lead: ${question.trim()}`;
 
+/** A task a conversation handed off, waiting for its crewmate to start it. */
+export const CREW_HANDED_WAITING = "Waiting to start";
+
+/** A task a conversation handed off, its crewmate at it. */
+export const CREW_HANDED_WORKING = "Working on it";
+
+/** A task a conversation handed off, dropped. */
+export const CREW_HANDED_DROPPED = "Dropped";
+
+/** A task a conversation handed off that its crew stopped, nothing asked of you about it. */
+export const CREW_HANDED_STOPPED = "Stopped";
+
 /** Sent back, while a run sends it on at once. */
 export const crewSentBackWord = (reason: string | null): string =>
   reason === null || reason.trim() === "" ? "Sent back" : `Sent back: ${reason.trim()}`;
@@ -1133,7 +1145,7 @@ export const crewEarlierStintNotice = (name: string): string =>
 export function crewSeamWords(
   seam:
     | { readonly seam: "landed"; readonly number: number; readonly commit: string }
-    | { readonly seam: "closed"; readonly number: number }
+    | { readonly seam: "closed" | "handed"; readonly number: number }
     | { readonly seam: "saved"; readonly apply: "nextTurn" | "now" | "fresh" }
     | { readonly seam: "stint" | "swept" },
 ): string {
@@ -1152,6 +1164,8 @@ export function crewSeamWords(
       return CREW_NEW_STINT_WORD;
     case "swept":
       return "Its unsaved work was kept";
+    case "handed":
+      return `Handed off as task #${seam.number}`;
   }
 }
 

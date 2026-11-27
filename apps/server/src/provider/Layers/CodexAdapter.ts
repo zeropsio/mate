@@ -1890,6 +1890,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ...(serviceTier ? { serviceTier } : {}),
           ...(contextWindow ? { contextWindow } : {}),
           ...(thread.setup ? { threadSetup: thread.setup } : { persona: readPersona }),
+          ...(thread.conversationConfig ? { conversationConfig: thread.conversationConfig } : {}),
         };
         // Codex reports a usage-limit stop as OpenAI's own sentence, which on a
         // Business workspace blames credits for a window that ran out. The

@@ -30,13 +30,14 @@ import { shellCommand } from "./codexThreadProfile.ts";
 import {
   type InstallSlot,
   profileModelSelection,
+  threadConversationToolsFor,
   threadProfileFor,
   type ThreadToolPolicy,
   ThreadToolPolicyRegistry,
   type ThreadToolProfile,
   type ToolDecision,
 } from "./threadToolPolicy.ts";
-import { serveThreadTools } from "./threadToolsMcp.ts";
+import { serveThreadTools, type ThreadToolsStdioServer } from "./threadToolsMcp.ts";
 
 /** OpenCode's permission ask, as its event carries it. */
 export interface OpenCodePermissionAsk {
@@ -274,22 +275,36 @@ export const openCodeThreadSetup = (
       profile.tools.length === 0 ? undefined : yield* serveThreadTools(name, profile.tools);
     return {
       permission: PROFILED_PERMISSION_RULES,
-      mcp:
-        served === undefined
-          ? undefined
-          : {
-              name,
-              config: {
-                type: "local",
-                command: [served.command, ...served.args],
-                environment: Object.fromEntries(
-                  served.env.map((variable) => [variable.name, variable.value]),
-                ),
-              },
-            },
+      mcp: served === undefined ? undefined : localMcp(served),
       decidePermission: (ask, call) =>
         decideOpenCodePermission(profile, ask, call, thread.cwd, served ? name : undefined),
     };
+  });
+
+/** A served tools server as OpenCode's `mcp.add` takes a local one. */
+const localMcp = (served: ThreadToolsStdioServer): NonNullable<OpenCodeThreadSetup["mcp"]> => ({
+  name: served.name,
+  config: {
+    type: "local",
+    command: [served.command, ...served.args],
+    environment: Object.fromEntries(served.env.map((variable) => [variable.name, variable.value])),
+  },
+});
+
+/**
+ * A thread with no profile: its policy's conversation tools, served for the session in its scope
+ * as the thread's own server, asked about as its other tools are. None for a profiled thread, or
+ * a thread the policy gives none.
+ */
+export const openCodeConversationMcp = (
+  policies: Option.Option<InstallSlot<ThreadToolPolicy>>,
+  thread: ThreadRef,
+): Effect.Effect<OpenCodeThreadSetup["mcp"], never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const tools = yield* threadConversationToolsFor(policies, thread);
+    return tools.length === 0
+      ? undefined
+      : localMcp(yield* serveThreadTools(threadToolsServerName(thread.threadId), tools));
   });
 
 /**

@@ -1,4 +1,4 @@
-import { BootId } from "@t3tools/contracts";
+import { BootId, ConversationId } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 
 import { AGENT_STOPPED_ITSELF } from "../../../engine/MateEngine.ts";
@@ -8,8 +8,10 @@ import {
   CrewWorld,
   OPTIONS,
   OTHER,
+  PERSON,
   finish,
   home,
+  landIt,
   lead,
   newTask,
   reader,
@@ -800,4 +802,116 @@ it("CD+3: A reader opens only the app of the writer whose task its own task revi
     appToOpen(w.state, reviewer, "ada"),
     "refusal" in appToOpen(w.state, reviewer, "bob"),
   ]).toEqual([true, { host: "appdev", port: 3001 }, true]);
+});
+
+const CHAT = ConversationId.make("chat-1");
+
+/** A person's conversation hands `owner` a task through crew_hand_off. */
+const handOff = (w: CrewWorld, owner: string, title = "Paginate") =>
+  w.tell({
+    _tag: "HandOff",
+    conversationId: CHAT,
+    task: { owner, title, brief: `${title}.`, doneWhen: "" },
+    door: { refusal: null },
+  });
+
+/** The notes the asking conversation heard: each one's heading, card and principal. */
+const toldChat = (w: CrewWorld) =>
+  w.effects.flatMap((effect) =>
+    effect.payload.kind === "crew.deliver" &&
+    effect.payload.conversationId === CHAT &&
+    effect.payload.command._tag === "Send"
+      ? [
+          [
+            effect.payload.command.text.split("\n")[1],
+            effect.payload.command.card?.kind,
+            effect.payload.command.principal,
+          ],
+        ]
+      : [],
+  );
+
+// witness: apps/server/src/zerops/crew/engine/decide.presses.ts | const started = going === "none"; → const started = going === "running";
+it("CD+4: A conversation hands a writer a task that is the conversation's, marked in the conversation for its card to follow: with no run going a run starts of up to 2 hours that stops at 80% of the plan's usage, and the writer starts it at once; a hand-off to a reader or the lead is refused and makes nothing", () => {
+  const w = new CrewWorld();
+  w.apply(home(lead(), writer("backend"), reader("reviewer")));
+  handOff(w, "reviewer");
+  const toReader = w.rejection();
+  handOff(w, "lead");
+  const toLead = w.rejection();
+  const made = Object.keys(w.state.tasks).length;
+  handOff(w, "backend");
+  w.start("backend");
+  const options = w.state.run?.options;
+  const marked = w.effects.flatMap((effect) =>
+    effect.payload.kind === "crew.deliver" &&
+    effect.payload.conversationId === CHAT &&
+    effect.payload.command._tag === "Seam"
+      ? [effect.payload.command.seam]
+      : [],
+  );
+  expect([
+    toReader,
+    toLead,
+    made,
+    marked,
+    w.task(1).askedIn,
+    w.task(1).source,
+    w.state.run?.state,
+    [options?.budgetUsd, options?.timeLimitHours, options?.stopAtUsagePercent],
+    w.turns("backend"),
+  ]).toEqual([
+    "wrong-state",
+    "wrong-state",
+    0,
+    [{ seam: "handed", taskId: w.task(1).id, number: 1 }],
+    { conversationId: CHAT, principal: PERSON, told: null },
+    "you",
+    "running",
+    ["unlimited", 2, 80],
+    ["task"],
+  ]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/state.ts | case "ready": → case "review": case "ready":
+it("CD+5: A conversation that handed a task off hears once when the task comes to rest, as the principal that handed it off, and not while the crew is still on it: its check failing, the lead reviewing it or sending it back", () => {
+  const w = new CrewWorld();
+  w.apply(home(lead(), writer("backend")));
+  run(w, "lead");
+  handOff(w, "backend");
+  w.start("backend");
+  w.tool("backend", { tool: "report", input: { status: "done", summary: "Done." } });
+  w.end("backend");
+  w.checkpoint("backend");
+  w.settle("crew.mergeIn", "backend", { _tag: "merged", head: "h".repeat(40) });
+  w.settle("crew.check", "backend", { _tag: "failed", tail: "1 failed" });
+  w.run("backend");
+  finish(w, "backend");
+  w.tool("lead", { tool: "review", input: { task: 1, verdict: "reject", note: "Count from 1." } });
+  w.run("backend");
+  finish(w, "backend");
+  const beforeLanding = toldChat(w).length;
+  w.tool("lead", { tool: "review", input: { task: 1, verdict: "accept", note: "Good." } });
+  w.settle("crew.land", "backend", LANDED);
+  expect([beforeLanding, toldChat(w)]).toEqual([
+    0,
+    [["#1 Paginate · @backend landed", "hand-off", PERSON]],
+  ]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.advance.ts | b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { askedIn: { ...asked, told: null } } }); → {}
+it("CD+6: A handed-off task a message sends back to work after it was ready is heard of again when it is ready again", () => {
+  const w = new CrewWorld();
+  w.apply(home(writer("backend")));
+  handOff(w, "backend");
+  w.start("backend");
+  finish(w, "backend");
+  w.press({ _tag: "message", handle: "backend", text: "Count from 1.", attachments: [] });
+  const backAtWork = w.task(1).state;
+  w.run("backend");
+  finish(w, "backend");
+  expect([backAtWork, toldChat(w).map(([line]) => line)]).toEqual([
+    "working",
+    ["#1 Paginate · @backend is ready", "#1 Paginate · @backend is ready"],
+  ]);
 });

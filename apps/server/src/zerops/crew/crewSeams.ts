@@ -79,6 +79,14 @@ export interface CrewProposedTask {
   readonly reviews?: string;
 }
 
+/** `crew_hand_off`: work a conversation's agent gives a writer, the way a person's task is. */
+export interface CrewHandOff {
+  readonly owner: string;
+  readonly title: string;
+  readonly brief: string;
+  readonly doneWhen: string;
+}
+
 export interface CrewReviewInput {
   readonly task: number;
   readonly verdict: "accept" | "reject";
@@ -123,6 +131,8 @@ export class CrewToolHost extends Context.Service<
       member: CrewThreadMember,
       input: { readonly handle: string; readonly path?: string },
     ) => Effect.Effect<CrewToolText>;
+    /** `crew_hand_off`, from a person's conversation, by its provider thread: never a crewmate's. */
+    readonly handOff: (thread: ThreadId, input: CrewHandOff) => Effect.Effect<CrewToolText>;
     readonly showOnDev: (
       member: CrewThreadMember,
       input: { readonly reason: string },

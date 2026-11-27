@@ -167,6 +167,8 @@ export interface CodexSessionRuntimeOptions {
   readonly models?: Effect.Effect<ReadonlyArray<ServerProviderModel>>;
   /** A thread with a tool profile: its overrides, and the gate that answers its approvals. */
   readonly threadSetup?: CodexThreadSetup;
+  /** A person's thread: the MCP servers its conversation's tools add to the thread's config. */
+  readonly conversationConfig?: Record<string, unknown>;
   /** The Mate's persona text, read for each turn; absent in a crew, which takes none. */
   readonly persona?: Effect.Effect<string | undefined>;
 }
@@ -566,8 +568,14 @@ function buildThreadStartParams(input: {
   readonly serviceTier: CodexServiceTier | undefined;
   readonly contextWindow?: number;
   readonly overrides?: CodexThreadSetup["thread"];
+  readonly conversationConfig?: Record<string, unknown>;
 }): EffectCodexSchema.V2ThreadStartParams {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
+  const settings = {
+    ...input.conversationConfig,
+    ...input.overrides?.config,
+    ...(input.contextWindow ? { model_context_window: input.contextWindow } : {}),
+  };
   return {
     cwd: input.cwd,
     approvalPolicy: config.approvalPolicy,
@@ -576,14 +584,7 @@ function buildThreadStartParams(input: {
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...input.overrides,
-    ...(input.contextWindow
-      ? {
-          config: {
-            ...input.overrides?.config,
-            model_context_window: input.contextWindow,
-          },
-        }
-      : {}),
+    ...(Object.keys(settings).length > 0 ? { config: settings } : {}),
   };
 }
 
@@ -779,6 +780,7 @@ const openCodexThread = (input: {
   readonly contextWindow?: number;
   readonly resumeThreadId: string | undefined;
   readonly overrides?: CodexThreadSetup["thread"];
+  readonly conversationConfig?: Record<string, unknown>;
 }): Effect.Effect<
   typeof CodexThreadResumeMetadata.Type & { readonly rawUsageEnabled: boolean },
   CodexErrors.CodexAppServerError
@@ -791,6 +793,7 @@ const openCodexThread = (input: {
     serviceTier: input.serviceTier,
     ...(input.contextWindow ? { contextWindow: input.contextWindow } : {}),
     ...(input.overrides ? { overrides: input.overrides } : {}),
+    ...(input.conversationConfig ? { conversationConfig: input.conversationConfig } : {}),
   });
 
   // The installed native protocol exposes this internal opt-in on start only.
@@ -2702,6 +2705,7 @@ export const makeCodexSessionRuntime = (
         ...(options.contextWindow ? { contextWindow: options.contextWindow } : {}),
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),
         ...(options.threadSetup ? { overrides: options.threadSetup.thread } : {}),
+        ...(options.conversationConfig ? { conversationConfig: options.conversationConfig } : {}),
       });
       if (!opened.rawUsageEnabled) {
         yield* emitEvent({

@@ -54,6 +54,7 @@ import {
   claudeQueryOptionsPatch,
   claudeTurnModelSelection,
   readClaudeThreadRegistries,
+  claudeConversationServers,
   resolveClaudeThreadSetup,
 } from "../../spi/claudeThreadProfile.ts";
 import { claudeMcpControl, type ClaudeMcpQuery } from "../../spi/mcpControl.ts";
@@ -340,11 +341,17 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
       // A thread with a tool profile runs gated; every other thread gets
       // exactly the options below.
-      const threadSetup = yield* resolveClaudeThreadSetup(threadRegistries, {
+      const threadRef = {
         threadId,
         instanceId: boundInstanceId,
         ...(input.cwd ? { cwd: input.cwd } : {}),
-      });
+      };
+      const threadSetup = yield* resolveClaudeThreadSetup(threadRegistries, threadRef);
+      // A person's thread: the conversation's tools beside zcp's, and nothing else changed.
+      const conversationServers =
+        threadSetup === undefined
+          ? yield* claudeConversationServers(threadRegistries, threadRef, runPromise)
+          : {};
       const claudeBinaryPath = claudeSdkExecutablePath;
       const {
         // claudeLaunchArgDirectories reads every --add-dir into additionalDirectories.
@@ -506,6 +513,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...profiledQueryOptions,
         mcpServers: {
           ...profiledQueryOptions.mcpServers,
+          ...conversationServers,
           zerops: {
             command: "zcp",
             args: ["serve"],

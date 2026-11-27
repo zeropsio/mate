@@ -6,7 +6,8 @@
  * Every answer starts from `CrewThreadDirectory.memberFor`:
  *
  * - **No crewmate** — a person's thread: no profile and no extension, so
- *   the adapter runs it byte-identical to a Mate without a crew.
+ *   the adapter runs it as a Mate without a crew would, plus the
+ *   conversation's crew tools (`crew_hand_off`) beside its own.
  * - **A crewmate whose stint is not live** — the deny-all profile: nothing
  *   runs, whatever is asked, and it only reads.
  * - **A live crewmate** — its prompt (`crewSessionContext`), its Runs-on
@@ -38,7 +39,7 @@ import { type ThreadToolProfile, ThreadToolPolicyRegistry } from "../../spi/thre
 import { crewExactCommandRule, decideCrewTool, type GateContext } from "./CrewPolicy.ts";
 import { crewSessionContext } from "./crewPrompt.ts";
 import { CrewThreadDirectory, type CrewThreadMember, CrewToolHost } from "./crewSeams.ts";
-import { CREW_RETIRED, crewThreadTools } from "./CrewTools.ts";
+import { CREW_RETIRED, conversationTools, crewThreadTools } from "./CrewTools.ts";
 
 const DENY_ALL = { kind: "deny-all" } as const;
 
@@ -118,6 +119,10 @@ export const installCrewThreadPolicy = Effect.gen(function* () {
           : member.value.live
             ? liveProfile(thread.threadId, member.value)
             : denyAllProfile(member.value),
+      ),
+    conversationToolsFor: (thread) =>
+      Effect.map(directory.memberFor(thread.threadId), (member) =>
+        Option.isNone(member) ? conversationTools(host, thread.threadId) : [],
       ),
   });
   yield* extensions.install({

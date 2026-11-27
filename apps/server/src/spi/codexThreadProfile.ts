@@ -26,6 +26,7 @@ import { DECIDE_TOOL_TIMEOUT } from "./claudeThreadProfile.ts";
 import { THREAD_TOOLS_SERVER } from "./mcpToolTitle.ts";
 import {
   type InstallSlot,
+  threadConversationToolsFor,
   threadProfileFor,
   type ThreadToolPolicy,
   ThreadToolPolicyRegistry,
@@ -231,13 +232,18 @@ export function codexProfileModelSelection(
   return { instanceId, model, ...(options.length > 0 ? { options } : {}) };
 }
 
-/** A served tools server as Codex's config names an MCP server, called with no approval asked. */
-const unaskedMcpServer = (server: ThreadToolsStdioServer): Record<string, unknown> => ({
+/** A served tools server as Codex's config names an MCP server. */
+const mcpServerConfig = (server: ThreadToolsStdioServer): Record<string, unknown> => ({
   [`mcp_servers.${server.name}.command`]: server.command,
   [`mcp_servers.${server.name}.args`]: [...server.args],
   [`mcp_servers.${server.name}.env`]: Object.fromEntries(
     server.env.map(({ name, value }) => [name, value]),
   ),
+});
+
+/** The same, called with no approval asked: the profile's gate already judged the thread. */
+const unaskedMcpServer = (server: ThreadToolsStdioServer): Record<string, unknown> => ({
+  ...mcpServerConfig(server),
   [`mcp_servers.${server.name}.default_tools_approval_mode`]: "approve",
 });
 
@@ -325,7 +331,9 @@ const readProjectGuidance = (
 
 /**
  * What a session starts with, in the session's scope: no setup and the thread's own model unless
- * it has a profile, whose tools are served for the session.
+ * it has a profile, whose tools are served for the session. A thread with none gets its
+ * conversation's tools (`conversationConfig`), served the same way and approved as its other
+ * MCP calls are, and nothing else changed.
  */
 export const codexThreadStart = (
   policies: Option.Option<InstallSlot<ThreadToolPolicy>>,
@@ -335,6 +343,8 @@ export const codexThreadStart = (
   {
     readonly setup: CodexThreadSetup | undefined;
     readonly modelSelection: ModelSelection | undefined;
+    /** Laid into `thread/start` and `thread/resume`'s config; absent for a profiled thread. */
+    readonly conversationConfig: Record<string, unknown> | undefined;
   },
   never,
   Scope.Scope
@@ -346,9 +356,15 @@ export const codexThreadStart = (
       profile === undefined || profile.tools.length === 0
         ? undefined
         : yield* serveThreadTools(THREAD_TOOLS_SERVER, profile.tools);
+    const conversationTools =
+      profile === undefined ? yield* threadConversationToolsFor(policies, thread) : [];
     return {
       setup: profile ? codexThreadSetup(profile, guidance, tools) : undefined,
       modelSelection: codexProfileModelSelection(profile, thread.instanceId, selection),
+      conversationConfig:
+        conversationTools.length === 0
+          ? undefined
+          : mcpServerConfig(yield* serveThreadTools(THREAD_TOOLS_SERVER, conversationTools)),
     };
   });
 

@@ -95,6 +95,7 @@ import {
 import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
 import {
   acpTerminalReason,
+  acpConversationServers,
   acpThreadSetup,
   acpTurnProfile,
   readAcpThreadPolicies,
@@ -1042,6 +1043,13 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
             Effect.provideService(Scope.Scope, sessionScope),
           );
+          // A person's thread: the conversation's tools beside the agent's own servers.
+          const conversationServers =
+            profileSetup === undefined
+              ? yield* acpConversationServers(threadPolicies, threadRef).pipe(
+                  Effect.provideService(Scope.Scope, sessionScope),
+                )
+              : [];
           // A crewmate asks before every call, whatever mode its thread names.
           const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
           const resumeSessionId = parseGrokResume(input.resumeCursor)?.sessionId;
@@ -1058,7 +1066,11 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             cwd,
             runtimeMode,
             ...(resumeSessionId ? { resumeSessionId } : {}),
-            ...(profileSetup ? { mcpServers: profileSetup.mcpServers } : {}),
+            ...(profileSetup
+              ? { mcpServers: profileSetup.mcpServers }
+              : conversationServers.length > 0
+                ? { mcpServers: conversationServers }
+                : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(

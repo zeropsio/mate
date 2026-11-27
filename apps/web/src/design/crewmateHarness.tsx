@@ -210,6 +210,7 @@ const landed = (
   landedCommit: commit,
   landedAt: hoursAgo(hours),
   delivered: true,
+  askedIn: null,
 });
 
 /** What Clients and creation finished: three pieces that went in, one that closed with nothing to add. */

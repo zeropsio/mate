@@ -502,7 +502,7 @@ function needLine(
 }
 
 /** Where an open task stands while its crewmate is not at it, when nothing about it needs you. */
-function standing(
+export function crewTaskStanding(
   task: CrewTask,
   view: Pick<CrewView, "lead" | "personLands">,
   mateName: string,
@@ -609,7 +609,7 @@ export function crewRowModel(input: {
   // its task stands — unless a need says it.
   const open = row.openTask;
   const needsOnOpen = open !== null && asked.some((entry) => entry.taskId === open.id);
-  const standsAt = open === null || needsOnOpen ? null : standing(open, view, mateName);
+  const standsAt = open === null || needsOnOpen ? null : crewTaskStanding(open, view, mateName);
   const broken = mate.lane === null ? null : crewBrokenCopyWord(mate.lane, mateName);
   const readying = mate.lane?.state === "creating" || mate.lane?.state === "setting-up";
   const pending = snapshot.operations?.findLast(
