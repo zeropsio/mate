@@ -1,5 +1,5 @@
 import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
-import { draftStateLine } from "@t3tools/client-runtime/zerops/partLook";
+import { draftAbsentLine, draftStateLine } from "@t3tools/client-runtime/zerops/partLook";
 import { isField } from "./ZeropsReview.logic";
 /**
  * The review, drawn: every read already done and handed in, so a harness and a test can show
@@ -923,10 +923,13 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
 /** "Try it": the app's stage and, while the change is open, its draft. */
 export function ReviewTry({
   draft,
+  mateName,
   onOpenDraft,
   builds = [],
 }: {
   readonly draft: DraftLook;
+  /** The change's Mate, as the review names it. */
+  readonly mateName: string;
   readonly onOpenDraft: (() => void) | undefined;
   readonly builds?:
     | ReadonlyArray<{
@@ -959,7 +962,11 @@ export function ReviewTry({
           </Button>
         ) : null}
       </div>
-      {draft.kind === "openable" && draftStateLine(draft.state) !== undefined ? (
+      {draft.kind !== "openable" ? (
+        <Text className="mt-1.5" render={<p />} variant="description">
+          {draftAbsentLine(draft, mateName)}
+        </Text>
+      ) : draftStateLine(draft.state) !== undefined ? (
         <Text className="mt-1.5" render={<p />} variant="description">
           Draft: {draftStateLine(draft.state)}
         </Text>

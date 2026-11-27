@@ -590,7 +590,7 @@ function DraftTabFace(props: {
   readonly onActivate: () => void;
   readonly onClose: () => void;
 }) {
-  const pull = useDraftChange(props.surface);
+  const { pull } = useDraftChange(props.surface);
   return <SurfaceTabFace {...props} title={pull?.title ?? "Draft"} />;
 }
 

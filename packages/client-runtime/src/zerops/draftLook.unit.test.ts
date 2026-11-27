@@ -12,6 +12,7 @@ const lease = {
 } as const;
 const base = {
   state: "open" as const,
+  mateGone: false,
   branch: "feature",
   repositoryUrl: repo,
   repositoryRemote: undefined,
@@ -35,15 +36,15 @@ it("ZV200: A change offers Open draft only for a held copy of its branch and rep
     { input: { ...base, classic: undefined }, answer: held },
     {
       input: { ...base, leases: [{ ...lease, branch: "other" }] },
-      answer: { kind: "unavailable" },
+      answer: { kind: "unavailable", why: "none" },
     },
     {
       input: { ...base, leases: [{ ...lease, repo: "https://hq.example/git/org/other/web.git" }] },
-      answer: { kind: "unavailable" },
+      answer: { kind: "unavailable", why: "none" },
     },
     {
       input: { ...base, leases: [{ ...lease, repo: undefined }] },
-      answer: { kind: "unavailable" },
+      answer: { kind: "unavailable", why: "none" },
     },
     {
       input: { ...base, repositoryUrl: undefined, repositoryRemote: repo },
@@ -51,13 +52,13 @@ it("ZV200: A change offers Open draft only for a held copy of its branch and rep
     },
     {
       input: { ...base, leases: [{ ...lease, state: "lost" }] },
-      answer: { kind: "unavailable" },
+      answer: { kind: "unavailable", why: "none" },
     },
     {
       input: { ...base, leases: [{ ...lease, acquiredAt: undefined }] },
-      answer: { kind: "unavailable" },
+      answer: { kind: "unavailable", why: "none" },
     },
-    { input: { ...base, leases: [] }, answer: { kind: "unavailable" } },
+    { input: { ...base, leases: [] }, answer: { kind: "unavailable", why: "none" } },
     {
       input: {
         ...base,
@@ -79,7 +80,7 @@ it("ZV200: A change offers Open draft only for a held copy of its branch and rep
     },
     {
       input: { ...base, leases: [], classic: { hostname: "webdev", branch: "other" } },
-      answer: { kind: "unavailable" },
+      answer: { kind: "unavailable", why: "none" },
     },
   ] as const;
   for (const { input, answer } of cases) {

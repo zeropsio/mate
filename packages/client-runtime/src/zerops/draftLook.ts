@@ -14,11 +14,19 @@ const DRAFT_STATES: ReadonlyArray<DraftState> = [
 ];
 
 /**
- * Unavailable selects no copy; it does not describe the draft server's condition. An openable
- * copy carries zcp's state for it; none where zcp wrote none, or one this build does not know.
+ * Why a change offers no copy to open: its Mate has not reported its copies yet (`unreported`),
+ * reports none of the change's branch and repository (`none`), or is no longer one of the
+ * application's (`mate-gone`). None describes the draft server's condition.
+ */
+export type DraftAbsence = "unreported" | "none" | "mate-gone";
+
+/**
+ * Unavailable selects no copy and says why. An openable copy carries zcp's state for it; none
+ * where zcp wrote none, or one this build does not know.
  */
 export type DraftLook =
-  | { readonly kind: "unavailable" | "added" | "discarded" }
+  | { readonly kind: "added" | "discarded" }
+  | { readonly kind: "unavailable"; readonly why: DraftAbsence }
   | { readonly kind: "openable"; readonly copy: ZeropsDraftCopy; readonly state?: DraftState };
 
 const withState = (copyState: string | undefined): { readonly state?: DraftState } => {
@@ -29,9 +37,12 @@ const withState = (copyState: string | undefined): { readonly state?: DraftState
 /** A change's copy, from copy identities, never from a server's last observation. */
 export function draftLook(input: {
   readonly state: "open" | "adding" | "merging" | "merged" | "closed";
+  /** HQ's word that the change's Mate is no longer the application's (`HqChange.mateGone`). */
+  readonly mateGone: boolean;
   readonly branch: string | undefined;
   readonly repositoryUrl: string | undefined;
   readonly repositoryRemote: string | undefined;
+  /** Undefined while the Mate has not reported its copies. */
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
   /** Null when no classic dev half exists, undefined while its topology is unread. */
   readonly classic:
@@ -45,7 +56,8 @@ export function draftLook(input: {
 }): DraftLook {
   if (input.state === "merged") return { kind: "added" };
   if (input.state === "closed") return { kind: "discarded" };
-  if (input.branch === undefined) return { kind: "unavailable" };
+  if (input.mateGone) return { kind: "unavailable", why: "mate-gone" };
+  if (input.branch === undefined) return { kind: "unavailable", why: "none" };
   const changeRepo = input.repositoryUrl === undefined ? null : repoOfUrl(input.repositoryUrl);
   for (const lease of input.leases ?? []) {
     if (
@@ -84,5 +96,7 @@ export function draftLook(input: {
       copy: { kind: "service", hostname: input.classic.hostname, branch: input.branch },
       ...withState(input.classic.copyState),
     };
-  return { kind: "unavailable" };
+  if (input.leases === undefined || input.classic === undefined)
+    return { kind: "unavailable", why: "unreported" };
+  return { kind: "unavailable", why: "none" };
 }

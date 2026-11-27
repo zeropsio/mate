@@ -1,9 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { makeDraftPreviewWire } from "@t3tools/client-runtime/data";
-import { isBrowsableUrl } from "@t3tools/client-runtime/zerops/mateParts";
-import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
-import { draftStateLine } from "@t3tools/client-runtime/zerops/partLook";
-import type { EnvironmentId, ZeropsDraftCopy } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -12,55 +9,43 @@ import { RotateCwIcon } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import type { RightPanelSurface } from "~/rightPanelStore";
-import { useProjectFlows } from "~/zerops/projectFlows";
+import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { Button } from "~/components/ui/button";
 import { PanelBar } from "~/components/ui/panel-bar";
 import { Text } from "~/components/ui/text";
 import { useDraftChange, useMatePreviews } from "./review/reviewReads";
-import { draftPane, type DraftPaneState } from "./DraftPanel.logic";
+import {
+  draftPane,
+  draftPaneFace,
+  sameCopy,
+  unheldDraftFace,
+  type DraftPaneFace,
+  type DraftPaneState,
+} from "./DraftPanel.logic";
 
 const registryAtom = connectionAtomRuntime.atom(
   Effect.map(EnvironmentRegistry, (registry) => registry),
 );
 type DraftSurface = Extract<RightPanelSurface, { kind: "draft" }>;
-const sameCopy = (a: ZeropsDraftCopy, b: ZeropsDraftCopy) =>
-  JSON.stringify(a) === JSON.stringify(b);
 
 /** The pane's display is also used by the design flow for each state. */
 export function DraftPaneView({
   title,
-  look,
-  state,
+  face,
   onReload,
   onRetry,
 }: {
   readonly title: string;
-  readonly look: DraftLook;
-  readonly state: DraftPaneState;
+  readonly face: DraftPaneFace;
   readonly onReload: () => void;
   readonly onRetry: () => void;
 }) {
-  const ended = look.kind === "added" || look.kind === "discarded";
-  const showing =
-    state.kind === "showing" &&
-    look.kind === "openable" &&
-    sameCopy(state.copy, look.copy) &&
-    isBrowsableUrl(state.url);
-  const reason =
-    look.kind === "added"
-      ? "This draft is in your app now."
-      : look.kind === "discarded"
-        ? "This draft was discarded."
-        : look.kind === "openable" && state.kind === "failed"
-          ? state.reason
-          : look.kind === "openable" && state.kind === "opening" && state.invalidated !== true
-            ? "Opening the draft…"
-            : undefined;
+  const frame = face.frame;
   const sandbox =
     "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" +
-    (showing &&
+    (frame !== undefined &&
     typeof window !== "undefined" &&
-    new URL(state.url).origin !== window.location.origin
+    new URL(frame).origin !== window.location.origin
       ? " allow-same-origin"
       : "");
   return (
@@ -69,43 +54,41 @@ export function DraftPaneView({
         <div className="min-w-0 flex-1">
           <div className="truncate text-caption">
             Draft · {title}
-            {ended ? null : " · not in your app yet"}
+            {face.notInApp ? " · not in your app yet" : null}
           </div>
-          {ended ? null : (
+          {face.notInApp ? (
             <Text variant="description">
               Only you see this, here in Mate.
-              {look.kind === "openable" && draftStateLine(look.state) !== undefined
-                ? ` ${draftStateLine(look.state)}`
-                : null}
+              {face.stateLine === undefined ? null : ` ${face.stateLine}`}
             </Text>
-          )}
+          ) : null}
         </div>
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label="Reload draft"
-          disabled={ended || state.kind === "opening" || look.kind !== "openable"}
+          disabled={!face.reload}
           onClick={onReload}
         >
           <RotateCwIcon />
         </Button>
       </PanelBar>
-      {showing ? (
+      {frame !== undefined ? (
         <iframe
           title={`Draft · ${title}`}
-          src={state.url}
+          src={frame}
           className="min-h-0 w-full flex-1 border-0 bg-background"
           sandbox={sandbox}
           referrerPolicy="no-referrer"
         />
       ) : (
         <div className="p-4">
-          {reason === undefined ? null : (
+          {face.line === undefined ? null : (
             <Text render={<p />} variant="description">
-              {reason}
+              {face.line}
             </Text>
           )}
-          {!ended && look.kind === "openable" && state.kind === "failed" ? (
+          {face.retry ? (
             <Button size="sm" variant="secondary" onClick={onRetry}>
               Try again
             </Button>
@@ -123,7 +106,7 @@ function LoadedDraft({
 }: {
   readonly surface: DraftSurface;
   readonly environmentId: EnvironmentId;
-  readonly pull: NonNullable<ReturnType<typeof useDraftChange>>;
+  readonly pull: NonNullable<ReturnType<typeof useDraftChange>["pull"]>;
 }) {
   const apps = useMemo(() => [surface.groupId], [surface.groupId]);
   const flow = useProjectFlows(apps).flows.get(surface.groupId);
@@ -142,8 +125,10 @@ function LoadedDraft({
           : pull.state === "merging"
             ? "merging"
             : "open",
+    pull.mateGone === true,
     pull.branch,
   );
+  const mateName = useMateNames().get(pull.mateProjectId) ?? "the Mate";
   const registry = Option.getOrUndefined(AsyncResult.value(useAtomValue(registryAtom)));
   const [state, dispatch] = useReducer(draftPane, { kind: "idle" });
   const mountHandled = useRef(false);
@@ -186,8 +171,7 @@ function LoadedDraft({
   return (
     <DraftPaneView
       title={pull.title}
-      look={draft}
-      state={state}
+      face={draftPaneFace(draft, state, mateName)}
       onReload={() => {
         if (draft.kind === "openable") dispatch({ type: "reload", copy: draft.copy });
       }}
@@ -206,13 +190,12 @@ function DraftPanel({
   readonly surface: DraftSurface;
   readonly environmentId: EnvironmentId;
 }) {
-  const pull = useDraftChange(surface);
+  const { pull, read } = useDraftChange(surface);
   if (pull === undefined)
     return (
       <DraftPaneView
         title="Draft"
-        look={{ kind: "unavailable" }}
-        state={{ kind: "idle" }}
+        face={unheldDraftFace(read)}
         onReload={() => {}}
         onRetry={() => {}}
       />

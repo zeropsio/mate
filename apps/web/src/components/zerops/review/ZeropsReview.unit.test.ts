@@ -21,12 +21,20 @@ import {
 it("RV13: A review offers an openable draft through a button inside Mate; breaks: a person opens a lease address or has no way into a draft.", () => {
   const copy = { kind: "service", hostname: "webdev", branch: "feature" } as const;
   const openable = renderToStaticMarkup(
-    createElement(ReviewTry, { draft: { kind: "openable", copy }, onOpenDraft: () => {} }),
+    createElement(ReviewTry, {
+      draft: { kind: "openable", copy },
+      mateName: "Nova",
+      onOpenDraft: () => {},
+    }),
   );
   expect(openable).toContain("<button");
   expect(openable).not.toContain("<a ");
   const unavailable = renderToStaticMarkup(
-    createElement(ReviewTry, { draft: { kind: "unavailable" }, onOpenDraft: () => {} }),
+    createElement(ReviewTry, {
+      draft: { kind: "unavailable", why: "none" },
+      mateName: "Nova",
+      onOpenDraft: () => {},
+    }),
   );
   expect(unavailable).not.toContain("<button");
   expect(unavailable).not.toContain("<a ");

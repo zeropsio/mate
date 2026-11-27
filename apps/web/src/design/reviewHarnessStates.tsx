@@ -41,6 +41,8 @@ import {
 } from "~/components/zerops/review/ZeropsChangeReview";
 import { Button } from "~/components/ui/button";
 import { DraftPaneView } from "~/components/zerops/DraftPanel";
+import { draftPaneFace, type DraftPaneState } from "~/components/zerops/DraftPanel.logic";
+import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
 import { ReviewTry } from "~/components/zerops/review/ZeropsReviewSurface";
 import { CrewTaskReviewView } from "~/components/zerops/review/ZeropsCrewTaskReview";
 import {
@@ -97,75 +99,54 @@ const NOW = Date.now();
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const noop = () => {};
 
-/** The review and the pane's opening and ended states, together at the reference viewport. */
+/** The review and the pane in every Draft state, together at the reference viewport. */
 export function DraftLookStage() {
   const copy = { kind: "service", hostname: "appdev", branch: "feature" } as const;
   const look = { kind: "openable", copy } as const;
   const title = "Clearer copy on the admin sign-in";
+  const mate = "Nova";
   const frame = new URL("/draft-frame-fixture.html", window.location.href).href;
+  const panes: ReadonlyArray<readonly [DraftLook, DraftPaneState]> = [
+    [
+      { ...look, state: "starting" },
+      { kind: "opening", copy },
+    ],
+    [{ kind: "unavailable", why: "unreported" }, { kind: "idle" }],
+    [{ kind: "unavailable", why: "none" }, { kind: "idle" }],
+    [look, { kind: "ended", copy }],
+    [look, { kind: "showing", copy, url: frame }],
+    [look, { kind: "failed", copy, reason: "The draft's container is stopped." }],
+    [{ kind: "unavailable", why: "mate-gone" }, { kind: "idle" }],
+    [{ kind: "added" }, { kind: "showing", copy, url: frame }],
+    [{ kind: "discarded" }, { kind: "showing", copy, url: frame }],
+  ];
   return (
-    <div className="grid h-screen grid-cols-4 grid-rows-2 gap-3 bg-muted p-3">
+    <div className="grid h-screen grid-cols-5 grid-rows-2 gap-3 bg-muted p-3">
       <div className="overflow-auto border bg-background p-4">
         <h1 className="mb-6 font-semibold">{title}</h1>
-        <ReviewTry draft={look} onOpenDraft={noop} />
-        <ReviewTry draft={{ ...look, state: "stopped" }} onOpenDraft={noop} />
-        <ReviewTry draft={{ ...look, state: "unknown" }} onOpenDraft={noop} />
-        <ReviewTry draft={{ kind: "unavailable" }} onOpenDraft={noop} />
+        {(
+          [
+            look,
+            { ...look, state: "stopped" },
+            { ...look, state: "unknown" },
+            { kind: "unavailable", why: "unreported" },
+            { kind: "unavailable", why: "none" },
+            { kind: "unavailable", why: "mate-gone" },
+          ] as const
+        ).map((draft) => (
+          <ReviewTry draft={draft} key={JSON.stringify(draft)} mateName={mate} onOpenDraft={noop} />
+        ))}
       </div>
-      <div className="overflow-hidden border">
-        <DraftPaneView
-          title={title}
-          look={{ ...look, state: "starting" }}
-          state={{ kind: "opening", copy }}
-          onReload={noop}
-          onRetry={noop}
-        />
-      </div>
-      <div className="overflow-hidden border">
-        <DraftPaneView
-          title={title}
-          look={{ kind: "unavailable" }}
-          state={{ kind: "idle" }}
-          onReload={noop}
-          onRetry={noop}
-        />
-      </div>
-      <div className="overflow-hidden border">
-        <DraftPaneView
-          title={title}
-          look={look}
-          state={{ kind: "showing", copy, url: frame }}
-          onReload={noop}
-          onRetry={noop}
-        />
-      </div>
-      <div className="overflow-hidden border">
-        <DraftPaneView
-          title={title}
-          look={look}
-          state={{ kind: "failed", copy, reason: "The draft's container is stopped." }}
-          onReload={noop}
-          onRetry={noop}
-        />
-      </div>
-      <div className="overflow-hidden border">
-        <DraftPaneView
-          title={title}
-          look={{ kind: "added" }}
-          state={{ kind: "showing", copy, url: frame }}
-          onReload={noop}
-          onRetry={noop}
-        />
-      </div>
-      <div className="overflow-hidden border">
-        <DraftPaneView
-          title={title}
-          look={{ kind: "discarded" }}
-          state={{ kind: "showing", copy, url: frame }}
-          onReload={noop}
-          onRetry={noop}
-        />
-      </div>
+      {panes.map(([draft, state]) => (
+        <div className="overflow-hidden border" key={JSON.stringify([draft, state])}>
+          <DraftPaneView
+            title={title}
+            face={draftPaneFace(draft, state, mate)}
+            onReload={noop}
+            onRetry={noop}
+          />
+        </div>
+      ))}
     </div>
   );
 }

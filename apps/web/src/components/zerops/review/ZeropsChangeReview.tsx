@@ -657,6 +657,7 @@ function ChangeReviewData({
           : pull.state === "merging"
             ? "merging"
             : "open",
+    pull.mateGone === true,
     pull.branch,
   );
   const openDraft = useOpenDraft();
@@ -1673,6 +1674,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       {props.draft === undefined ? null : (
         <ReviewTry
           draft={props.draft}
+          mateName={props.mate.name}
           onOpenDraft={props.onOpenDraft}
           builds={props.reviewBuilds}
         />

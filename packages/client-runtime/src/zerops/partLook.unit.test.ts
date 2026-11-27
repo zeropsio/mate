@@ -33,6 +33,7 @@ const pooled = {
     { pool: "tinypool", stages: [{ hostname: "tinystage" }] },
   ],
   state: "open" as const,
+  mateGone: false,
   branch: "c1",
   leases: [
     {

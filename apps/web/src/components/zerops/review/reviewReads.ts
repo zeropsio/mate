@@ -2,7 +2,11 @@
  * What a review's sheet names beside its own reads, off the candidate list the left menu reads
  * too: the project's name, its Draft, and the stage that follows `main`.
  */
-import { buildCanonicalGroupTree, flowChange } from "@t3tools/client-runtime/zerops";
+import {
+  buildCanonicalGroupTree,
+  flowChange,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { partLook, type PartLook } from "@t3tools/client-runtime/zerops/partLook";
 import { classicCopyRead } from "@t3tools/client-runtime/zerops/serviceMap";
@@ -11,7 +15,7 @@ import { useMatesLeases } from "~/zerops/useMatesLeases";
 import { useHqAppDetail, useHqAppReleases } from "~/zerops/useHqAppDetail";
 
 import { useHqAddress } from "~/zerops/projectFlows";
-import { useLinkedChange } from "~/zerops/useLinkedChange";
+import { useLinkedChange, type LinkedChangeState } from "~/zerops/useLinkedChange";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { stageDeploysMerges } from "./ZeropsReview.logic";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
@@ -28,12 +32,15 @@ export function useGroupName(groupId: string): string | undefined {
   );
 }
 
-/** The change named by a draft pane, kept through a gap between HQ's lists. */
+/**
+ * The change named by a draft pane, kept through a gap between HQ's lists, and HQ's own read of it
+ * while neither list holds it.
+ */
 export function useDraftChange(change: {
   readonly groupId: string;
   readonly repository: string;
   readonly number: number;
-}) {
+}): { readonly pull: FlowPullRequest | undefined; readonly read: LinkedChangeState } {
   const detail = useHqAppDetail(change.groupId);
   const address = useHqAddress();
   const record = detail.changes?.find(
@@ -51,7 +58,7 @@ export function useDraftChange(change: {
   );
   const [held, setHeld] = useState(current);
   if (current !== undefined && current !== held) setHeld(current);
-  return current ?? held;
+  return { pull: current ?? held, read: linked };
 }
 
 /** Your app and the change's Draft, as `partLook` decides them for every surface. */
@@ -62,6 +69,7 @@ export function useMatePreviews(
   repository: string,
   repositoryUrl: string | undefined,
   state: "open" | "adding" | "merging" | "merged" | "closed",
+  mateGone: boolean,
   branch: string | undefined,
 ): PartLook {
   const { listing } = useZeropsDetailCandidates();
@@ -95,6 +103,7 @@ export function useMatePreviews(
         repositoryRemote,
         poolPairs,
         state,
+        mateGone,
         branch,
         leases,
         classic: { branch: classicBranch, copyState: classicState },
@@ -106,6 +115,7 @@ export function useMatePreviews(
       repositoryUrl,
       repositoryRemote,
       state,
+      mateGone,
       branch,
       leases,
       poolPairs,

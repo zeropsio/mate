@@ -17,7 +17,7 @@ it("MN123: Opening a draft holds one request per act and shows only zcp's answer
   ).toEqual({ kind: "showing", copy, url: "https://draft.example" });
   expect(
     draftPane(opening, { type: "answer", answer: { status: "failed", reason: "draft ended" } }),
-  ).toEqual({ kind: "ended" });
+  ).toEqual({ kind: "ended", copy });
   const failed = draftPane(opening, {
     type: "answer",
     answer: { status: "failed", reason: "no preview server is declared for this draft" },

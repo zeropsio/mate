@@ -34,6 +34,7 @@ export function partLook(input: {
   readonly repositoryRemote: string | undefined;
   readonly poolPairs: ReadonlyArray<PoolPair> | undefined;
   readonly state: "open" | "adding" | "merging" | "merged" | "closed";
+  readonly mateGone: boolean;
   readonly branch: string | undefined;
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
   /** zcp's read of the repository's classic dev half, when it has one. */
@@ -69,6 +70,7 @@ export function partLook(input: {
     app: builds,
     draft: draftLook({
       state: input.state,
+      mateGone: input.mateGone,
       branch: input.branch,
       repositoryUrl: input.repositoryUrl,
       repositoryRemote: input.repositoryRemote,
@@ -99,5 +101,25 @@ export function draftStateLine(state: DraftState | undefined): string | undefine
       return "Stopped with an error; opening it tries again.";
     case "unknown":
       return "Mate lost touch with it; this updates when it reports again.";
+  }
+}
+
+/**
+ * The line a surface shows where a change offers no Draft to open: why, in place of nothing.
+ * `mateName` is the change's Mate as the surface names it.
+ */
+export function draftAbsentLine(
+  look: Exclude<DraftLook, { readonly kind: "openable" }>,
+  mateName: string,
+): string {
+  if (look.kind !== "unavailable")
+    return look.kind === "added" ? "This draft is in your app now." : "This draft was discarded.";
+  switch (look.why) {
+    case "unreported":
+      return `Waiting for ${mateName} to report its drafts.`;
+    case "none":
+      return `There is no copy of this draft with ${mateName} right now. It can be opened once ${mateName} works on it again.`;
+    case "mate-gone":
+      return "This draft's Mate has left the app, so the draft can't be opened.";
   }
 }
