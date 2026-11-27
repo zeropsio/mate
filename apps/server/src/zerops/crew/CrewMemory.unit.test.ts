@@ -127,7 +127,7 @@ const crewmate = (kind: CrewMemberKind, shaped: CrewPromptMember) => ({
 });
 
 // witness: apps/server/src/zerops/crew/CrewMemory.ts | if (member.kind !== "writer") return { kind: "none" }; → if (member.prompt.member.kind !== "writer") return { kind: "none" };
-it("CM+1: A writer's packet reads its own copy on its host, and a writer whose copy is not ready yet is told so, never that it has no copy; a reader and the lead have none", () => {
+it("CM61: A writer's packet reads its own copy on its host, and a writer whose copy is not ready yet is told so, never that it has no copy; a reader and the lead have none", () => {
   const lane = crewLane(
     { host: "appdev", mountPath: "/var/www/appdev", remotePath: "/var/www" },
     "builder",

@@ -1,4 +1,4 @@
-next: CD79
+next: CD80
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -78,4 +78,4 @@ next: CD79
 - CD76 — A conversation that never called zcp sees the Mate's leases
 - CD77 — A classic dev service's branch and dev server appear together on its Mate's copy feed
 - CD78 — A tool result reads the current copy file before binding, so a late acquire cannot bind a released lease
-- CD+1 — A run's start opens no new session for a crewmate whose session has had no turn yet, and one that has had a turn goes on in a new session
+- CD79 — A run's start opens no new session for a crewmate whose session has had no turn yet, and one that has had a turn goes on in a new session

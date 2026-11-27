@@ -298,7 +298,7 @@ it("CD8: A turn its agent ends at the run's budget stops its task at the budget,
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.run.ts | if (!sessionHadTurn(member.session)) continue; → if (member.session.running === null) continue;
-it("CD+1: A run's start opens no new session for a crewmate whose session has had no turn yet, and one that has had a turn goes on in a new session", () => {
+it("CD79: A run's start opens no new session for a crewmate whose session has had no turn yet, and one that has had a turn goes on in a new session", () => {
   const w = new CrewWorld();
   w.apply(home(writer("backend"), reader("reviewer")));
   newTask(w, "reviewer", "Read it");
