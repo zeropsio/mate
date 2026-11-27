@@ -19,6 +19,7 @@ const BUILD_TOOLING = [
   "native/health-events",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
+  "scripts/build-node-pty-prebuild.sh",
   "scripts/lib/cli-external-packages.ts",
   "scripts/lib/public-config.ts",
   "scripts/lib/resolve-catalog.ts",

@@ -212,6 +212,38 @@ jobs:
           path: *pnpm_metadata_path
           key: ${{ steps.metadata.outputs.cache-primary-key }}
 
+      # The one writer of the node-pty prebuild release.yml restores: a tag reads only main's caches.
+      # Its key matches no prefix the prune below deletes.
+      - name: Resolve node-pty prebuild key
+        id: node_pty_key
+        run: |
+          key="$(scripts/build-node-pty-prebuild.sh key)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Look up node-pty prebuild
+        id: node_pty
+        uses: actions/cache/restore@v4
+        with:
+          # The path is part of the cache version: release.yml restores the same one.
+          path: ${{ runner.temp }}/node-pty-linux-x64
+          key: ${{ steps.node_pty_key.outputs.key }}
+          lookup-only: true
+
+      # A failed or stalled build only leaves the key unsaved; the release then compiles it.
+      - name: Build node-pty for linux-x64
+        id: node_pty_build
+        if: steps.node_pty.outputs.cache-hit != 'true'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: scripts/build-node-pty-prebuild.sh build "${RUNNER_TEMP}/node-pty-linux-x64"
+
+      - name: Save node-pty prebuild
+        if: steps.node_pty_build.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/node-pty-linux-x64
+          key: ${{ steps.node_pty.outputs.cache-primary-key }}
+
       - name: Prune superseded main caches
         shell: bash
         env:
