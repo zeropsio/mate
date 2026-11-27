@@ -11,6 +11,7 @@
  * @module data/operations/hqTaskSources
  */
 import type {
+  HqPlanTasksRequest,
   HqPutTaskRequest,
   HqScheduleRequest,
   HqTaskLimitsRequest,
@@ -44,6 +45,18 @@ export type TaskSourceWrite =
    * the composer's): HQ's answer, the task queued, goes back to the card (`putTask`).
    */
   | { readonly kind: "task-put"; readonly card: string; readonly request: HqPutTaskRequest }
+  /**
+   * A person's plan from a conversation, pressed on `card` (a board ask's request id), all or
+   * nothing: HQ's answer, the plan's tasks in order, goes back to the card (`planTasks`). The
+   * request id goes in at send (`boardPutRequestId`), never in the record.
+   */
+  | {
+      readonly kind: "task-plan";
+      readonly card: string;
+      readonly request: Omit<HqPlanTasksRequest, "requestId">;
+    }
+  /** One of a held task's needs dropped by its putter or an owner or admin. */
+  | { readonly kind: "task-need-drop"; readonly taskId: string; readonly neededId: string }
   /** A queued task taken for one of the person's own Mates. */
   | { readonly kind: "task-take"; readonly taskId: string; readonly mateProjectId: string }
   /** A taken task given back to the queue. */
@@ -104,6 +117,8 @@ export function taskSourceWriteSetting(write: TaskSourceWrite): TaskSourceSettin
       return "hqTaskLimits";
     case "task-stop":
     case "task-put":
+    case "task-plan":
+    case "task-need-drop":
     case "task-take":
     case "task-release":
     case "task-done":

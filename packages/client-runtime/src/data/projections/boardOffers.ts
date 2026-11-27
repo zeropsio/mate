@@ -4,7 +4,7 @@
  * application and its Mates (whose each is, and which are automated): whether a New task may be
  * put on the Board itself, where a Put on board may come from — only a Mate whose server takes the
  * Board — and each task's Take (which of their own Mates it may open in: only one whose server
- * reads the task's source), Release, Done, Stop and Answer. Surfaces draw these answers and never
+ * reads the task's source), Release, Done, Stop, Answer and Drop the need. Surfaces draw these answers and never
  * decide one; HQ decides again at the press.
  * `undefined` until Zerops is read: nothing is offered or refused on a guess.
  *
@@ -14,6 +14,7 @@ import { boardTaskOf } from "@t3tools/shared/hqIntake";
 import {
   answerTaskPermission,
   doneTaskPermission,
+  dropNeedPermission,
   putTaskPermission,
   releaseTaskPermission,
   stopTaskPermission,
@@ -40,6 +41,8 @@ export interface BoardTaskOffer {
   readonly done: boolean;
   readonly stop: boolean;
   readonly answer: boolean;
+  /** Drop one of its needs: it is held, and the reader put it or is an owner or admin. */
+  readonly dropNeed: boolean;
 }
 
 /** One task's verbs for the person, by the verb rules over its record and the application's Mates. */
@@ -56,6 +59,7 @@ export function boardTaskOffer(
     done: doneTaskPermission(facts, task).allow,
     stop: stopTaskPermission(facts, task).allow,
     answer: answerTaskPermission(facts, task).allow,
+    dropNeed: dropNeedPermission(facts, task).allow,
   };
 }
 

@@ -10,7 +10,12 @@
  * its own request, and is gone once sent.
  */
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
-import type { HqAppTask, HqPutTaskRequest, HqWebhookView } from "@t3tools/shared/hqIntake";
+import type {
+  HqAppTask,
+  HqPlanTasksRequest,
+  HqPutTaskRequest,
+  HqWebhookView,
+} from "@t3tools/shared/hqIntake";
 import * as Effect from "effect/Effect";
 import type { HqApi } from "../../zerops/hq/client.ts";
 import {
@@ -68,13 +73,14 @@ function requestRecordOf(
   family: TaskSourceSetting,
 ): { readonly id: string; readonly scope: ScopeKey } {
   if ("appId" in key) {
-    if (change.kind === "task-put")
+    if (change.kind === "task-put" || change.kind === "task-plan")
       return {
         id: taskPutRequestId(key, change.card),
         scope: taskPutRequestScope(key, change.card),
       };
     if (
       change.kind === "task-stop" ||
+      change.kind === "task-need-drop" ||
       change.kind === "task-take" ||
       change.kind === "task-release" ||
       change.kind === "task-done" ||
@@ -215,6 +221,8 @@ export function makeTaskSourceSettings(options: {
   const links = new Map<string, string>();
   /** The task as HQ answered a write to it, by the request that asked: taken by that request alone. */
   const tasks = new Map<string, HqAppTask>();
+  /** A plan's tasks as HQ answered them, by the request that asked: taken by that request alone. */
+  const plans = new Map<string, ReadonlyArray<HqAppTask>>();
   const operations = makeOperations({
     store,
     makeId: options.makeId,
@@ -244,6 +252,9 @@ export function makeTaskSourceSettings(options: {
         },
         answeredTask: (requestId, task) => {
           if (!closed) tasks.set(requestId, task);
+        },
+        answeredPlan: (requestId, answered) => {
+          if (!closed) plans.set(requestId, answered);
         },
         away: (orgId) => hqAwayAnswer(hqLinkOf(readsOfState(store.state()), orgId)),
       }),
@@ -347,7 +358,9 @@ export function makeTaskSourceSettings(options: {
     key: AppSettingKey,
     change: Extract<
       TaskSourceWrite,
-      { readonly kind: "task-put" | "task-take" | "task-release" | "task-done" }
+      {
+        readonly kind: "task-put" | "task-take" | "task-release" | "task-done" | "task-need-drop";
+      }
     >,
   ): Promise<HqAppTask | null> => {
     const requestId = await write(key, change);
@@ -362,6 +375,23 @@ export function makeTaskSourceSettings(options: {
     /** Puts work on the Board from a conversation, pressed on `card`: the task queued, or `null`. */
     putTask: (key: AppSettingKey, card: string, request: HqPutTaskRequest) =>
       taskWrite(key, { kind: "task-put", card, request }),
+    /**
+     * Puts a plan on the Board from a conversation, pressed on `card`, all or nothing: its tasks in
+     * the plan's order, or `null` where HQ refused or did not answer.
+     */
+    planTasks: async (
+      key: AppSettingKey,
+      card: string,
+      request: Omit<HqPlanTasksRequest, "requestId">,
+    ): Promise<ReadonlyArray<HqAppTask> | null> => {
+      const requestId = await write(key, { kind: "task-plan", card, request });
+      const answered = plans.get(requestId) ?? null;
+      plans.delete(requestId);
+      return answered;
+    },
+    /** Drops one of a held task's needs: the task as it stands, or `null`. */
+    dropNeed: (key: AppSettingKey, taskId: string, neededId: string) =>
+      taskWrite(key, { kind: "task-need-drop", taskId, neededId }),
     /** Takes a queued task for one of the person's own Mates: the task taken, or `null`. */
     takeTask: (key: AppSettingKey, taskId: string, mateProjectId: string) =>
       taskWrite(key, { kind: "task-take", taskId, mateProjectId }),
@@ -399,6 +429,7 @@ export function makeTaskSourceSettings(options: {
       secrets.clear();
       manifests.clear();
       tasks.clear();
+      plans.clear();
       revealedFor.clear();
       views.clear();
       epochs.clear();

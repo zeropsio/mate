@@ -24,7 +24,7 @@ import type {
   HqGithubManifestRequest,
   HqGithubManifestView,
 } from "@t3tools/shared/hqGithub";
-import type { HqAppTask, HqPutTaskRequest } from "@t3tools/shared/hqIntake";
+import type { HqAppTask, HqPlanTasksRequest, HqPutTaskRequest } from "@t3tools/shared/hqIntake";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
@@ -213,6 +213,13 @@ const IDLE_PUT = Atom.make<TaskWriteAction>({ kind: "idle" });
 export interface BoardTaskWrites {
   /** Puts work on the Board from a conversation, pressed on `card`. */
   readonly put: (card: string, request: HqPutTaskRequest) => Promise<HqAppTask | null>;
+  /** Puts a plan on the Board from a conversation, pressed on `card`, all or nothing. */
+  readonly plan: (
+    card: string,
+    request: Omit<HqPlanTasksRequest, "requestId">,
+  ) => Promise<ReadonlyArray<HqAppTask> | null>;
+  /** Drops one of a held task's needs. */
+  readonly dropNeed: (taskId: string, neededId: string) => Promise<HqAppTask | null>;
   /** Takes a queued task for one of the person's own Mates. */
   readonly take: (taskId: string, mateProjectId: string) => Promise<HqAppTask | null>;
   readonly release: (taskId: string) => Promise<HqAppTask | null>;
@@ -233,6 +240,8 @@ export function useBoardTaskWrites(appId: string | null): BoardTaskWrites | null
     const key = { orgId, appId };
     return {
       put: (card, request) => host.putTask(key, card, request),
+      plan: (card, request) => host.planTasks(key, card, request),
+      dropNeed: (taskId, neededId) => host.dropNeed(key, taskId, neededId),
       take: (taskId, mateProjectId) => host.takeTask(key, taskId, mateProjectId),
       release: (taskId) => host.releaseTask(key, taskId),
       done: (taskId) => host.doneTask(key, taskId),

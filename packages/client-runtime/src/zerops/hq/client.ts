@@ -89,7 +89,9 @@ import {
   HqScheduleView,
   HqAppTasksView,
   HqSnoozesView,
+  HqPlanAnswer,
   HqTaskAnswer,
+  type HqPlanTasksRequest,
   type HqPutTaskRequest,
   type HqSnooze,
   type HqTakeTaskRequest,
@@ -1006,6 +1008,16 @@ export interface HqApi {
   readonly stopAppTask: (appId: string, taskId: string) => Promise<void>;
   /** A person's Put on board from a conversation (`POST /api/apps/:appId/tasks`): the task queued. */
   readonly putAppTask: (appId: string, request: HqPutTaskRequest) => Promise<HqAppTask>;
+  /**
+   * A person's plan from a conversation, all or nothing (`POST /api/apps/:appId/tasks/plan`): its
+   * tasks as HQ put them, in the plan's order.
+   */
+  readonly planAppTasks: (
+    appId: string,
+    request: HqPlanTasksRequest,
+  ) => Promise<ReadonlyArray<HqAppTask>>;
+  /** One of a held task's needs dropped (`POST …/tasks/:taskId/needs/:neededId/drop`). */
+  readonly dropAppTaskNeed: (appId: string, taskId: string, neededId: string) => Promise<HqAppTask>;
   /** A queued task taken for one of the person's own Mates (`POST …/tasks/:taskId/take`). */
   readonly takeAppTask: (
     appId: string,
@@ -1485,16 +1497,18 @@ const readSchedules = decoded(
 );
 const readAppTasks = decoded(HqAppTasksView, "a project's tasks");
 const readTaskAnswer = decoded(HqTaskAnswer, "a task");
+const readPlanAnswer = decoded(HqPlanAnswer, "a plan's tasks");
 const readSnoozes = decoded(HqSnoozesView, "what you set aside");
 
 /**
  * The Board's opt-in on a read of an application's tasks: an HQ that knows the Board answers its
  * fields (`HqAppTask.source`, `taker`, `takenAt`, `changes`, the `taken` state) only to a read that
- * asks for them, and the tasks put on the Board directly (source `board`) only to one that also
- * asks for those, so older clients keep decoding; this client always asks for both, each its own
- * `with` (an older HQ reads the first alone).
+ * asks for them, the tasks put on the Board directly (source `board`) only to one that also asks
+ * for those, and its needs (`HqAppTask.needs`, the `held` state) only to one that asks for them
+ * too, so older clients keep decoding; this client always asks for all three, each its own `with`,
+ * `board` first (an older HQ reads the first alone).
  */
-export const HQ_BOARD_READ = "with=board&with=board-source";
+export const HQ_BOARD_READ = "with=board&with=board-source&with=needs";
 const readTaskLimits = decoded(HqTaskLimitsView, "the limits per task");
 const readCreatedBirth = decoded(
   Schema.Struct({ ...HqRecordedBirth.fields, appId: Schema.String }),
@@ -2647,6 +2661,26 @@ export function makeHqApi(input: {
           await authorized(
             `/api/apps/${encodeURIComponent(appId)}/tasks`,
             { method: "POST", body: JSON.stringify(request satisfies HqPutTaskRequest) },
+            true,
+          ),
+        )
+      ).task,
+    planAppTasks: async (appId, request) =>
+      (
+        await readPlanAnswer(
+          await authorized(
+            `/api/apps/${encodeURIComponent(appId)}/tasks/plan`,
+            { method: "POST", body: JSON.stringify(request satisfies HqPlanTasksRequest) },
+            true,
+          ),
+        )
+      ).tasks,
+    dropAppTaskNeed: async (appId, taskId, neededId) =>
+      (
+        await readTaskAnswer(
+          await authorized(
+            `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/needs/${encodeURIComponent(neededId)}/drop`,
+            { method: "POST", body: JSON.stringify({}) },
             true,
           ),
         )

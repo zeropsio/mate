@@ -9,6 +9,7 @@ import type { HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import { boardPutRequestId, type HqAppTask, type HqWebhookView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
+import type { TaskSourceWrite } from "../hqTaskSources.ts";
 
 export type TaskSourceWrites = Pick<
   HqApi,
@@ -25,6 +26,8 @@ export type TaskSourceWrites = Pick<
   | "setTaskLimits"
   | "stopAppTask"
   | "putAppTask"
+  | "planAppTasks"
+  | "dropAppTaskNeed"
   | "takeAppTask"
   | "releaseAppTask"
   | "doneAppTask"
@@ -71,11 +74,31 @@ function taskStopRefusal(cause: HqError): string | undefined {
  * HQ's refusal of a write to a task on the Board in words: one no longer where the write needs it
  * (taken by somebody else meanwhile, released, ended) says so. `undefined`: HQ's own words stand.
  */
-function boardRefusal(cause: HqError): string | undefined {
+function boardRefusal(cause: HqError, write: TaskSourceWrite["kind"]): string | undefined {
   if (cause.reason === "task_not_found") return "That task is no longer on the Board.";
   // A Take into a Mate whose server reads no task of the task's source (a New task, protocol 2).
   if (cause.reason === "mate_cannot_read_source")
     return "That Mate can’t take this task until it is updated.";
+  if (cause.reason === "plan_cycle")
+    return "Tasks of this plan wait for each other, so it cannot go on the Board. Ask the Mate to propose it again.";
+  if (cause.reason === "plan_key")
+    return "A task of this plan has no key of its own, or waits for a task outside the plan and the Board. Ask the Mate to propose it again.";
+  if (cause.reason === "need_other_app")
+    return "A task of this plan waits for a task of another project.";
+  if (cause.reason === "too_many")
+    return "A plan puts at most 20 tasks on the Board, each waiting for at most 20.";
+  if (cause.reason === "need")
+    return "A task here waits for a task this organization does not have.";
+  if (cause.reason === "request_reused")
+    return "This card's put was already used for other work. Ask the Mate to propose it again.";
+  if (cause.reason === "mate_not_in_app")
+    return write === "task-take"
+      ? "That Mate is no longer in this project. Take it into another of your Mates."
+      : "This Mate is no longer in the project, so it cannot put work on its Board.";
+  if (cause.reason === "need_not_found") return "That task no longer waits for it.";
+  if (cause.reason === "task_not_held") return "This task waits for no other task now.";
+  if (cause.reason === "not_need_dropper")
+    return "Only the person who put this task on the Board, or an owner or admin, drops what it waits for.";
   if (cause.status === 409) return "That task moved meanwhile. Look at the Board again.";
   return undefined;
 }
@@ -91,8 +114,10 @@ export function makeTaskSourceExecutor(options: {
   readonly manifested: (requestId: string, view: HqGithubManifestView) => void;
   /** HQ's install link for the organization's GitHub app, for the screen that asked for it alone. */
   readonly linked: (requestId: string, url: string) => void;
-  /** The task as HQ answered a write to it (a put, take, release, done), for its request. */
+  /** The task as HQ answered a write to it (a put, take, release, done, drop), for its request. */
   readonly answeredTask: (requestId: string, task: HqAppTask) => void;
+  /** A plan's tasks as HQ put them, in its order, for its request. */
+  readonly answeredPlan: (requestId: string, tasks: ReadonlyArray<HqAppTask>) => void;
   /** HQ's words while it is away from this organization (`hqAwayAnswer`); `null`: it is not. */
   readonly away: (orgId: string) => string | null;
 }): OperationExecutor {
@@ -183,6 +208,27 @@ export function makeTaskSourceExecutor(options: {
                   options.answeredTask(requestId, task);
                 });
             }
+            case "task-plan": {
+              // All or nothing, one plan per card however often it is sent: HQ answers a repeat
+              // with the tasks the first send put (the put's own rule).
+              const request = {
+                ...write.request,
+                requestId: boardPutRequestId(write.request.from, write.card),
+              };
+              const plan = () => api.planAppTasks(appId, request);
+              return plan()
+                .catch((cause: unknown) => {
+                  if (cause instanceof HqError && cause.kind === "refused") throw cause;
+                  return plan();
+                })
+                .then((tasks) => {
+                  options.answeredPlan(requestId, tasks);
+                });
+            }
+            case "task-need-drop":
+              return api.dropAppTaskNeed(appId, write.taskId, write.neededId).then((task) => {
+                options.answeredTask(requestId, task);
+              });
             case "task-take":
               return api
                 .takeAppTask(appId, write.taskId, { mateProjectId: write.mateProjectId })
@@ -238,11 +284,13 @@ export function makeTaskSourceExecutor(options: {
                     (write.kind === "task-stop"
                       ? taskStopRefusal(cause)
                       : write.kind === "task-put" ||
+                          write.kind === "task-plan" ||
+                          write.kind === "task-need-drop" ||
                           write.kind === "task-take" ||
                           write.kind === "task-release" ||
                           write.kind === "task-done" ||
                           write.kind === "task-message"
-                        ? boardRefusal(cause)
+                        ? boardRefusal(cause, write.kind)
                         : write.kind === "github-install" || write.kind === "github-forget"
                           ? installationRefusal(cause, "app")
                           : write.kind === "github-accept" ||

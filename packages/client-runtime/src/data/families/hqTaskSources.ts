@@ -52,7 +52,8 @@ declare module "../model.ts" {
     readonly hqAppTasks: ReadonlyArray<HqAppTask>;
     /**
      * The latest write of this account's to one of them (to one task — a take, release, done,
-     * stop or answer: `taskWriteRequestId`; a put, by the card it came from: `taskPutRequestId`),
+     * stop, answer or a need dropped: `taskWriteRequestId`; a put or a plan, by the card it came
+     * from: `taskPutRequestId`),
      * by its request, and — once HQ answered
      * it — the last read started before that answer: the write shows done once a read started
      * after it lands. `null` until HQ answers.
@@ -137,9 +138,9 @@ export const taskWriteRequestId = (key: AppSettingKey, taskId: string): string =
 export const taskWriteRequestScope = (key: AppSettingKey, taskId: string): ScopeKey =>
   `hq:${key.orgId}:task-source-request:${taskWriteRequestId(key, taskId)}`;
 /**
- * A Put on board has a request record by the card it was pressed on (`card`: the board ask's
- * request id, or the composer's own): the card reads where its put stands, and HQ's id of the task
- * it made once answered.
+ * A Put on board, a single task's or a plan's, has a request record by the card it was pressed on
+ * (`card`: the board ask's request id, or the composer's own): the card reads where its put
+ * stands.
  */
 export const taskPutRequestId = (key: AppSettingKey, card: string): string =>
   JSON.stringify(["hqAppTasks", settingId(key), "put", card]);

@@ -154,7 +154,10 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
     case "task-limits":
       return "Saving…";
     case "task-put":
+    case "task-plan":
       return "Putting it on the Board…";
+    case "task-need-drop":
+      return "Dropping the need…";
     case "task-take":
       return "Taking…";
     case "task-release":
