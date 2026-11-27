@@ -22,6 +22,7 @@ import type { CrewMemberKind, CrewProposal } from "@t3tools/contracts";
 
 import type { MateTintId } from "./brand.ts";
 import {
+  crewTints,
   parseBrief,
   withBuildersPlaced,
   type CrewDefinition,
@@ -61,21 +62,6 @@ export const CREW_BRIEF_TEMPLATE = `Describe what the crew builds and why.
 ## Done when
 - The outcome that finishes the work.
 `;
-
-/**
- * The tints a starting crew takes, in turn: the lead violet, the builders sky
- * and coral — the setup's three faces — stepping past the Mate's own.
- */
-const CREW_TINTS: ReadonlyArray<MateTintId> = [
-  "violet",
-  "sky",
-  "coral",
-  "olive",
-  "rose",
-  "sand",
-  "slate",
-  "amber",
-];
 
 interface Seat {
   readonly handle: string;
@@ -200,13 +186,13 @@ const crewOf = (
   seats: ReadonlyArray<Seat>,
   input: Omit<CrewTemplateInput, "template">,
 ): CrewDefinition => {
-  const tints = CREW_TINTS.filter((tint) => tint !== input.mateTint);
-  const members = seats.map((seat, index): CrewMemberSpec => ({
+  const tints = crewTints(seats, input.mateTint);
+  const members = seats.map((seat): CrewMemberSpec => ({
     handle: seat.handle,
     displayName: seat.displayName,
     kind: seat.kind,
     readOnly: seat.kind !== "writer",
-    tint: tints[index % tints.length]!,
+    tint: tints.get(seat.handle)!,
     restartAfterMerge: false,
     afterLandRestart: false,
     ...(seat.login === undefined ? {} : { login: seat.login }),

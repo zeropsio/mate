@@ -113,9 +113,9 @@ export function CrewSectionHost({
   onSignIn,
   proposeWith,
 }: CrewSectionHostProps) {
-  const commands = useCrewCommand(environmentId);
+  const commands = useCrewCommand(environmentId, mate?.tint);
   const tell = useCrewCommand(environmentId);
-  const editorCommands = useCrewCommand(environmentId);
+  const editorCommands = useCrewCommand(environmentId, mate?.tint);
   const readCrewTaskPage = useAtomCommand(crewCommands.taskPage, { reportFailure: false });
   const navigate = useNavigate();
   const openReview = useOpenReview();

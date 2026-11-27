@@ -32,6 +32,7 @@ import type { MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_HOME_FILE,
   crewJobFile,
+  crewTints,
   withSharedDatabase,
   type CrewDefinition,
   type CrewDefinitionIssue,
@@ -200,7 +201,13 @@ function JobForm({
     blockers.length === 0 &&
     lock === null &&
     !commands.pending;
-  const tint = draft.tint ?? "slate";
+  // A crewmate its crew.yaml gives no tint wears the one every surface gives it (`crewTints`).
+  const tint =
+    draft.tint ??
+    (target.handle === null
+      ? undefined
+      : crewTints(definition.members, mateTint).get(target.handle)) ??
+    "slate";
   const runsOnLabel = crewLoginLabel(logins, draft.login);
   // A builder with nowhere for its copy, or a name taken, opens More: that is where it is fixed.
   const moreOpen =

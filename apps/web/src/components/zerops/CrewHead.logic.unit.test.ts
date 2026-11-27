@@ -6,7 +6,7 @@ const MINUTE = 60_000;
 const READ_AT = Date.parse("2026-11-27T10:00:00Z");
 
 // witness: apps/web/src/components/zerops/crew/CrewHead.logic.ts | const working = input.workingCount > 0 || run.countingFrom != null; → const working = atWork(input);
-it("MN+1: A running crew is at work only while a crewmate's turn runs, its clock running on from when its Mate read it; with no turn running, a task left midway included, it waits on the person when something does, its clock standing; breaks: the Crew tab says the crew works on its own while it waits on the person and its clock stands still", () => {
+it("MN124: A running crew is at work only while a crewmate's turn runs, its clock running on from when its Mate read it; with no turn running, a task left midway included, it waits on the person when something does, its clock standing; breaks: the Crew tab says the crew works on its own while it waits on the person and its clock stands still", () => {
   const run = { elapsedMs: 12 * MINUTE, countingFrom: "2026-11-27T10:00:00.000Z" };
   const standing = { ...run, countingFrom: null };
   const later = READ_AT + 5 * MINUTE;

@@ -280,7 +280,7 @@ it("CD34: A crewmate's copy reads as being made, set up, frozen by a redeploy, g
 });
 
 // witness: apps/server/src/zerops/crew/engine/project.ts | return reviewing || reviewUnderWay(state, task) || view.nowMs - task.updatedAt < UNATTENDED_MS → return reviewing || view.nowMs - task.updatedAt < UNATTENDED_MS
-it("CD+2: Work waiting for the lead's review raises no need of its own while a review the lead planned of it is under way, its question to the person included; once that review is over, an unattended wait shows again; breaks: one question to the person shows as two crewmates needing them", () => {
+it("CD89: Work waiting for the lead's review raises no need of its own while a review the lead planned of it is under way, its question to the person included; once that review is over, an unattended wait shows again; breaks: one question to the person shows as two crewmates needing them", () => {
   const since = AT - UNATTENDED;
   const built = task("t-1", 1, { state: "review", started: true, updatedAt: since });
   const review = (state: TaskRecord["state"]) =>

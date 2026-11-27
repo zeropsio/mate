@@ -31,7 +31,7 @@
  *     displayName: Backend          # required; free to rename
  *     kind: writer                  # writer (default) | reader | lead
  *     readOnly: false               # the editor's switch; true makes a writer a reader
- *     tint: sky                     # one of MATE_TINT_IDS; unset = assigned by the client
+ *     tint: sky                     # one of MATE_TINT_IDS; unset = the first nobody wears (crewTints)
  *     host: appdev                  # writers choose a dev service (host) or a dev pool (pool)
  *     setup: npm ci                 # run in its copy at Apply and when the lockfile moves
  *     check: npm test               # run in its copy on the tree that will land
@@ -200,6 +200,48 @@ type Issues = Array<CrewDefinitionIssue>;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The tints a crew takes, in turn: the lead violet, the builders sky and coral — the setup's
+ * three faces — and on.
+ */
+export const CREW_TINTS: ReadonlyArray<MateTintId> = [
+  "violet",
+  "sky",
+  "coral",
+  "olive",
+  "rose",
+  "sand",
+  "slate",
+  "amber",
+];
+
+/**
+ * Each crewmate's tint, in the crew's order: the one it wears (its crew.yaml's, or the one it was
+ * given before), else the first of {@link CREW_TINTS} no other crewmate wears, never its Mate's
+ * own — one colour per crewmate, the same wherever it is drawn, for a hand-written crew too. With
+ * more crewmates than tints, they take them again from the first.
+ */
+export const crewTints = (
+  members: ReadonlyArray<{ readonly handle: string; readonly tint?: string | null | undefined }>,
+  mateTint?: MateTintId,
+): ReadonlyMap<string, MateTintId> => {
+  const named = (tint: string | null | undefined): MateTintId | undefined =>
+    MATE_TINT_IDS.find((id) => id === tint);
+  const offered = CREW_TINTS.filter((tint) => tint !== mateTint);
+  const worn = new Set(members.flatMap((member) => named(member.tint) ?? []));
+  const tints = new Map<string, MateTintId>();
+  let again = 0;
+  for (const member of members) {
+    const tint =
+      named(member.tint) ??
+      offered.find((id) => !worn.has(id)) ??
+      offered[again++ % offered.length]!;
+    worn.add(tint);
+    tints.set(member.handle, tint);
+  }
+  return tints;
+};
 
 /** Read `brief.md`'s two optional sections out of its markdown. */
 export const parseBrief = (title: string, text: string): CrewBrief => {

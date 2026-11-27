@@ -28,7 +28,7 @@ import {
   type CrewTint,
   type Crewmate,
 } from "@t3tools/contracts";
-import { MATE_TINT_IDS } from "@t3tools/shared/brand";
+import { crewTints } from "@t3tools/shared/crewHome";
 import * as DateTime from "effect/DateTime";
 
 import { CREW_OFF_SNAPSHOT } from "../crewSnapshot.ts";
@@ -91,11 +91,6 @@ const devHostsOf = (view: CrewView): ReadonlyArray<CrewDevHost> =>
   Object.entries(view.devHosts)
     .map(([host, database]) => ({ host, database }))
     .toSorted((a, b) => a.host.localeCompare(b.host));
-
-const tintOf = (member: MemberRecord): CrewTint =>
-  (MATE_TINT_IDS as ReadonlyArray<string>).includes(member.tint ?? "")
-    ? (member.tint as CrewTint)
-    : "slate";
 
 const laneState = (
   state: CrewState,
@@ -333,6 +328,7 @@ const toCrewmate = (
   member: MemberRecord,
   tasks: ReadonlyArray<TaskRecord>,
   view: CrewView,
+  tint: CrewTint,
 ): Crewmate => {
   const own = tasks.filter((task) => task.owner === member.handle);
   const open = own.find((task) => isOpenTask(task.state));
@@ -343,7 +339,7 @@ const toCrewmate = (
   return {
     handle: member.handle,
     displayName: member.displayName,
-    tint: tintOf(member),
+    tint,
     kind: member.kind,
     jobFirstLine: member.jobFirstLine,
     jobVersion: member.jobVersion,
@@ -475,6 +471,8 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
   }
   const tasks = boardTasks(state);
   const all = tasksInOrder(state);
+  const members = membersInOrder(state);
+  const tints = crewTints(members);
   const claimAttention = Object.entries(state.claims)
     .filter(([, claim]) => claim.state === "requested")
     .map(([host, claim]): CrewAttention => ({
@@ -498,7 +496,9 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
       briefExcerpt: firstLines(applied.definition.brief.text, 2),
       ...(applied.definition.ask === undefined ? {} : { ask: applied.definition.ask }),
     },
-    crewmates: membersInOrder(state).map((member) => toCrewmate(state, member, all, view)),
+    crewmates: members.map((member) =>
+      toCrewmate(state, member, all, view, tints.get(member.handle)!),
+    ),
     hosts: Object.entries(state.hosts)
       .toSorted(([a], [b]) => a.localeCompare(b))
       .map(([host, record]) => {

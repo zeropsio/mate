@@ -668,7 +668,8 @@ const runRef = { runId: CrewRunId } as const;
  * (PRD §2.3).
  */
 export const CrewCommand = Schema.TaggedUnion({
-  apply: {},
+  /** The Mate's own tint, which no crewmate it gives a tint takes (`crewTints`); absent: unknown. */
+  apply: { mateTint: Schema.optionalKey(CrewTint) },
   rebuildCopy: { ...handleRef },
   /** Thaws a host whose redeploy could not be read: the person says it ended. */
   thawHost: { host: Schema.String },

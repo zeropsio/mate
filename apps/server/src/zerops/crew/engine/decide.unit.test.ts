@@ -803,7 +803,7 @@ it("CD86: A reader opens only the app of the writer whose task its own task revi
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.presses.ts | const sent = { text: facts.turn.text, card: facts.turn.card }; → const sent = { text: facts.turn.text, card: null };
-it("CD+1: Continue on a card turn a restart could not carry on sends the card again, never its words as the person's own message; breaks: the crew's words show in the crewmate's conversation as the person's", () => {
+it("CD87: Continue on a card turn a restart could not carry on sends the card again, never its words as the person's own message; breaks: the crew's words show in the crewmate's conversation as the person's", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
   newTask(w, "reviewer", "Read it");
@@ -820,7 +820,7 @@ it("CD+1: Continue on a card turn a restart could not carry on sends the card ag
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.advance.ts | rotateSession(b, member, member.rotateWhenFree.reason, member.rotateWhenFree.as); → rotateSession(b, member, member.rotateWhenFree.reason, { kind: "engine" });
-it("CD+3: Start fresh pressed while its crewmate is busy clears its conversation once it is free, as the person who pressed it; breaks: the line in its conversation names nobody, or the crew, as the one who cleared it", () => {
+it("CD88: Start fresh pressed while its crewmate is busy clears its conversation once it is free, as the person who pressed it; breaks: the line in its conversation names nobody, or the crew, as the one who cleared it", () => {
   const w = new CrewWorld();
   w.apply(home(writer("backend")));
   newTask(w, "backend", "First");

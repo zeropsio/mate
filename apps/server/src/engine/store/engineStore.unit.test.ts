@@ -439,7 +439,7 @@ it.effect(
 
 // witness: apps/server/src/engine/wire/records.ts | OR (kind = 'note' AND json_extract(body_json, '$.card') IS NOT NULL) → OR (kind = 'note' AND json_extract(body_json, '$.card') IS NULL)
 it.effect(
-  "ES+1: A conversation's window carries the crew card that opened each run it holds, ended or not, beside the person's messages; breaks: a crewmate's conversation opens on a finished turn with no task, and its card drops in above it on Show work",
+  "ES10: A conversation's window carries the crew card that opened each run it holds, ended or not, beside the person's messages; breaks: a crewmate's conversation opens on a finished turn with no task, and its card drops in above it on Show work",
   () =>
     Effect.gen(function* () {
       const store = yield* makeEngineStore();

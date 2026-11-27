@@ -50,6 +50,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   CREW_BRIEF_FILE,
   CREW_HOME_FILE,
+  crewTints,
   renderCrewHome,
   unplacedBuilders,
   withBuildersPlaced,
@@ -265,6 +266,8 @@ export function CrewSetup(props: CrewSetupProps) {
 
   const startLock = members === null ? null : (props.startLock?.(members) ?? null);
   const writers = members === null ? [] : members.filter((member) => member.kind === "writer");
+  // Each drafted face as every other surface draws it (`crewTints`), a tint it names none of too.
+  const tints = crewTints(members ?? [], mate.tint);
   const noDevHost =
     props.devHosts.length === 0 &&
     !props.pools?.length &&
@@ -445,6 +448,7 @@ export function CrewSetup(props: CrewSetupProps) {
                 key={member.handle}
                 mateName={mate.name}
                 member={member}
+                tint={tints.get(member.handle)!}
                 onOpen={() => {
                   void saveGoal().then(() => props.onEditCrewmate(member.handle));
                 }}
@@ -578,6 +582,7 @@ function SetupRow({
   choosePlace,
   mateName,
   onOpen,
+  tint,
 }: {
   readonly member: CrewMemberSpec;
   readonly crewmate: Crewmate | undefined;
@@ -585,6 +590,7 @@ function SetupRow({
   readonly choosePlace: boolean;
   readonly mateName: string;
   readonly onOpen: () => void;
+  readonly tint: MateTintId;
 }) {
   const lane = applied ? (crewmate?.lane ?? null) : null;
   const readying = lane?.state === "creating" || lane?.state === "setting-up";
@@ -596,9 +602,7 @@ function SetupRow({
     <Row
       aria-disabled={applied || undefined}
       data-crew-setup-row={member.handle}
-      lead={
-        <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
-      }
+      lead={<MateFace size={24} state={readying ? "working" : "idle"} tint={tint} />}
       line={
         <>
           <span className="block">{sentence}</span>

@@ -1,4 +1,4 @@
-next: CD87
+next: CD90
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -86,6 +86,6 @@ next: CD87
 - CD83 — A crewmate's turn whose session could not resume its agent's own thread goes again on a new session, which starts from the crewmate's packet, with nobody pressing anything; when its agent cannot resume twice more in the attempt, the task parks saying so; breaks: one lost thread fails the crewmate's every turn until a person clears its conversation
 - CD85 — A reader's task the lead plans names what it reviews: one that names nothing is refused and nothing is planned, and one that says "none" is planned reviewing no task; breaks: a review left untied to the work, whose reader opens no app and holds no verdict
 - CD86 — A reader opens only the app of the writer whose task its own task reviews, on that writer's service and crew port; another writer's app, and any app before its task reviews one, is refused; breaks: a reviewer opening another crewmate's app, or none at all
-- CD+1 — Continue on a card turn a restart could not carry on sends the card again, never its words as the person's own message; breaks: the crew's words show in the crewmate's conversation as the person's
-- CD+3 — Start fresh pressed while its crewmate is busy clears its conversation once it is free, as the person who pressed it; breaks: the line in its conversation names nobody, or the crew, as the one who cleared it
-- CD+2 — Work waiting for the lead's review raises no need of its own while a review the lead planned of it is under way, its question to the person included; once that review is over, an unattended wait shows again; breaks: one question to the person shows as two crewmates needing them
+- CD87 — Continue on a card turn a restart could not carry on sends the card again, never its words as the person's own message; breaks: the crew's words show in the crewmate's conversation as the person's
+- CD88 — Start fresh pressed while its crewmate is busy clears its conversation once it is free, as the person who pressed it; breaks: the line in its conversation names nobody, or the crew, as the one who cleared it
+- CD89 — Work waiting for the lead's review raises no need of its own while a review the lead planned of it is under way, its question to the person included; once that review is over, an unattended wait shows again; breaks: one question to the person shows as two crewmates needing them

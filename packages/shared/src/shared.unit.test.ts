@@ -9,6 +9,7 @@ import { expect, it } from "vite-plus/test";
 
 import { projectThreadAwareness } from "./agentAwareness.ts";
 import {
+  crewTints,
   parseCrewHome,
   renderCrewHome,
   validateCrewTopology,
@@ -602,4 +603,18 @@ it("SH14: Among several dev services and dev pools a crew's builder is placed on
     ],
     toPick: ["admin"],
   });
+});
+
+// witness: packages/shared/src/crewHome.ts | const worn = new Set(members.flatMap((member) => named(member.tint) ?? [])); → const worn = new Set<MateTintId>();
+it("SH15: A crewmate its crew home gives no tint wears the first of the crew's tints no other crewmate wears, named or given before it, never its Mate's, in the crew's order, and one that names a tint keeps it; breaks: a hand-written crew's crewmates share a colour or their Mate's, or wear one in the top bar and another in the editor", () => {
+  expect([
+    ...crewTints(
+      [{ handle: "lead" }, { handle: "builds", tint: "sky" }, { handle: "reviews", tint: null }],
+      "violet",
+    ),
+  ]).toEqual([
+    ["lead", "coral"],
+    ["builds", "sky"],
+    ["reviews", "olive"],
+  ]);
 });

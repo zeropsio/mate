@@ -15,7 +15,7 @@ const crewmate = (handle: string, lead: boolean, threadKind: "input" | "working"
 });
 
 // witness: apps/web/src/components/zerops/crew/SidebarCrewMinis.logic.ts | const ordered = all.toSorted((a, b) => Number(b.lead) - Number(a.lead)); → const ordered = all.toSorted((a, b) => (a.state === "needs" ? 0 : a.lead ? 1 : 2) - (b.state === "needs" ? 0 : b.lead ? 1 : 2));
-it("MN+2: A crew's faces in the menu stand in one order, the lead first and then the crew's, whoever works or needs the viewer; breaks: the faces reshuffle on every change of state and the person loses track of who is who", () => {
+it("MN125: A crew's faces in the menu stand in one order, the lead first and then the crew's, whoever works or needs the viewer; breaks: the faces reshuffle on every change of state and the person loses track of who is who", () => {
   const facts = (kinds: ReadonlyArray<"input" | "working" | null>) =>
     crewRowFacts({
       crew: Schema.decodeUnknownSync(CrewDigest)({
@@ -49,7 +49,7 @@ it("MN+2: A crew's faces in the menu stand in one order, the lead first and then
 });
 
 // witness: apps/web/src/components/zerops/crew/SidebarCrewMinis.logic.ts | moreNeeds: ordered.slice(minis.length).some((mini) => mini.state === "needs"), → moreNeeds: minis.some((mini) => mini.state === "needs"),
-it('MN+3: A crewmate past the faces the menu draws whole that needs the viewer marks the "+N" it folds into, and one that does not leaves it plain; breaks: a crew\'s sixth crewmate asks the person something and nothing in the menu shows it', () => {
+it('MN126: A crewmate past the faces the menu draws whole that needs the viewer marks the "+N" it folds into, and one that does not leaves it plain; breaks: a crew\'s sixth crewmate asks the person something and nothing in the menu shows it', () => {
   const facts = (asking: string) =>
     crewRowFacts({
       crew: Schema.decodeUnknownSync(CrewDigest)({
