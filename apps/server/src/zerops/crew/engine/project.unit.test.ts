@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 
-import { CrewWorld, home, lead, reader, writer } from "./crewDecideFixture.ts";
+import { CrewWorld, OPTIONS, home, lead, reader, writer } from "./crewDecideFixture.ts";
 import { crewSnapshotOf, nextCrewFrame, type CrewView } from "./project.ts";
 import { landingsToRead } from "./shipReads.ts";
 import type { CrewState, LaneRecord, MemberRecord, RunRecord, TaskRecord } from "./state.ts";
@@ -352,5 +352,18 @@ it("CD91: What shipped is read of at most a dev service's 20 newest landings not
     ["appdev"],
     [21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
     20,
+  ]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.run.ts | ...(ask === undefined ? {} : { ask }), →
+it("CD94: A run a crew run card's press starts names that card, in the engine and in the crew's snapshot; any other start names none; breaks: the card in the Mate's chat never learns its press started the crew, and offers Start again while the crew works", () => {
+  const started = (ask?: string) => {
+    const w = new CrewWorld().apply(definition);
+    w.press({ _tag: "start", ...OPTIONS, ...(ask === undefined ? {} : { ask }) });
+    return [w.state.run?.ask, crewSnapshotOf(w.state, view()).run?.ask];
+  };
+  expect([started("card-a"), started()]).toEqual([
+    ["card-a", "card-a"],
+    [undefined, undefined],
   ]);
 });

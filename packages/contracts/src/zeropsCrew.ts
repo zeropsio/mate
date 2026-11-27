@@ -404,6 +404,8 @@ export const CrewRun = Schema.Struct({
   /** The Zerops user who pressed Start. */
   startedBy: TrimmedNonEmptyString,
   startedAt: IsoDateTime,
+  /** The crew-run card whose press started it; absent for any other run. */
+  ask: Schema.optionalKey(TrimmedNonEmptyString),
   /**
    * The time the crew has worked in the run — running with a crew turn
    * running — which its time limit counts; paused time and time the crew sat
@@ -687,7 +689,11 @@ export const CrewCommand = Schema.TaggedUnion({
   operationContinue: { ...handleRef, operationId: Schema.String },
   operationDiscard: { ...handleRef, operationId: Schema.String },
   useCrewCopy: { ...handleRef, threadId: ThreadId, expectedPath: Schema.NullOr(Schema.String) },
-  start: CrewRunOptions.fields,
+  start: {
+    ...CrewRunOptions.fields,
+    /** The crew-run card (a `crew-run` fence's key) whose press starts it; absent for any other start. */
+    ask: Schema.optionalKey(TrimmedNonEmptyString),
+  },
   pause: runRef,
   /**
    * Resumes a paused run. A limit given replaces the run's (a budget above

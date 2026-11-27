@@ -320,7 +320,7 @@ const lanesReady = (state: CrewState): boolean =>
 export const runFrom = (run: RunRecord | null) =>
   run === null || run.state === "stopped" || run.state === "finished" ? "none" : run.state;
 
-export const startRun = (b: Builder, options: CrewRunOptions): void => {
+export const startRun = (b: Builder, options: CrewRunOptions, ask?: string): void => {
   const moved = runTransition(runFrom(b.state.run), {
     type: "start",
     admitted: true,
@@ -342,6 +342,7 @@ export const startRun = (b: Builder, options: CrewRunOptions): void => {
       keptMs: 0,
       since: null,
       leadWakes: 0,
+      ...(ask === undefined ? {} : { ask }),
     },
   });
   rotateForBudget(b);

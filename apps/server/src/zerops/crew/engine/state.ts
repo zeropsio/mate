@@ -292,6 +292,8 @@ export interface RunRecord {
   readonly since: number | null;
   /** The lead's wakes in this run. */
   readonly leadWakes: number;
+  /** The crew-run card whose press started it; absent for any other run. */
+  readonly ask?: string;
 }
 
 /** A wake the lead was given, by its key; the lead's next run serves it. */

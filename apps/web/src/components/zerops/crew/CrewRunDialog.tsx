@@ -44,7 +44,7 @@ import { Radio, RadioGroup } from "~/components/ui/radio-group";
 import { Separator } from "~/components/ui/separator";
 import { Toggle } from "~/components/ui/toggle";
 import { useServerConfigs } from "~/state/entities";
-import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
+import { type UseCrewCommand, useCrewCommand } from "~/zerops/crew/useCrewCommand";
 
 import { CrewPress } from "./CrewParts";
 import {
@@ -65,6 +65,15 @@ import {
 export interface CrewRunDialogAsk {
   readonly mode: "start" | "resume";
   readonly after: CrewCommand | null;
+  /**
+   * A crew-run card's press: the card the run it starts names (`CrewRun.ask`), and what goes
+   * first once Start is pressed — the card's goal saved as the crew's brief — through the dialog's
+   * own presses, so a failure shows in it and a cancel changes nothing.
+   */
+  readonly card?: {
+    readonly key: string;
+    readonly before: (commands: UseCrewCommand) => Promise<boolean>;
+  };
 }
 
 export function CrewRunDialog({
@@ -103,12 +112,17 @@ export function CrewRunDialog({
   const run = snapshot?.run ?? null;
   const resuming = ask?.mode === "resume" && run?.state === "paused" ? run : null;
   const submit = (command: CrewCommand) => {
-    void commands.send(command).then((result) => {
+    const card = command._tag === "start" ? ask?.card : undefined;
+    const sent: CrewCommand =
+      command._tag === "start" && card !== undefined ? { ...command, ask: card.key } : command;
+    void (async () => {
+      if (card !== undefined && !(await card.before(commands))) return;
+      const result = await commands.send(sent);
       if (result === null) return;
       const after = ask?.after ?? null;
       onClose();
       onDone(after);
-    });
+    })();
   };
   return (
     <Dialog

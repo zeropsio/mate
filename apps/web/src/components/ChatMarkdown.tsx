@@ -4,6 +4,7 @@ import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { renderBareChangeNumbers } from "./zerops/BareChangeNumber";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
 import { CrewAskFence } from "./ask/CrewAsk";
+import { CrewRunAskFence } from "./ask/CrewRunAsk";
 import { ScheduleAskFence } from "./ask/ScheduleAsk";
 import { PictureAskFence } from "./ask/PictureAsk";
 import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
@@ -2770,6 +2771,22 @@ const CHAT_MARKDOWN_COMPONENTS = {
             {highlightedCode}
           </MarkdownCodeBlock>
         </CrewAskFence>
+      );
+    }
+    // Work the Mate gives the crew it has, for the person to start (`CrewRunAsk`).
+    if (language === "crew-run" && variant !== "person") {
+      return (
+        <CrewRunAskFence code={codeBlock.code} isStreaming={isStreaming} threadRef={threadRef}>
+          <MarkdownCodeBlock
+            code={codeBlock.code}
+            language={language}
+            fenceTitle={fenceTitle}
+            theme={resolvedTheme}
+            isStreaming={isStreaming}
+          >
+            {highlightedCode}
+          </MarkdownCodeBlock>
+        </CrewRunAskFence>
       );
     }
     // A schedule the Mate proposed for the project's automated Mates (`ScheduleAsk`).

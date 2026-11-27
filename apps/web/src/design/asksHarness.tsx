@@ -41,6 +41,8 @@ import {
 } from "~/components/ask/AskCard";
 import { AskRevealed } from "~/components/ask/AskSecret";
 import { CrewAskCardView } from "~/components/ask/CrewAsk";
+import { CrewRunAskCardView } from "~/components/ask/CrewRunAsk";
+import { parseCrewRunAsk } from "~/components/ask/crewRunAsk.logic";
 import {
   type CrewAskAvailability,
   type CrewAskStanding,
@@ -1295,6 +1297,96 @@ function CrewSetUp({ density }: { readonly density: AskDensity }) {
   );
 }
 
+const CREW_RUN_ASK = parseCrewRunAsk(
+  JSON.stringify({
+    title: "Run the crew on the entry count",
+    why: "Theo builds it in his own copy, and Mira checks it before it goes into your code.",
+    goal: 'Show how many entries there are above the guestbook list: "3 entries", "1 entry", nothing when there are none.\n\n## Done when\n- The count matches the list on the preview for zero, one and several entries.',
+  }),
+)!;
+
+const CREW_RUN_CREW = [
+  {
+    handle: "ines",
+    displayName: "Ines",
+    tint: "amber",
+    kind: "lead",
+    jobFirstLine: "Plans the work and approves each finished part.",
+  },
+  {
+    handle: "theo",
+    displayName: "Theo",
+    tint: "sky",
+    kind: "writer",
+    jobFirstLine: "Builds the guestbook's pages in his own copy.",
+  },
+  {
+    handle: "mira",
+    displayName: "Mira",
+    tint: "olive",
+    kind: "reader",
+    jobFirstLine: "Reviews each finished part against the goal.",
+  },
+] as const;
+
+type CrewRunState = "ready" | "locked" | "started" | "over" | "other" | "none";
+const CREW_RUN_STATES: ReadonlyArray<readonly [CrewRunState, string]> = [
+  ["ready", "Waiting"],
+  ["locked", "Not yours to run"],
+  ["started", "Started from the card"],
+  ["over", "Its run is over"],
+  ["other", "Another run works"],
+  ["none", "No crew"],
+];
+
+const crewRunOf = (state: CrewRunState) =>
+  state === "started" || state === "over" || state === "other"
+    ? ({
+        id: "run-1",
+        state: state === "over" ? "finished" : "running",
+        reason: null,
+        reasonDetail: null,
+        startedBy: "user-ales",
+        startedAt: "2026-11-27T18:00:00.000Z",
+        ...(state === "other" ? {} : { ask: CREW_RUN_ASK.key }),
+        elapsedMs: 0,
+        spentUsd: 0,
+        usagePercent: null,
+        options: {
+          budgetUsd: "unlimited",
+          timeLimitHours: 2,
+          stopAtUsagePercent: 80,
+          landing: "lead",
+          devGrant: false,
+          leadMayStart: true,
+        },
+      } as const)
+    : null;
+
+/** The crew run card: drawn in the conversation only, so one density. */
+function CrewRun({ density }: { readonly density: AskDensity }) {
+  const [state, setState] = useState<CrewRunState>("ready");
+  if (density === "compact") return null;
+  return (
+    <Specimen
+      chips={<States label="Crew run" onChange={setState} states={CREW_RUN_STATES} value={state} />}
+      density={density}
+      name="Run the crew"
+    >
+      <CrewRunAskCardView
+        ask={CREW_RUN_ASK}
+        crewmates={state === "none" ? [] : CREW_RUN_CREW}
+        lock={state === "locked" ? "someone-else" : null}
+        mate={{ name: MATE }}
+        onOpenCrew={NOTHING}
+        onStart={NOTHING}
+        run={crewRunOf(state)}
+        status={state === "none" ? "none" : "applied"}
+      />
+    </Specimen>
+  );
+}
+
 const SCHEDULE_ASK = parseScheduleAsk(
   JSON.stringify({
     title: "Update the dependencies every night",
@@ -1426,6 +1518,7 @@ function Harness() {
           <Mirror density={density} />
           <OrganizationScope density={density} />
           <CrewSetUp density={density} />
+          <CrewRun density={density} />
           <ScheduleSetUp density={density} />
         </div>
       </div>

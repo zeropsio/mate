@@ -1,4 +1,4 @@
-next: CD94
+next: CD95
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -92,3 +92,4 @@ next: CD94
 - CD90 — A landed task counts as shipped, or as not shipped yet, only by what the Mate read of its own landing commit on the origin's branches; one never read, read for an earlier landing, or closed with nothing to land counts as neither; breaks: after a restart, or once the Mate moved the work onto a branch of its own, the Crew tab says it hasn't shipped work it shipped
 - CD91 — What shipped is read of at most a dev service's 20 newest landings not read as shipped, none landed more than 30 days ago, and the Crew tab counts those of them not read yet as unread, claiming nothing of them; breaks: every boot and every feed opened re-reads all of a long-lived crew's landings, until one slow read keeps every one unread
 - CD92 — A person's message to a reader closes once the reader reports and is free: its answer is in its chat and nothing of it waits to be landed; breaks: every question to a reviewer waits in Needs you as work to review, with nothing to land
+- CD94 — A run a crew run card's press starts names that card, in the engine and in the crew's snapshot; any other start names none; breaks: the card in the Mate's chat never learns its press started the crew, and offers Start again while the crew works

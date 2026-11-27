@@ -82,14 +82,18 @@ export const pressed = (
         throw new Rejected("invalid-definition", "the crew home is unreadable");
       return saveHome(b, home, press.apply);
     case "start":
-      return startRun(b, {
-        budgetUsd: press.budgetUsd,
-        timeLimitHours: press.timeLimitHours,
-        stopAtUsagePercent: press.stopAtUsagePercent,
-        landing: press.landing,
-        devGrant: press.devGrant,
-        leadMayStart: press.leadMayStart,
-      });
+      return startRun(
+        b,
+        {
+          budgetUsd: press.budgetUsd,
+          timeLimitHours: press.timeLimitHours,
+          stopAtUsagePercent: press.stopAtUsagePercent,
+          landing: press.landing,
+          devGrant: press.devGrant,
+          leadMayStart: press.leadMayStart,
+        },
+        press.ask,
+      );
     case "pause": {
       const run = requireRun(b, press.runId);
       if (runTransition(runFrom(run), { type: "pause", reason: "person" }).kind !== "moved") {
