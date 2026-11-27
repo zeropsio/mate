@@ -624,7 +624,7 @@ const underReview = () => {
 const lands = (w: CrewWorld, handle: string) => w.pending("crew.land", handle) !== undefined;
 
 // witness: apps/server/src/zerops/crew/engine/decide.tools.ts | if (member.kind !== "lead") return readerVerdict(b, member, task, call.input); → if (member.kind === "writer") return readerVerdict(b, member, task, call.input);
-it("CD+1: A reader's verdict lands nothing: it waits on the reader's own task for the lead, and only the lead's accept lands the task it reviews", () => {
+it("CD80: A reader's verdict lands nothing: it waits on the reader's own task for the lead, and only the lead's accept lands the task it reviews", () => {
   const w = underReview();
   w.tool("reviewer", { tool: "review", input: { task: 1, verdict: "accept", note: "Checked." } });
   const after = [w.task(1).state, lands(w, "backend"), w.task(2).verdict];
@@ -638,7 +638,7 @@ it("CD+1: A reader's verdict lands nothing: it waits on the reader's own task fo
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.tools.ts | if (given.id !== task.id) { → if (given.id === task.id) {
-it("CD+2: A reader gives its verdict only on the task its own task reviews: one on another task is refused and changes nothing", () => {
+it("CD81: A reader gives its verdict only on the task its own task reviews: one on another task is refused and changes nothing", () => {
   const w = new CrewWorld();
   w.apply(home(lead(), writer("ada"), writer("bob"), reader("reviewer")));
   w.press({ _tag: "start", ...LEAD_LANDS }, OTHER);
@@ -660,7 +660,7 @@ it("CD+2: A reader gives its verdict only on the task its own task reviews: one 
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.advance.ts | (task.reviews === undefined || b.state.tasks[task.reviews]?.state === "review"), → true,
-it("CD+3: A reader's task that reviews another starts only once that task is in review, and the lead is woken for that task only once the reader reported", () => {
+it("CD82: A reader's task that reviews another starts only once that task is in review, and the lead is woken for that task only once the reader reported", () => {
   const w = new CrewWorld();
   w.apply(home(lead(), writer("backend"), reader("reviewer")));
   w.press({ _tag: "start", ...LEAD_LANDS }, OTHER);

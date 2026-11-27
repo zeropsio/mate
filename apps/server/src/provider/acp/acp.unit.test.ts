@@ -814,7 +814,7 @@ it("AP15: Only a local image path (a workspace path, a Windows path or a local f
 });
 
 // witness: apps/server/src/provider/acp/AcpRuntimeModel.ts | ...(next.declined || previous?.declined ? { declined: true as const } : {}), → ...(next.declined ? { declined: true as const } : {}),
-it("AP+1: A call whose permission ask was answered with one of the ask's own reject options ends declined, though its agent then reports it completed or failed; an allow, a cancelled ask and an option the ask never offered leave the call as its agent reports it", () => {
+it("AP19: A call whose permission ask was answered with one of the ask's own reject options ends declined, though its agent then reports it completed or failed; an allow, a cancelled ask and an option the ask never offered leave the call as its agent reports it", () => {
   // The asks as Cursor (cursor-agent 2026.10.22) and Antigravity (agy 1.5.18) send them.
   const cursorAsk = {
     sessionId: "session-1",
