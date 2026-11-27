@@ -189,6 +189,21 @@ const RUN: ReadonlyArray<RecordItem> = [
     words: "Yes, but show no secrets",
     imageOnly: false,
   },
+  // Its first paragraph one line, its second longer: the log's two lines of it end on whole lines.
+  {
+    kind: "thought",
+    key: "thought:r2",
+    at: ago(52),
+    messages: [
+      said(
+        "r2",
+        "reasoning",
+        "Signed in only, then, and nothing secret on the page.\n\nThe uptime comes from the process and the last deploy from the build's stamp, so the page reads neither the vault nor the environment: nothing on it could show a secret, and the route needs only the guard the other admin pages use.",
+        52,
+      ),
+    ],
+    durationMs: 2000,
+  },
   step(
     call({
       id: "e1",
