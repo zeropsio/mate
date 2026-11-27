@@ -122,7 +122,7 @@ function NoticeMessageRow({
         <header className="min-w-0 font-semibold text-mate-ink">
           {mateMessageNoticeHeading(item.about, title)}
         </header>
-        <p>{noticePersonSentence(mateName, item.notAdmittedReason)}</p>
+        <p>{noticePersonSentence(mateName)}</p>
         <Collapsible>
           <CollapsibleTrigger className="group/more inline-flex items-center gap-1.5 rounded-mark text-body text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
             What {mateName} was told

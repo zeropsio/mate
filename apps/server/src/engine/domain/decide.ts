@@ -127,13 +127,6 @@ const handle = (b: StepBuilder, command: Command): void => {
           answer: { messageId: command.messageId, item: command.itemId, to: command.to },
         },
       });
-    case "RecordNoticeNotAdmitted":
-      b.emit({
-        _tag: "MateNoticeNotAdmitted",
-        messageId: command.messageId,
-        reason: command.reason,
-      });
-      return;
     case "BindLease":
       // Its first lease is where it works: another the agent acquires is only a container it uses.
       if (b.state.lease === null) b.emit({ _tag: "LeaseBound", lease: command.lease });

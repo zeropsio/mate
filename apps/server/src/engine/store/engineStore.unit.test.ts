@@ -25,7 +25,6 @@ import {
   turn,
 } from "../testing/fixtures.ts";
 import { makeEngineStore } from "./EngineStore.ts";
-import { itemOfRow, type ItemRow } from "../wire/records.ts";
 
 /** Each engine table's row count, by name. */
 const counts = Effect.gen(function* () {
@@ -71,64 +70,6 @@ const runCycle = (n: number): ReadonlyArray<Command> => [
   sent(n),
   ended(n),
 ];
-
-// witness: apps/server/src/engine/store/conversationProjections.ts | '$.mateMessage.notAdmittedReason' → '$.mateMessage.notAdmitted'
-it.effect(
-  "ES+1: A delivered check notice keeps the ledger's settled reason in its conversation item across a reload and later delivery updates, without changing another notice; breaks: a notice that needs a person says the Mate is fixing it after the ledger forgets the end",
-  () =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const store = yield* makeEngineStore();
-      const about = {
-        appId: "app",
-        repo: "repo",
-        number: 57,
-        branch: "draft",
-        head: "head",
-        failed: ["review-build"],
-      } as const;
-      const notice = (id: string): Command => ({
-        _tag: "Send",
-        text: "The Review build failed.",
-        mateMessage: { kind: "notice", id, about },
-      });
-      const first = yield* drive(store, initialState(conversation), [notice("one"), notice("two")]);
-      const record = envelope(
-        { _tag: "RecordNoticeNotAdmitted", messageId: "one", reason: "no-agent" },
-        { id: "notice-end", by: { kind: "engine" } },
-      );
-      const marked = yield* drive(store, first.state, [record]);
-      const justMarked =
-        yield* sql<ItemRow>`SELECT * FROM engine_item WHERE kind = 'person' ORDER BY opened_seq`;
-      const projected = yield* Effect.forEach(justMarked, itemOfRow);
-      expect(projected[0]).toMatchObject({
-        kind: "person",
-        mateMessage: { kind: "notice", id: "one", notAdmittedReason: "no-agent" },
-      });
-      const updated = yield* drive(store, marked.state, [prepared(1), opened(1), sent(1)]);
-      const loaded = yield* store.load(conversation);
-      const again = yield* drive(store, loaded, [record]);
-      const rows =
-        yield* sql<ItemRow>`SELECT * FROM engine_item WHERE kind = 'person' ORDER BY opened_seq`;
-      const items = yield* Effect.forEach(rows, itemOfRow);
-      const shown = items.map((item) => (item.kind === "person" ? item.mateMessage : undefined));
-      expect(shown).toEqual([
-        { kind: "notice", id: "one", about, notAdmittedReason: "no-agent" },
-        { kind: "notice", id: "two", about },
-      ]);
-      expect({
-        loaded: loaded.headSeq,
-        updated: updated.state.headSeq,
-        duplicate: again.last?.duplicate,
-        head: again.state.headSeq,
-      }).toEqual({
-        loaded: updated.state.headSeq,
-        updated: updated.state.headSeq,
-        duplicate: true,
-        head: updated.state.headSeq,
-      });
-    }).pipe(Effect.provide(sqliteWithEngineTables)),
-);
 
 // witness: apps/server/src/engine/store/EngineStore.ts | for (const effect of step.effects) { → for (const effect of step.effects.slice(1)) {
 it.effect(

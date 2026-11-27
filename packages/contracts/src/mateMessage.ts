@@ -97,11 +97,7 @@ export type MateMessage = typeof MateMessage.Type;
  */
 export const MateMessageItem = Schema.Union([
   Schema.Struct({ ...itemFields, ...peerFields }),
-  Schema.Struct({
-    ...itemFields,
-    ...noticeFields,
-    notAdmittedReason: Schema.optionalKey(MateMessageNotAdmittedReason),
-  }),
+  Schema.Struct({ ...itemFields, ...noticeFields }),
 ]);
 export type MateMessageItem = typeof MateMessageItem.Type;
 

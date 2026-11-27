@@ -368,27 +368,6 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         },
       };
     }
-    case "MateNoticeNotAdmitted": {
-      const runs = Object.fromEntries(
-        Object.entries(state.runs).map(([id, run]) => {
-          const body = run.personBody;
-          const message = body?.mateMessage;
-          return message?.kind === "notice" && message.id === event.messageId
-            ? [
-                id,
-                {
-                  ...run,
-                  personBody: {
-                    ...body,
-                    mateMessage: { ...message, notAdmittedReason: event.reason },
-                  },
-                },
-              ]
-            : [id, run];
-        }),
-      );
-      return { ...state, runs };
-    }
     case "ItemClosed": {
       const touched = touch(
         said(state, event.runId, state.items[event.itemId]?.by, event.body),

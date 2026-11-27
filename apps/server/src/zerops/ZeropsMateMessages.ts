@@ -210,10 +210,7 @@ const TAKEN_BACK_WAIT_MS = 24 * 60 * 60_000;
 const BACKGROUND_WAIT_MS = 60 * 60_000;
 
 const endedUp = (id: string, entry: MessageEntry): EndedUp | undefined =>
-  entry.end === undefined ||
-  (entry.reason !== undefined &&
-    entry.conversationId !== undefined &&
-    entry.notAdmittedRecorded !== true)
+  entry.end === undefined
     ? undefined
     : {
         type: "message-ended",
@@ -297,47 +294,6 @@ export const make = Effect.gen(function* () {
         }),
       );
 
-  // The ledger owns the end. The conversation keeps its projection before HQ hears it, so the
-  // reason survives the ledger's bounded acknowledgement history. A restart or a conversation
-  // move replays the same command if either durable write did not finish.
-  const recordNoticeEnd = (id: string, entry: MessageEntry) => {
-    const { reason, conversationId } = entry;
-    if (reason === undefined || conversationId === undefined || entry.notAdmittedRecorded === true)
-      return Effect.succeed(entry);
-    return Effect.gen(function* () {
-      const result = yield* engine.deliver(
-        ConversationId.make(conversationId),
-        { _tag: "RecordNoticeNotAdmitted", messageId: id, reason },
-        CommandId.make(`mate-message-not-admitted:${id}`),
-        { kind: "engine" },
-      );
-      if (result._tag === "Rejected") {
-        yield* Effect.logWarning(
-          "zerops mate messages: a notice end could not reach its conversation",
-          {
-            reason: result.rejection.reason,
-          },
-        );
-        return entry;
-      }
-      return yield* ledger.update(id, (current) => ({
-        ...(current ?? entry),
-        notAdmittedRecorded: true,
-      }));
-    }).pipe(
-      Effect.catchTags({
-        DeliveryUnrecorded: (error) =>
-          Effect.logWarning("zerops mate messages: a notice end could not be recorded", {
-            reason: error.message,
-          }).pipe(Effect.as(entry)),
-        MateMessageLedgerUnwritten: (error) =>
-          Effect.logWarning("zerops mate messages: a notice receipt could not be kept", {
-            reason: error.message,
-          }).pipe(Effect.as(entry)),
-      }),
-    );
-  };
-
   /** Keeps the message's end, and tells it on every link; none when it could not be kept. */
   const settle = (
     id: string,
@@ -353,7 +309,6 @@ export const make = Effect.gen(function* () {
         ...(words === undefined ? {} : { words }),
       }))
       .pipe(
-        Effect.flatMap((entry) => recordNoticeEnd(id, entry)),
         Effect.tap(() =>
           Effect.sync(() => {
             waitSaid.delete(id);
@@ -900,21 +855,7 @@ export const make = Effect.gen(function* () {
     everything = false;
     admissionMoved = false;
     moved.clear();
-    const entries = yield* ledger.entries;
-    for (const [id, entry] of entries) {
-      if (
-        entry.end === undefined ||
-        entry.reason === undefined ||
-        entry.conversationId === undefined ||
-        entry.notAdmittedRecorded === true ||
-        (!all && !conversations.has(entry.conversationId))
-      )
-        continue;
-      const recorded = yield* recordNoticeEnd(id, entry);
-      const up = recorded.acked === true ? undefined : endedUp(id, recorded);
-      if (up !== undefined) yield* PubSub.publish(ends, up);
-    }
-    const open = entries.filter(([, entry]) => entry.end === undefined);
+    const open = (yield* ledger.entries).filter(([, entry]) => entry.end === undefined);
     if (open.length === 0) return;
     const automated = yield* automation.automated;
     const now = yield* owner.owner;

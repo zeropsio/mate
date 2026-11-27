@@ -35,7 +35,7 @@ import { ThreadTokenUsageSnapshot, ToolPresentation } from "./providerRuntime.ts
 import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
 import { MATE_TASK_BODY_MAX, MateTaskMessage, MateTaskSource } from "./mateTask.ts";
-import { MateMessageFrom, MateMessageItem, MateMessageNotAdmittedReason } from "./mateMessage.ts";
+import { MateMessageFrom, MateMessageItem } from "./mateMessage.ts";
 import { MessageAbout } from "./messageAbout.ts";
 import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
@@ -1144,11 +1144,6 @@ export const ItemClosed = event("ItemClosed", {
   itemId: ItemId,
   body: ItemBody,
 });
-/** The ledger settled a delivered check notice without an agent to work it. */
-export const MateNoticeNotAdmitted = event("MateNoticeNotAdmitted", {
-  messageId: Schema.String,
-  reason: MateMessageNotAdmittedReason,
-});
 export const RequestOpened = event("RequestOpened", {
   runId: RunId,
   requestId: RequestId,
@@ -1449,7 +1444,6 @@ const knownEvents = [
   ItemOpened,
   ItemUpdated,
   ItemClosed,
-  MateNoticeNotAdmitted,
   RequestOpened,
   RequestAnswered,
   RequestReopened,
