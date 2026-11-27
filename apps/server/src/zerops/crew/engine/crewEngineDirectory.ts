@@ -25,7 +25,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 
-import { conversationOfThread } from "../../../engine/pump/TurnPump.ts";
+import { conversationOfThread, providerThreadOf } from "../../../engine/pump/TurnPump.ts";
 import type { ProviderInstanceAgent } from "../../../spi/providerInstances.ts";
 import type { ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { crewLane } from "../CrewDefinition.ts";
@@ -342,14 +342,16 @@ export const makeEngineCrewDirectory = (inputs: EngineCrewDirectoryInputs) => {
 
   /**
    * The state packet a crewmate's new session starts from (a rotation's seed): its memory, its
-   * open task and its copy's ground; none for a crewmate that keeps no memory.
+   * open task and its copy's ground, read as the crewmate is on its current session (an older
+   * one is not live and knows no copy); none for a crewmate that keeps no memory.
    */
   const sessionPacket = (handle: string) =>
     Effect.gen(function* () {
       const state = yield* inputs.state;
       const member = state.members[handle];
       if (member === undefined) return null;
-      const memberOf = yield* memberFor(`${member.conversationId}/s/0` as ThreadId);
+      const current = (yield* inputs.generation(member.conversationId)) ?? 1;
+      const memberOf = yield* memberFor(providerThreadOf(member.conversationId, current));
       if (Option.isNone(memberOf) || !memberOf.value.prompt.memory) return null;
       return yield* inputs.memory
         .packet(memberOf.value, memoryTask(state, handle))
