@@ -21,6 +21,32 @@ export function indexChangeNumbers(
   return indexed;
 }
 
+/** The chat-script names of a change's two presses (Draft and Add to your app) in a Mate's prose. */
+export type ChangeAction = "draft" | "add";
+const CHANGE_ACTIONS: ReadonlyMap<string, ChangeAction> = new Map([
+  ["open draft", "draft"],
+  ["add to your app", "add"],
+]);
+
+/** The press a bold label names, by the chat script's words in any case; none for other words. */
+export const changeActionOf = (label: string): ChangeAction | undefined =>
+  CHANGE_ACTIONS.get(label.trim().toLowerCase());
+
+/**
+ * The one change a block of prose names, which its bold presses act on; none where it names no
+ * known change or more than one, so a press never guesses between two.
+ */
+export function blockChange(
+  text: string,
+  changes: ReadonlyMap<string, NumberedChange | null>,
+): NumberedChange | undefined {
+  const named = new Map<string, NumberedChange>();
+  for (const part of resolveChangeNumbers(text, changes))
+    if (part.change !== undefined)
+      named.set(`${part.change.repo}#${part.change.number}`, part.change);
+  return named.size === 1 ? [...named.values()][0] : undefined;
+}
+
 export interface ChangeNumberPart {
   readonly text: string;
   readonly change?: NumberedChange;
