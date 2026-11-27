@@ -207,9 +207,7 @@ export function ZeropsChangeLinkChip({
       </span>
       <span className="font-medium">{words ?? line}</span>
       {state === undefined ? null : (
-        <span className="sr-only">
-          {`, ${state.word}${landedSince ? ", merged since this message" : ""}`}
-        </span>
+        <span className="sr-only">{`, ${landedSince ? "Merged after this message" : state.word}`}</span>
       )}
     </InlineButton>
   );
@@ -218,8 +216,7 @@ export function ZeropsChangeLinkChip({
     <Tooltip>
       <TooltipTrigger render={chip} />
       <TooltipPopup side="top">
-        {state.word}
-        {landedSince ? " — merged after this was written" : ""}
+        {landedSince ? "Merged after this was written" : state.word}
       </TooltipPopup>
     </Tooltip>
   );

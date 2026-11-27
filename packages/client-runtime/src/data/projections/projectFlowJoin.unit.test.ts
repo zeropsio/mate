@@ -323,7 +323,7 @@ it("PJ53: A release whose preflight has a credential, diverged or unknown blocke
   }
 });
 
-// witness: packages/client-runtime/src/zerops/projectFlow.ts | row.repo === change.repo && row.number === change.number && row.state !== "open" → false
+// witness: packages/client-runtime/src/zerops/projectFlow.ts | !isActiveChange(row.state), → false,
 it("PJ94: A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it", () => {
   const listed: HqNavigationChange = {
     repo: "api",

@@ -333,7 +333,7 @@ it("CM49: A crewmate verifies its own host and opens the browser only while dev 
 });
 
 // witness: apps/server/src/zerops/crew/CrewPolicy.ts | return new URL(url).origin === new URL(app).origin; → return new URL(url).hostname === new URL(app).hostname;
-it("CM+1: A reader's browser opens only the own app of the writer whose task it reviews: any other port or host is refused, as is the browser for a reader that reviews nothing", () => {
+it("CM62: A reader's browser opens only the own app of the writer whose task it reviews: any other port or host is refused, as is the browser for a reader that reviews nothing", () => {
   const reviewing: LiveGateContext = {
     ...reader,
     member: { ...reader.member, reviewsApp: "http://appdev:3001" },

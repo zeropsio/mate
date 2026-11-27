@@ -1,4 +1,4 @@
-next: ZV206
+next: ZV210
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -162,15 +162,16 @@ next: ZV206
 - ZV191 — A search keeps a project whose name matches with all its repositories, else only its repositories whose names match, whatever the letters' case, and drops a project with neither; breaks: searching a repository's name hides it because its project's name does not match
 - ZV192 — A project's standing badge is neutral for kept code, a warning for an open question, informational while deletion is going, and dangerous when deletion needs a person or failed; breaks: a question looks like ordinary kept code
 - ZV193 — A zcp commit-deploy version reads its 12-hex commit for display and matching, while other names keep their existing meaning
-- ZV194 — A Review build's take turns unavailable only after its deadline by the reader's clock, and each result keeps its own state and reason; breaks: a dead service leaves a change awaiting forever or a failed build reads passing
-- ZV195 — The review leaves Merge available and plain while a Review build awaits, fails or is unavailable, recommends it when the build passes, and retains GitHub's checks; breaks: an awaiting build reads ready or Merge is recommended over a failed build
-- ZV196 — A change read from navigation alone carries its Review build and given-up decision into its row; breaks: a failed build without a GitHub pull request reads ready
-- ZV197 — The Git tab reads the Review build of the change at the reader's clock; breaks: it says ready while the build is awaiting or failed, or keeps awaiting past its deadline
-- ZV198 — A project's flow reads an awaiting Review build at its caller's clock; breaks: a project keeps awaiting after the deadline with no new event
-- ZV199 — Each passed Review build part offers its probed public address, or its public stage hostname when unprobed; failed, unavailable and private parts offer none; breaks: a person cannot open a passed stage or is offered a stage that did not pass
+- ZV194 — An addition's unanswered take becomes unavailable only after its deadline; breaks: an expired build still looks active.
+- ZV195 — A stopped addition's retained result does not claim that an open draft is still being added; breaks: a person cannot add it again.
+- ZV196 — A change read from navigation alone carries its addition result and given-up decision into its row; breaks: a failed addition without a GitHub pull request reads as running
+- ZV197 — The Git tab shows the same addition state as the change, including an expired take and a stopped draft; breaks: Git says ready while the addition needs attention.
+- ZV198 — A project's flow reads an addition's take at its caller's clock; breaks: an expired take keeps looking active without a new event
 - ZV200 — A change's Preview opens only a running workspace on its branch and repository, and an unread workspace is not claimed stopped; breaks: a review opens another change's workspace.
-- ZV201 — A Review build's public app address opens its root rather than its health probe; breaks: Try it opens a health endpoint instead of the application.
 - ZV202 — Only an open change offers its own live workspace; a merged or closed change never does, even while a lease remains visible; breaks: a person opens a workspace after its change ended.
 - ZV203 — A routed app stage is offered only for the change's repository, including after its build report leaves; breaks: a merged change loses its app address or opens another repository's app.
-- ZV204 — A public app address remains available while a Review build runs or its report is for another head; breaks: a person loses their app address during another build.
-- ZV205 — A change handed to a person for failed checks says whether its Mate ran out of tries, has no usable agent or reached a usage limit, on the Review build and GitHub verdicts; breaks: the person cannot tell what to do next
+- ZV205 — An addition handed to a person says whether its Mate ran out of tries, has no usable agent or reached a usage limit; breaks: the person cannot tell what to do next.
+- ZV206 — A draft stays visible and says it is being added while HQ builds or merges it; breaks: the change vanishes or reads ready to add again.
+- ZV207 — An addition in progress keeps the draft open and offers Stop adding only until HQ claims the merge; breaks: a person is told the change merged early or can request a stop HQ cannot take.
+- ZV208 — A failed addition and a handoff to a person are visible while the draft stays open; breaks: a person sees a build in progress after it failed or needs their help.
+- ZV209 — A newly accepted addition waits for its own result when the change stream still holds the previous one; breaks: an old failure is reported for the new attempt.

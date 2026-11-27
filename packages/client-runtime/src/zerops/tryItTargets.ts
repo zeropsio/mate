@@ -1,10 +1,9 @@
 import type { ZeropsDevServer, ZeropsLease } from "@t3tools/contracts";
 import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
-import { leaseMayBeOf, repoOfUrl, type HqReviewBuild } from "@t3tools/shared/hqChanges";
+import { leaseMayBeOf, repoOfUrl } from "@t3tools/shared/hqChanges";
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { mateParts, poolWorkspaceLink } from "./mateParts.ts";
 import { recipeTierRepositories } from "./recipeTier.ts";
-import { reviewBuildVerdict } from "./reviewVerdict.ts";
 import type { PoolPair } from "./servicePairs.ts";
 
 /** The change's own workspace and its parts' public stages. */
@@ -30,8 +29,6 @@ export function tryItTargets(input: {
   readonly repositoryRemote: string | undefined;
   readonly open: boolean;
   readonly branch: string | undefined;
-  readonly head: string | undefined;
-  readonly reviewBuild: HqReviewBuild | undefined;
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
   readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
   /** The classic dev checkout's branch, null when read and not a branch. */
@@ -86,16 +83,10 @@ export function tryItTargets(input: {
     (classic !== undefined &&
       (input.classicBranch === undefined ||
         (input.classicBranch === input.branch && input.classicServers === undefined)));
-  const build = input.reviewBuild;
-  const verdict = reviewBuildVerdict(build, undefined);
   const appTarget = (service: string, url: string): ReviewTryTargets["builds"][number] => ({
     service,
     url: new URL(url).origin,
   });
-  const reported =
-    build !== undefined && input.head !== undefined && build.head === input.head
-      ? (verdict?.links ?? []).map(({ setup, url }) => appTarget(setup, url))
-      : [];
   const repositories = input.tier === undefined ? new Map() : recipeTierRepositories(input.tier);
   const sameRepository = (address: string | undefined): boolean => {
     if (address === undefined) return false;
@@ -121,7 +112,7 @@ export function tryItTargets(input: {
       return [];
     return [appTarget(stage.service, stage.url)];
   });
-  const builds = [...reported, ...routed].filter(
+  const builds = routed.filter(
     (entry, index, all) => all.findIndex((other) => other.url === entry.url) === index,
   );
   return {

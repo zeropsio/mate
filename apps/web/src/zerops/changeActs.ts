@@ -11,7 +11,7 @@
  * change move since the press (`changeActStands`), or when its review is opened again.
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { operationProgress } from "@t3tools/client-runtime/data";
+import { flowAnswer, operationProgress } from "@t3tools/client-runtime/data";
 import {
   changeActOf,
   changeActStands,
@@ -124,6 +124,10 @@ function actsOf(data: Data): (scope: string) => Atom.Atom<ActMap> {
               ? undefined
               : {
                   pending: press.pending,
+                  state:
+                    press.requestId === undefined
+                      ? undefined
+                      : (get(data.project(flowAnswer, press.requestId))?.state ?? undefined),
                   progress:
                     press.requestId === undefined
                       ? undefined

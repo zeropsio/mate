@@ -45,7 +45,7 @@ import {
   type ZeropsMateCopies,
 } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { leaseMayBeOf, repoOfUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { isActiveChange, leaseMayBeOf, repoOfUrl } from "@t3tools/shared/hqChanges";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
@@ -56,8 +56,8 @@ import type { FlowPullRequest } from "./projectFlow.ts";
 import {
   ARRIVING_ON_GITHUB,
   GITHUB_CHECKS_FAILED,
+  addingVerdict,
   githubChecksFailed,
-  reviewBuildVerdict,
   REVIEW_LABEL,
   waitsForGithub,
 } from "./reviewVerdict.ts";
@@ -401,8 +401,7 @@ function gitVerdict(input: {
   readonly mergeability: MergeabilityKind;
   /** GitHub's checks failed on the change's latest push (`githubChecksFailed`). */
   readonly checksFailed: boolean;
-  readonly reviewBuild: ReturnType<typeof reviewBuildVerdict>;
-  readonly checksGivenUp?: HqChange["checksGivenUp"];
+  readonly addition: ReturnType<typeof addingVerdict>;
   readonly githubHandoff: boolean;
   readonly baseBranch: string;
   readonly trouble: string;
@@ -425,20 +424,15 @@ function gitVerdict(input: {
     case "merged":
       return { tone: "ok", text: "Merged", ask: undefined };
     case "in-review":
+      if (input.addition !== undefined)
+        return { tone: input.addition.tone, text: input.addition.title, ask: undefined };
       // The same pull request has a page of its own and a row in every list.
       // Two surfaces answering the same question in two colours is how a
       // release came to wear a rebase's amber, so the tones here are the tones
       // there — held to it by a test that reads them all. The words are the
       // plain state a change row says after its Mate's name ("Ready to merge").
       return {
-        ...inReview(
-          input.mergeability,
-          input.baseBranch,
-          input.checksFailed,
-          input.githubHandoff,
-          input.reviewBuild,
-          input.checksGivenUp,
-        ),
+        ...inReview(input.mergeability, input.baseBranch, input.checksFailed, input.githubHandoff),
         ask:
           input.pullRequestNumber === undefined
             ? undefined
@@ -491,27 +485,14 @@ function inReview(
   baseBranch: string,
   checksFailed: boolean,
   githubHandoff: boolean,
-  build: ReturnType<typeof reviewBuildVerdict>,
-  givenUp?: HqChange["checksGivenUp"],
 ): Omit<GitVerdict, "ask"> {
   switch (mergeability) {
     case "mergeable":
       if (githubHandoff) return { tone: "busy", text: ARRIVING_ON_GITHUB };
-      if (build?.state === "awaiting" || build?.state === "failing")
-        return {
-          tone: build.state === "awaiting" && !checksFailed ? "busy" : "attention",
-          text: `${build.word}${checksFailed ? ` · ${GITHUB_CHECKS_FAILED}` : ""}`,
-        };
       // Never "Ready to merge" over failed checks: its row and its review say the same.
       return checksFailed
-        ? {
-            tone: "attention",
-            text: `${GITHUB_CHECKS_FAILED}${givenUp != null && build === undefined ? " · over to you" : ""}${build === undefined ? "" : ` · ${build.word}`}`,
-          }
-        : {
-            tone: "off",
-            text: build === undefined ? "Ready to merge" : `Ready to merge · ${build.word}`,
-          };
+        ? { tone: "attention", text: GITHUB_CHECKS_FAILED }
+        : { tone: "off", text: "Ready to merge" };
     case "empty":
       return { tone: "off", text: "Nothing to merge" };
     case "checking":
@@ -571,7 +552,7 @@ function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockS
   if (checkout.read === false || !changes.read) return "unread";
   if (!checkout.isRepo) return "no-repository";
   if (changes.change?.merged === true) return "merged";
-  if (changes.change?.state === "open") return "in-review";
+  if (isActiveChange(changes.change?.state)) return "in-review";
   if (!checkout.hasUpstream || checkout.aheadCount > 0) return "unpushed";
   if (checkout.behindCount > 0) return "behind";
   return "untouched";
@@ -657,8 +638,7 @@ export function gitBlock(input: {
     // Read only in review, which has a change.
     mergeability: change?.mergeability ?? "checking",
     checksFailed: change !== undefined && githubChecksFailed(change),
-    reviewBuild: reviewBuildVerdict(change?.reviewBuild, input.now, change?.checksGivenUp),
-    checksGivenUp: change?.checksGivenUp,
+    addition: change === undefined ? undefined : addingVerdict(change, input.now),
     githubHandoff: change !== undefined && waitsForGithub(change),
     baseBranch,
     trouble,

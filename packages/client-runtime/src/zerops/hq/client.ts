@@ -1128,6 +1128,8 @@ export interface HqApi {
    * they were shown; HQ answers the change merged, or refuses with one of `MERGE_REFUSALS`.
    */
   readonly mergeChange: (link: ChangeLink, expectedHead: string) => Promise<Asked<HqChange>>;
+  /** Stops adding a change while HQ is still building it. */
+  readonly stopAdding: (link: ChangeLink) => Promise<HqChange>;
   /** Closes a change without merging it, as the person; its branch stays. */
   readonly closeChange: (link: ChangeLink, expectedHead: string | null) => Promise<HqChange>;
   /**
@@ -2309,8 +2311,24 @@ export function makeHqApi(input: {
               true,
             ),
           ),
-        async () => heldAsked(await changeIn(link, "merged")),
+        async () => {
+          const { change } = await readChangeMetadata(
+            await authorized(`${changePath(link)}/metadata`),
+          );
+          return ((change.state === "adding" || change.state === "merging") &&
+            change.head === expectedHead) ||
+            (change.state === "merged" && change.landedHead === expectedHead)
+            ? heldAsked(change)
+            : undefined;
+        },
         ["already_merged", "change_not_open"],
+      ),
+    stopAdding: (link) =>
+      confirmed(
+        async () =>
+          readChange(await authorized(`${changePath(link)}/stop-adding`, { method: "POST" }, true)),
+        () => changeIn(link, "open"),
+        ["change_not_adding"],
       ),
     closeChange: (link, expectedHead) =>
       confirmed(

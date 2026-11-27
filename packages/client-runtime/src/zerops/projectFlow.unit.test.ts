@@ -1,4 +1,5 @@
-import { COMPARE_COUNT_MAX } from "@t3tools/shared/hqChanges";
+import { COMPARE_COUNT_MAX, type HqChange } from "@t3tools/shared/hqChanges";
+import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { expect, it } from "vite-plus/test";
 
 import {
@@ -62,7 +63,7 @@ it("ZV143: A release's contents count each change once however many services tak
 });
 
 // witness: packages/client-runtime/src/zerops/projectFlow.ts | ...(change.reviewBuild !== undefined ? { reviewBuild: change.reviewBuild } : {}), → ...(change.reviewBuild === undefined ? { reviewBuild: change.reviewBuild } : {}),
-it("ZV196: A change read from navigation alone carries its Review build and given-up decision into its row; breaks: a failed build without a GitHub pull request reads ready", () => {
+it("ZV196: A change read from navigation alone carries its addition result and given-up decision into its row; breaks: a failed addition without a GitHub pull request reads as running", () => {
   const build = { head: "a".repeat(40), at: "2026-11-26T20:00:00Z", state: "failing" } as const;
   const result = flowAppChanges({
     appId: "app",
@@ -74,7 +75,7 @@ it("ZV196: A change read from navigation alone carries its Review build and give
         number: 7,
         mateProjectId: "mate",
         title: "Add invoices",
-        state: "open",
+        state: "adding",
         hasHead: true,
         updatedAt: "2026-11-26T20:00:00Z",
         mergeability: "clean",
@@ -86,14 +87,79 @@ it("ZV196: A change read from navigation alone carries its Review build and give
   });
   expect(result.pullRequests[0]?.reviewBuild).toEqual(build);
   expect(result.pullRequests[0]?.checksGivenUp).toEqual({ reason: "tries" });
-  expect(changeState(result.pullRequests[0]!, Date.parse("2026-11-26T20:10:00Z"))?.word).toBe(
-    "Review build failed · over to you",
-  );
-  const both = {
-    ...result.pullRequests[0]!,
-    pullRequest: { state: "open", checks: "failing" },
-  };
-  expect(changeState(both, Date.parse("2026-11-26T20:10:00Z"))?.word).toBe(
-    "Review build failed · over to you · GitHub's checks failed",
-  );
+  expect(
+    changeState(
+      { ...result.pullRequests[0]!, checksGivenUp: undefined },
+      Date.parse("2026-11-26T20:10:00Z"),
+    )?.tone,
+  ).toBe("attention");
+});
+
+// witness: packages/client-runtime/src/zerops/projectFlow.ts | .filter((change) => isActiveChange(change.state) && change.head !== null) → .filter((change) => change.state === "open" && change.head !== null)
+it("ZV206: A draft stays visible and says it is being added while HQ builds or merges it; breaks: the change vanishes or reads ready to add again.", () => {
+  const head = "a".repeat(40);
+  const base = {
+    repo: "web",
+    number: 7,
+    mateProjectId: "mate",
+    title: "Add a guestbook",
+    state: "open",
+    updatedAt: "2026-11-27T09:00:00Z",
+    mergeability: "clean",
+    ready: true,
+  } as const;
+  for (const state of ["open", "adding", "merging"] as const) {
+    const row = { ...base, state };
+    const report = {
+      state: "failing",
+      head,
+      main: "b".repeat(40),
+      take: "take-1",
+      try: 2,
+      at: row.updatedAt,
+      parts: [{ part: "webstage", setup: "web", stage: "web.example", outcome: "failed" }],
+    } as const;
+    const navigation: HqNavigationChange = {
+      ...row,
+      hasHead: true,
+      reviewBuild: report,
+    };
+    expect(navigation.reviewBuild).toEqual(report);
+    const detail: HqChange = {
+      ...row,
+      appId: "app",
+      branch: "guestbook",
+      body: "A guestbook",
+      head,
+      mergedSha: null,
+      landedHead: null,
+      openedAt: row.updatedAt,
+      mergedAt: null,
+      closedAt: null,
+      behind: false,
+      comments: 0,
+      receipt: null,
+    };
+    const projected = flowAppChanges({
+      appId: "app",
+      hqAddress: "https://hq.example.test",
+      open: [navigation],
+      detail: [detail],
+    }).pullRequests;
+    expect(projected.map((change) => [change.number, change.state, change.headSha])).toEqual([
+      [7, state, head],
+    ]);
+    expect(projected[0]?.reviewBuild).toEqual(report);
+    if (state !== "open") {
+      expect(changeState(projected[0]!)?.tone).toBe(state === "adding" ? "attention" : "busy");
+      const staleDetail = { ...detail, state: "open" as const };
+      const current = flowAppChanges({
+        appId: "app",
+        hqAddress: "https://hq.example.test",
+        open: [navigation],
+        detail: [staleDetail],
+      }).pullRequests;
+      expect(current.map((change) => [change.state, change.headSha])).toEqual([[state, head]]);
+    }
+  }
 });

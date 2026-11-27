@@ -87,8 +87,8 @@ it("ZV138: The Git tab offers Push for an unpushed branch or commits ahead, Upda
   ]).toEqual(["push", "push", "update-from-main", undefined, undefined]);
 });
 
-// witness: packages/client-runtime/src/zerops/gitTab.ts | reviewBuild: reviewBuildVerdict(change?.reviewBuild, input.now, change?.checksGivenUp), → reviewBuild: undefined,
-it("ZV197: The Git tab reads the Review build of the change at the reader's clock; breaks: it says ready while the build is awaiting or failed, or keeps awaiting past its deadline", () => {
+// witness: packages/client-runtime/src/zerops/gitTab.ts | addition: change === undefined ? undefined : addingVerdict(change, input.now), → addition: change === undefined ? undefined : addingVerdict({ ...change, state: "open" }, input.now),
+it("ZV197: The Git tab shows the same addition state as the change, including an expired take and a stopped draft; breaks: Git says ready while the addition needs attention.", () => {
   const at = "2026-11-26T20:00:00Z";
   const until = "2026-11-26T20:30:00Z";
   const checkout: GitCheckoutState = {
@@ -102,58 +102,19 @@ it("ZV197: The Git tab reads the Review build of the change at the reader's cloc
     hasUpstream: true,
     changed: [],
   };
-  const rows = [
-    [
-      { state: "awaiting", head: "a".repeat(40), at, until },
-      Date.parse(until),
-      "Awaiting Review build",
-    ],
-    [
-      { state: "awaiting", head: "a".repeat(40), at, until },
-      Date.parse(until) + 1,
-      "Ready to merge · Review build unavailable (no result arrived)",
-    ],
-    [{ state: "failing", head: "a".repeat(40), at }, Date.parse(until), "Review build failed"],
-    [
-      { state: "passing", head: "a".repeat(40), at },
-      Date.parse(until),
-      "Ready to merge · Review build passed",
-    ],
-  ] as const;
-  for (const [reviewBuild, now, expected] of rows) {
-    const block = gitBlock({
+  const build = { state: "awaiting", head: "a".repeat(40), at, until } as const;
+  const verdict = (state: "adding" | "open", now: number) =>
+    gitBlock({
       checkout,
       changes: {
         read: true,
-        change: change({ number: 7, state: "open", ready: true, reviewBuild }),
+        change: change({ number: 7, state, ready: true, reviewBuild: build }),
       },
       declarations: [],
       evidence: { remoteReachable: true },
       now,
-    });
-    expect(block.verdict?.text).toBe(expected);
-  }
-  const both = gitBlock({
-    checkout,
-    changes: {
-      read: true,
-      change: change({
-        number: 7,
-        state: "open",
-        ready: true,
-        reviewBuild: { state: "failing", head: "a".repeat(40), at },
-        checksGivenUp: { reason: "tries" },
-        pullRequest: {
-          number: 7,
-          state: "open",
-          checks: "failing",
-          url: "https://example.test/pull/7",
-        },
-      }),
-    },
-    declarations: [],
-    evidence: { remoteReachable: true },
-    now: Date.parse(until),
-  });
-  expect(both.verdict?.text).toBe("Review build failed · over to you · GitHub's checks failed");
+    }).verdict;
+  expect(verdict("adding", Date.parse(until))?.tone).toBe("busy");
+  expect(verdict("adding", Date.parse(until) + 1)?.tone).toBe("attention");
+  expect(verdict("open", Date.parse(until))?.tone).toBe("off");
 });

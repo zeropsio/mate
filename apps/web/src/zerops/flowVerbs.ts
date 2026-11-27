@@ -16,7 +16,7 @@ import {
   hqRefusalWords,
   type AppDeployRollout,
 } from "@t3tools/client-runtime/zerops/hq";
-import type { ChangeLink, HqMergeAsk } from "@t3tools/shared/hqChanges";
+import type { ChangeLink, ChangeState, HqMergeAsk } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useCallback, useContext, useMemo, useSyncExternalStore } from "react";
@@ -39,6 +39,7 @@ export type FlowVerbOutcome =
   | {
       readonly ok: true;
       readonly tag?: string | undefined;
+      readonly state?: ChangeState | undefined;
       readonly deploys?: HqDeployAnswer | undefined;
       /** The rollout its deploys are of: what an answer that handed planning over follows. */
       readonly rollout?: AppDeployRollout | undefined;
@@ -91,6 +92,11 @@ export interface FlowVerbs {
     groupId: string,
     change: { readonly repository: string; readonly number: number },
     expectedHead: string | null,
+  ) => Promise<FlowVerbOutcome>;
+  /** Stops an addition that has not reached HQ's merge. */
+  readonly stopAdding: (
+    groupId: string,
+    change: { readonly repository: string; readonly number: number },
   ) => Promise<FlowVerbOutcome>;
   /** A change whose Mate is gone handed to `mateProjectId`, another Mate of its application. */
   readonly hand: (
@@ -240,6 +246,7 @@ export function useFlowVerbs(): FlowVerbs {
       return {
         ok: true,
         tag: answer?.tag,
+        state: answer?.state,
         deploys: answer?.deploys,
         rollout: answer?.rollout,
         mergeAsk: answer?.mergeAsk,
@@ -324,6 +331,18 @@ export function useFlowVerbs(): FlowVerbs {
       return run(
         { kind: "close", groupId, ...change },
         (orgId) => ({ kind: "close-change", orgId, link, expectedHead }),
+        false,
+      );
+    },
+    [run],
+  );
+
+  const stopAdding = useCallback(
+    (groupId: string, change: { readonly repository: string; readonly number: number }) => {
+      const link: ChangeLink = { appId: groupId, repo: change.repository, number: change.number };
+      return run(
+        { kind: "stop-adding", groupId, ...change },
+        (orgId) => ({ kind: "stop-adding", orgId, link }),
         false,
       );
     },
@@ -436,6 +455,7 @@ export function useFlowVerbs(): FlowVerbs {
       rollBack,
       merge,
       close,
+      stopAdding,
       hand,
       askMerge,
       takeBackAsk,
@@ -448,6 +468,7 @@ export function useFlowVerbs(): FlowVerbs {
       close,
       hand,
       merge,
+      stopAdding,
       pending,
       redeploy,
       release,

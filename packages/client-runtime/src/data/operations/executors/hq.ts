@@ -56,6 +56,7 @@ type FlowWrites = Pick<
   | "redeploy"
   | "addService"
   | "mergeChange"
+  | "stopAdding"
   | "closeChange"
   | "handChange"
   | "askMerge"
@@ -213,9 +214,14 @@ function flowWrite(
           receipt(
             requestId,
             changeHandle(intent.link),
-            { deploys, mergedSha: made.mergedSha },
+            { deploys, mergedSha: made.mergedSha, state: made.state },
             PENDING,
           ),
+      );
+    case "stop-adding":
+      return Effect.map(
+        write(() => api.stopAdding(intent.link)),
+        () => receipt(requestId, changeHandle(intent.link), undefined, PENDING),
       );
     case "close-change":
       return Effect.map(

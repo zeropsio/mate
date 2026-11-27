@@ -6,7 +6,6 @@ import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { classicCopyRead } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useMemo } from "react";
-import type { HqReviewBuild } from "@t3tools/shared/hqChanges";
 import { useMatesLeases } from "~/zerops/useMatesLeases";
 import { useHqAppReleases } from "~/zerops/useHqAppDetail";
 
@@ -36,8 +35,6 @@ export function useMatePreviews(
   repositoryUrl: string | undefined,
   open: boolean,
   branch: string | undefined,
-  head: string | undefined,
-  reviewBuild: HqReviewBuild | undefined,
 ): ReviewTryTargets {
   const { listing } = useZeropsDetailCandidates();
   const appIds = useMemo(() => [appId], [appId]);
@@ -65,8 +62,6 @@ export function useMatePreviews(
         repositoryRemote,
         open,
         branch,
-        head,
-        reviewBuild,
         leases: row?.services === undefined ? undefined : leases,
         poolPairs,
         classicBranch,
@@ -80,8 +75,6 @@ export function useMatePreviews(
       repositoryRemote,
       open,
       branch,
-      head,
-      reviewBuild,
       leases,
       poolPairs,
       classicBranch,

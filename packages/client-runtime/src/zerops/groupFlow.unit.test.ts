@@ -40,7 +40,7 @@ const base: GroupFlowInput = {
 };
 
 // witness: packages/client-runtime/src/zerops/groupFlow.ts | state: changeState(pull, now), → state: changeState(pull),
-it("ZV198: A project's flow reads an awaiting Review build at its caller's clock; breaks: a project keeps awaiting after the deadline with no new event", () => {
+it("ZV198: A project's flow reads an addition's take at its caller's clock; breaks: an expired take keeps looking active without a new event", () => {
   const until = "2026-11-26T20:30:00Z";
   const pull = {
     repository: "web",
@@ -57,7 +57,7 @@ it("ZV198: A project's flow reads an awaiting Review build at its caller's clock
     baseBranch: "main",
     line: "",
     updatedAt: undefined,
-    state: "open",
+    state: "adding",
     ready: true,
     reviewBuild: {
       state: "awaiting",
@@ -68,12 +68,9 @@ it("ZV198: A project's flow reads an awaiting Review build at its caller's clock
   } as const;
   expect(
     [Date.parse(until), Date.parse(until) + 1].map(
-      (now) => groupFlow({ ...base, pullRequests: [pull] }, now).pullRequests[0]?.state?.word,
+      (now) => groupFlow({ ...base, pullRequests: [pull] }, now).pullRequests[0]?.state?.tone,
     ),
-  ).toEqual([
-    "Awaiting Review build",
-    "Ready to merge · Review build unavailable (no result arrived)",
-  ]);
+  ).toEqual(["busy", "attention"]);
 });
 
 // witness: packages/client-runtime/src/zerops/groupFlow.ts | if (stop.state === "deploying") return { kind: "deploying", stop, line: PRODUCTION_DEPLOYING }; → if (stop.state === "deploying" && candidate === undefined) return { kind: "deploying", stop, line: PRODUCTION_DEPLOYING };

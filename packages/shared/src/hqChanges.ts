@@ -107,9 +107,14 @@ export const ChangeTitle = upTo(CHANGE_TITLE_MAX).check(
 );
 export const ChangeBody = upTo(CHANGE_BODY_MAX);
 
-/** `open` until it is merged into `main`, or closed without merging. */
-export const ChangeState = Schema.Literals(["open", "merged", "closed"]);
+/** A change remains open to its Mate while adding; merging is HQ's claimed merge. */
+export const ChangeState = Schema.Literals(["open", "adding", "merging", "merged", "closed"]);
 export type ChangeState = typeof ChangeState.Type;
+
+/** Whether a change still exists as a draft, including while its addition is underway. */
+export function isActiveChange(state: string | undefined): boolean {
+  return state === "open" || state === "adding" || state === "merging";
+}
 
 /** An instant, ISO 8601. */
 const Instant = Schema.String;
@@ -186,6 +191,7 @@ export type HqLastComment = typeof HqLastComment.Type;
 
 /** One stage-backed setup's result in the Review build. */
 export const HqReviewBuildPart = Schema.Struct({
+  part: Schema.optionalKey(Schema.String),
   setup: Schema.String,
   stage: Schema.String,
   outcome: Schema.Literals(["ok", "failed", "unavailable"]),
@@ -206,6 +212,9 @@ export type HqReviewBuildPart = typeof HqReviewBuildPart.Type;
 export const HqReviewBuild = Schema.Struct({
   state: Schema.Literals(["awaiting", "passing", "failing", "unavailable"]),
   head: Sha,
+  main: Schema.optionalKey(Sha),
+  take: Schema.optionalKey(Schema.String),
+  try: Schema.optionalKey(Schema.Int),
   at: Instant,
   until: Schema.optionalKey(Instant),
   reason: Schema.optionalKey(Schema.String),
@@ -239,6 +248,7 @@ export const HqChange = Schema.Struct({
   /** Markdown; empty until the Mate describes the change. */
   body: ChangeBody,
   state: ChangeState,
+  addingError: Schema.optionalKey(Schema.String),
   head: Schema.NullOr(Sha),
   mergedSha: Schema.NullOr(Sha),
   landedHead: Schema.NullOr(Sha),

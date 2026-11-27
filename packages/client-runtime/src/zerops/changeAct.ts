@@ -43,6 +43,8 @@ export interface ChangeVerbRead {
   readonly pending: boolean;
   /** Its operation's progress, once it was recorded; absent before, or for a verb never pressed. */
   readonly progress?: OperationProgress | undefined;
+  /** HQ's current state of an addition, when its answer or the stream supplies it. */
+  readonly state?: string | undefined;
 }
 
 /** A change's facts as HQ gave them: its head and its last move. */
@@ -81,7 +83,7 @@ export function changeActOf(input: {
   if (progress === undefined) return undefined;
   switch (progress.stage) {
     case "done":
-      if (progress.outcome === "succeeded") return MERGED;
+      if (progress.outcome === "succeeded") return merge?.state === "merged" ? MERGED : undefined;
       return progress.outcome === "failed"
         ? { kind: "merge-failed", reason: progress.reason ?? NOT_MERGED }
         : undefined;

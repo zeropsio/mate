@@ -46,7 +46,6 @@ import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
 import type { MovedCommits } from "./releaseCompare.ts";
-import { isBrowsableUrl } from "./mateParts.ts";
 import {
   GIT_PREFLIGHT_PENDING,
   RELEASE_CHECKING,
@@ -74,8 +73,6 @@ export type ReviewState =
   | "ready"
   | "github-handoff"
   | "github-checks-failed"
-  | "review-build-awaiting"
-  | "review-build-failing"
   | "mate-updating"
   | "behind"
   | "conflict"
@@ -178,6 +175,7 @@ export interface ReviewPrimary {
 
 /** A quiet word in the foot beside the one button: a change's *Close without merging…*. */
 interface ReviewSecondary {
+  readonly action?: "stop-adding";
   readonly label: string;
   readonly enabled: boolean;
 }
@@ -242,6 +240,9 @@ export type ReviewPress =
    */
   | {
       readonly kind: "done";
+      /** HQ accepted an addition; this is not yet a merge. */
+      readonly adding?: true;
+      readonly at?: string | undefined;
       readonly deploys?: HqDeployAnswer | undefined;
       readonly rollout?: AppDeployRollout | undefined;
     };
@@ -308,6 +309,8 @@ export interface ChangeReviewInput {
     readonly mergedAt: string | undefined;
     /** `closed` for one no longer open — merged, or closed without merging. */
     readonly state?: string | undefined;
+    readonly addingError?: string | undefined;
+    readonly updatedAt?: string | undefined;
     /** Whether `main` has moved on past the commit it was cut from. */
     readonly behind: boolean;
     /** Whether it asks for review: its Mate described it at its head. Absent reads as ready. */
@@ -557,6 +560,7 @@ const CLOSE_LABEL = "Close without merging";
 const CLOSE_OFFER: ReviewSecondary = { label: `${CLOSE_LABEL}…`, enabled: true };
 /** The way back from the ask. */
 const KEEP_OPEN: ReviewSecondary = { label: "Keep it open", enabled: true };
+const STOP_ADDING: ReviewSecondary = { action: "stop-adding", label: "Stop adding", enabled: true };
 
 /** A change no longer open and never merged: nothing more to press. */
 function closedReview(base: string, why: string): ReviewModel {
@@ -601,12 +605,14 @@ function closeReview(
   const number = `#${String(pull.number)}`;
   const allowed = input.offered?.close === true;
   const consequence = allowed
-    ? `Closes ${number} for good; ${input.mateName}'s branch stays as it is.`
+    ? pull.kind === "code"
+      ? "Your app does not change."
+      : `Closes ${number} for good; ${input.mateName}'s branch stays as it is.`
     : input.offered === undefined
       ? "Closing waits: HQ has not said whether you may close this change."
       : "HQ no longer offers Close for this change.";
   const primary = (enabled: boolean): ReviewPrimary => ({
-    label: CLOSE_LABEL,
+    label: pull.kind === "code" ? "Discard draft" : CLOSE_LABEL,
     enabled,
     safe: false,
   });
@@ -616,8 +622,11 @@ function closeReview(
         verdict: {
           state: "close-confirm",
           tone: "attention",
-          title: `Close ${number} without merging?`,
-          why: `Nothing of it reaches ${pull.baseBranch}`,
+          title: pull.kind === "code" ? "Discard this draft?" : `Close ${number} without merging?`,
+          why:
+            pull.kind === "code"
+              ? "Your app does not change"
+              : `Nothing of it reaches ${pull.baseBranch}`,
           fix: undefined,
         },
         consequence,
@@ -802,60 +811,6 @@ function sentences(...parts: ReadonlyArray<string | undefined>): string {
   return parts.filter((part) => part !== undefined && part.length > 0).join(" ");
 }
 
-/** HQ's Review build, read at the caller's clock: an overdue take has no result. */
-export function reviewBuildVerdict(
-  build: HqChange["reviewBuild"],
-  now: number | undefined,
-  givenUp?: HqChange["checksGivenUp"],
-):
-  | {
-      readonly state: "awaiting" | "passing" | "failing" | "unavailable";
-      readonly word: string;
-      readonly links?: ReadonlyArray<{ readonly setup: string; readonly url: string }>;
-    }
-  | undefined {
-  if (build === undefined) return undefined;
-  const expired =
-    build.state === "awaiting" &&
-    build.until !== undefined &&
-    now !== undefined &&
-    now > Date.parse(build.until);
-  const state = expired ? "unavailable" : build.state;
-  const handoff = givenUp != null ? " · over to you" : "";
-  const links =
-    state === "awaiting"
-      ? []
-      : (build.parts ?? []).flatMap((part) => {
-          if (part.outcome !== "ok") return [];
-          // HQ reports a bare service hostname when the stage has no public address.
-          const publicHost =
-            /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/iu.test(
-              part.stage,
-            );
-          if (!publicHost) return [];
-          const url = part.probe?.url ?? `https://${part.stage}`;
-          return isBrowsableUrl(url) ? [{ setup: part.setup, url }] : [];
-        });
-  let word: string;
-  switch (state) {
-    case "awaiting":
-      word = `Awaiting Review build${handoff}`;
-      break;
-    case "passing":
-      word = `Review build passed${handoff}`;
-      break;
-    case "failing":
-      word = `Review build failed${handoff}`;
-      break;
-    case "unavailable": {
-      const reason = expired ? "no result arrived" : build.reason;
-      word = `Review build unavailable${reason === undefined ? "" : ` (${reason})`}${handoff}`;
-      break;
-    }
-  }
-  return { state, word, ...(links.length === 0 ? {} : { links }) };
-}
-
 /** Why the failed checks were handed to a person, in HQ's words. */
 export function checksGivenUpSentence(givenUp: HqChange["checksGivenUp"]): string | undefined {
   switch (givenUp?.reason) {
@@ -868,6 +823,54 @@ export function checksGivenUpSentence(givenUp: HqChange["checksGivenUp"]): strin
     default:
       return undefined;
   }
+}
+
+/** The one answer for an addition and a handoff that prevents a new Add. */
+export function addingVerdict(
+  pull: {
+    readonly state?: string | undefined;
+    readonly reviewBuild?: HqChange["reviewBuild"];
+    readonly checksGivenUp?: HqChange["checksGivenUp"];
+  },
+  now?: number,
+): (ReviewVerdict & { readonly tone: "attention" | "busy" }) | undefined {
+  const adding = pull.state === "adding" || pull.state === "merging";
+  const givenUp = pull.state === "merging" ? undefined : checksGivenUpSentence(pull.checksGivenUp);
+  if (!adding && !(pull.state === "open" && givenUp !== undefined)) return undefined;
+  const failed = pull.state === "adding" && pull.reviewBuild?.state === "failing";
+  const expired =
+    pull.state === "adding" &&
+    pull.reviewBuild?.state === "awaiting" &&
+    pull.reviewBuild.until !== undefined &&
+    now !== undefined &&
+    now > Date.parse(pull.reviewBuild.until);
+  const unavailable =
+    pull.state === "adding" && (pull.reviewBuild?.state === "unavailable" || expired);
+  const attempt = pull.reviewBuild?.try;
+  return {
+    state: givenUp !== undefined || failed || unavailable ? "merge-refused" : "merging",
+    tone: givenUp !== undefined || failed || unavailable ? "attention" : "busy",
+    title:
+      givenUp !== undefined
+        ? "Could not add to your app"
+        : failed
+          ? "Not added yet"
+          : unavailable
+            ? "Waiting to add"
+            : "Adding to your app",
+    why:
+      givenUp ??
+      (failed
+        ? `This draft did not build${attempt === undefined ? "." : ` · try ${attempt} of 3.`}`
+        : unavailable
+          ? "The build is unavailable. Your app has not changed."
+          : pull.state === "merging"
+            ? "Adding the change."
+            : pull.reviewBuild?.state === "awaiting"
+              ? "Checking it builds. A few minutes."
+              : "Waiting to add this draft."),
+    fix: undefined,
+  };
 }
 
 /** What a change whose GitHub checks failed says of itself, in its review and on every row. */
@@ -907,7 +910,7 @@ function githubChecksAt(
  * The change's own verdict, before anything was pressed: whether it can merge now, and why not. Every
  * door that merges a change asks it first — the review's Merge and *Put it live* alike — and the
  * composer's strip says it of a change that does not merge (`mateNextStep`). The caller's clock
- * ages a conflict and a Review build take.
+ * ages a conflict and an addition's take.
  */
 export function changeMergeVerdict(
   input: Pick<ChangeReviewInput, "pull" | "mateName" | "conflict" | "commits"> &
@@ -919,6 +922,9 @@ export function changeMergeVerdict(
   const { pull } = input;
   const base = pull.baseBranch;
   const who = input.mateName;
+
+  const addition = addingVerdict(pull, input.now);
+  if (addition !== undefined) return { verdict: addition, enabled: false };
 
   const validation = pull.kind === "recipe" ? pull.recipeValidation : undefined;
   if (
@@ -1069,20 +1075,6 @@ export function changeMergeVerdict(
             ask: `${pull.behind ? `Merge ${base} into it, look` : "Look"} at the failed checks on GitHub, fix what they found, and push again.`,
           },
         };
-  const reviewBuild = reviewBuildVerdict(pull.reviewBuild, input.now, pull.checksGivenUp);
-  if (reviewBuild?.state === "awaiting" || reviewBuild?.state === "failing") {
-    return {
-      enabled: true,
-      verdict: {
-        state: reviewBuild.state === "awaiting" ? "review-build-awaiting" : "review-build-failing",
-        tone: reviewBuild.state === "awaiting" ? "busy" : "attention",
-        title: reviewBuild.word,
-        why: checksGivenUpSentence(pull.checksGivenUp) ?? `It still merges cleanly into ${base}`,
-        fix: githubFix,
-      },
-    };
-  }
-
   // GitHub's checks failed on what would merge: said before anything a clean merge says, a draft
   // included. It still merges — a check may fail for no fault of the change — but the review
   // recommends handing them to its Mate, never the merge. One behind `main` as well is brought up
@@ -1093,10 +1085,8 @@ export function changeMergeVerdict(
       verdict: {
         state: "github-checks-failed",
         tone: "attention",
-        title: `${GITHUB_CHECKS_FAILED}${pull.checksGivenUp != null && reviewBuild === undefined ? " · over to you" : ""}`,
-        why:
-          checksGivenUpSentence(pull.checksGivenUp) ??
-          sentences(`It still merges cleanly into ${base}`, reviewBuild?.word),
+        title: `${GITHUB_CHECKS_FAILED}${pull.checksGivenUp != null ? " · over to you" : ""}`,
+        why: checksGivenUpSentence(pull.checksGivenUp) ?? `It still merges cleanly into ${base}`,
         ...(pull.checksGivenUp == null ? {} : { showWhy: true as const }),
         fix: githubFix,
       },
@@ -1128,11 +1118,9 @@ export function changeMergeVerdict(
           ? `${base} moved on since ${who} branched · it still merges cleanly`
           : `No conflicts with ${base}`,
         commits,
-        reviewBuild?.word,
       ]
         .filter((part) => part !== undefined)
         .join(" · "),
-      ...(reviewBuild === undefined ? {} : { showWhy: true }),
       fix:
         again === undefined
           ? undefined
@@ -1228,11 +1216,7 @@ function heldReview(
   secondary: ReviewSecondary | undefined,
 ): ReviewModel & { readonly standing: ReviewStandingModel } {
   const asking = input.asking ?? { kind: "idle" };
-  const checksFailed =
-    verdict.state === "github-checks-failed" ||
-    verdict.state === "review-build-awaiting" ||
-    verdict.state === "review-build-failing" ||
-    reviewBuildVerdict(input.pull.reviewBuild, input.now)?.state === "unavailable";
+  const checksFailed = verdict.state === "github-checks-failed";
   const people = facts.mergers?.people ?? [];
   const toAsk = mergersLine(people, facts.nameOf);
   // A name may end in its own full stop ("Sam R."): the sentence adds none after it.
@@ -1290,8 +1274,6 @@ function heldReview(
 const MATE_AT_IT_OVER: ReadonlySet<ReviewState> = new Set([
   "ready",
   "github-checks-failed",
-  "review-build-awaiting",
-  "review-build-failing",
   "behind",
   "conflict",
   "checks-failed",
@@ -1300,12 +1282,7 @@ const MATE_AT_IT_OVER: ReadonlySet<ReviewState> = new Set([
 ]);
 
 /** The states whose Merge lands the change as it is now, while its Mate works on the next. */
-const MERGES_AS_IT_IS: ReadonlySet<ReviewState> = new Set([
-  "ready",
-  "github-checks-failed",
-  "review-build-awaiting",
-  "review-build-failing",
-]);
+const MERGES_AS_IT_IS: ReadonlySet<ReviewState> = new Set(["ready", "github-checks-failed"]);
 
 /** What its Mate does to it, after "It", by the fix that was pressed (`ReviewFix.verb`). */
 function atItLine(verb: string | undefined, base: string, behind: boolean): string {
@@ -1344,7 +1321,9 @@ function mateAtIt(
   const base = pull.baseBranch;
   const primary = model.primary;
   // Merge where it merges now: named for the version it lands. One that waits keeps its word.
-  const merges = primary?.label === "Merge" && MERGES_AS_IT_IS.has(model.verdict.state);
+  const merges =
+    (primary?.label === "Merge" || primary?.label === "Add to your app") &&
+    MERGES_AS_IT_IS.has(model.verdict.state);
   return {
     ...model,
     verdict: {
@@ -1387,8 +1366,18 @@ function changeReviewModel(
 function changeReviewModelOfHead(
   input: ChangeReviewInput,
 ): ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease"> {
-  const { pull, press } = input;
+  const { pull } = input;
+  const heldPress = input.press;
+  const press: ReviewPress | undefined =
+    pull.state === "open" &&
+    pull.addingError !== undefined &&
+    (heldPress === undefined ||
+      heldPress.kind === "idle" ||
+      (heldPress.kind === "done" && heldPress.adding === true && heldPress.at !== pull.updatedAt))
+      ? { kind: "refused", reason: hqRefusalWords({ code: "conflict", reason: pull.addingError }) }
+      : heldPress;
   const base = pull.baseBranch;
+  const mergeLabel = pull.kind === "code" ? "Add to your app" : "Merge";
   const close = input.close ?? { kind: "idle" };
 
   // Owner-proven terminal facts win over an outdated local press.
@@ -1455,9 +1444,28 @@ function changeReviewModelOfHead(
     };
   }
 
+  // HQ has accepted the addition, but the stage is still checking it before the merge.
+  const adding =
+    pull.state === "adding" ||
+    pull.state === "merging" ||
+    (press?.kind === "done" && press.adding === true && pull.updatedAt === press.at);
+  if (adding) {
+    // An accepted receipt can precede the stream's change state.
+    const verdict = addingVerdict(
+      pull.state === "adding" || pull.state === "merging" ? pull : { state: "adding" },
+      input.now,
+    );
+    return {
+      verdict: verdict!,
+      consequence: "Your app keeps its current version until this change is added.",
+      primary: undefined,
+      ...(pull.state === "adding" ? { secondary: STOP_ADDING } : {}),
+    };
+  }
+
   // The merge answer can arrive before the app-detail stream updates the change or its pull request.
   const githubMerged = pull.pullRequest?.state === "merged";
-  if (githubMerged || press?.kind === "done") {
+  if (githubMerged || (press?.kind === "done" && press.adding !== true)) {
     return {
       verdict: {
         state: "merging",
@@ -1477,7 +1485,12 @@ function changeReviewModelOfHead(
   if (close.kind === "done") return closedReview(base, "You closed it; its branch is still there");
   if (close.kind !== "idle") return closeReview(input, close);
   // Close without merging, quiet beside Merge where HQ's rule offers it — never while Merge runs.
-  const secondary = input.offered?.close === true ? CLOSE_OFFER : undefined;
+  const secondary =
+    input.offered?.close === true
+      ? pull.kind === "code"
+        ? { label: "Discard draft…", enabled: true }
+        : CLOSE_OFFER
+      : undefined;
   // Opened before its branch was pushed: nothing to merge yet, and a person may still close it.
   if (pull.unpushed === true) {
     return {
@@ -1548,10 +1561,23 @@ function changeReviewModelOfHead(
     input.readout !== "reading" &&
     input.readout !== "unread" &&
     input.offered?.merge === true;
-  const squash = sentences(
-    mergeSentence(pull, input.readout === "failed", nothingLive(input)),
-    afterMain(input),
-  );
+  const squash =
+    pull.kind === "code"
+      ? sentences(
+          input.downstream.stage
+            ? "Your app's address gets this change in a few minutes."
+            : "This adds the draft to your app.",
+          input.downstream.production
+            ? `Production isn't touched until ${releaseWaitsFor(input, false)}.`
+            : input.downstream.productionOutside === true
+              ? PRODUCTION_OUTSIDE_DECIDES
+              : "Nothing goes live.",
+          input.readout === "failed" ? "Its files could not be shown." : undefined,
+        )
+      : sentences(
+          mergeSentence(pull, input.readout === "failed", nothingLive(input)),
+          afterMain(input),
+        );
   // HQ's merge check, still to come: its own wait, said once it is past the usual.
   const mergeWait = verdict.state === "checking" && pull.mergeability === "checking";
   const late =
@@ -1586,12 +1612,12 @@ function changeReviewModelOfHead(
       verdict: {
         state: "merging",
         tone: "busy",
-        title: `Merging into ${base}`,
-        why: `Adding this change to ${base}`,
+        title: pull.kind === "code" ? "Adding to your app" : `Merging into ${base}`,
+        why: pull.kind === "code" ? "Starting to add this draft." : `Adding this change to ${base}`,
         fix: undefined,
       },
       consequence: squash,
-      primary: { label: "Merge", enabled: false, safe: false },
+      primary: { label: mergeLabel, enabled: false, safe: false },
       standing: merging,
     };
   }
@@ -1605,7 +1631,7 @@ function changeReviewModelOfHead(
       verdict: {
         state: "merge-refused",
         tone: "attention",
-        title: "Not merged",
+        title: pull.kind === "code" ? "Not added" : "Not merged",
         why: limited ?? press.reason,
         fix: problemsFix(press.problems ?? []) ?? verdict.fix,
         // A file above HQ's merge limit: the Mate merges main into the change by hand.
@@ -1613,7 +1639,7 @@ function changeReviewModelOfHead(
       },
       consequence: enabled ? squash : held,
       // A second try is the person's deliberate press, never ⌘↵'s.
-      primary: { label: "Merge", enabled, safe: false },
+      primary: { label: mergeLabel, enabled, safe: false },
       secondary,
       standing: merging,
     };
@@ -1632,11 +1658,7 @@ function changeReviewModelOfHead(
   }
   // GitHub's checks failed, and a change whose files could not be read was never shown: both still
   // pressable, never pressed for the person.
-  const checksFailed =
-    verdict.state === "github-checks-failed" ||
-    verdict.state === "review-build-awaiting" ||
-    verdict.state === "review-build-failing" ||
-    reviewBuildVerdict(input.pull.reviewBuild, input.now)?.state === "unavailable";
+  const checksFailed = verdict.state === "github-checks-failed";
   const safeOnceRead = verdictOf.enabled && !checksFailed;
   // Its files, or HQ's rule's facts, still to come: Merge keeps the width it will have.
   const waiting = input.readout === "reading" || input.offered === undefined;
@@ -1655,7 +1677,7 @@ function changeReviewModelOfHead(
         }
       : {}),
     primary: {
-      label: "Merge",
+      label: mergeLabel,
       enabled,
       safe: safeOnceRead && input.readout === "read" && !waiting,
       ...(safeOnceRead && waiting ? { shortcut: true } : {}),

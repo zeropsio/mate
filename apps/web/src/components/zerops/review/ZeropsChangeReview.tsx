@@ -406,10 +406,17 @@ function ChangeReviewData({
       pull.headSha,
     );
     // Merged in a queue: the queue counts it, and moves on to the next change after a beat.
-    if (outcome.ok) queue?.pressed(target, "merged");
+    if (outcome.ok && outcome.state === "merged") queue?.pressed(target, "merged");
     setPress(
       outcome.ok
-        ? { kind: "done", deploys: outcome.deploys, rollout: outcome.rollout }
+        ? {
+            kind: "done",
+            ...(pull.kind === "code" && outcome.state !== "merged"
+              ? { adding: true as const, at: pull.updatedAt }
+              : {}),
+            deploys: outcome.deploys,
+            rollout: outcome.rollout,
+          }
         : {
             kind: "refused",
             reason: outcome.reason,
@@ -417,6 +424,22 @@ function ChangeReviewData({
             code: outcome.code,
           },
     );
+  };
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
+  useEffect(() => {
+    if (pull.state !== "adding") setStopping(false);
+  }, [pull.state]);
+  const stopAdding = async () => {
+    setStopping(true);
+    setStopError(null);
+    const outcome = await verbs.stopAdding(target.groupId, change);
+    if (!outcome.ok) {
+      setStopping(false);
+      setStopError(outcome.reason);
+    } else {
+      setPress({ kind: "idle" });
+    }
   };
   const close = async () => {
     setClosing({ kind: "running" });
@@ -625,8 +648,6 @@ function ChangeReviewData({
     pull.repositoryUrl,
     pull.state !== "closed" && !pull.merged,
     pull.branch,
-    pull.headSha,
-    pull.reviewBuild,
   );
   // Reviewed together: a queued change that settled elsewhere leaves, by the open changes the flow
   // holds; a change done here moves the queue on, after a beat that says so.
@@ -746,6 +767,11 @@ function ChangeReviewData({
       }}
       onMerge={() => {
         void merge();
+      }}
+      stopping={stopping}
+      stopError={stopError}
+      onStopAdding={() => {
+        void stopAdding();
       }}
       onClosing={(step) => {
         if (step === "press") void close();
@@ -938,7 +964,7 @@ export interface ChangeReviewViewProps {
    * (`ZeropsProjectFlow.outside`); read only while it has no production here.
    */
   readonly productionOutside?: boolean | undefined;
-  /** The change’s workspace and Review build addresses. */
+  /** The change's workspace and its app's routed addresses. */
   readonly previews?: ReviewTryTargets["previews"] | undefined;
   readonly previewState?: ReviewTryTargets["previewState"] | undefined;
   readonly reviewBuilds?: ReviewTryTargets["builds"] | undefined;
@@ -979,6 +1005,9 @@ export interface ChangeReviewViewProps {
   readonly onRetry?: (() => void) | undefined;
   readonly onOpenRun: (() => void) | undefined;
   readonly onMerge: () => void;
+  readonly onStopAdding?: (() => void) | undefined;
+  readonly stopping?: boolean | undefined;
+  readonly stopError?: string | null | undefined;
   /** Close without merging: asked, kept open, or pressed once asked. */
   readonly onClosing: (step: "ask" | "keep" | "press") => void;
   /** The dialog's way to this review as the change's own page. */
@@ -1200,7 +1229,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const withCarried = (note: string) =>
     standing?.alsoMerges === undefined || over ? note : `${standing.alsoMerges} ${note}`.trim();
   // The ask to close it, where the review offers it: asked, the quiet word keeps it open instead.
-  const closeOffer = asked || fromRelease ? undefined : secondary;
+  const closeOffer =
+    asked || fromRelease || secondary?.action === "stop-adding" ? undefined : secondary;
   const onPage = props.frame === "page";
   // Beside Merge, closing it is rare and takes the change away: it stands behind ⋯ in the sheet's
   // top line. Where closing is what the review is for — nothing to merge, its Mate gone — and on a
@@ -1265,10 +1295,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     props.appId === undefined ? undefined : { appId: props.appId, repo: pull.repository };
   const code = repo === undefined ? undefined : changeCode(pull);
   const filesAt = repo === undefined || code === undefined ? undefined : { ...repo, sha: code.sha };
-  // Merging and merged say all of it on the line under the title: words under the line would come
-  // in at the press and push the body down under the person's eye (a run 2 follow-up). Merging's
-  // own words only restate its title.
-  const onLine = model.verdict.state === "merging" || model.verdict.state === "merged";
+  // A code addition can wait for a build, so its reason belongs beneath the title. A recipe's
+  // merge and a completed change say their status on the line.
+  const onLine =
+    model.verdict.state === "merged" || (model.verdict.state === "merging" && pull.kind !== "code");
   const question = model.question === undefined || questionClosed ? undefined : model.question;
   // Today the one thing a review shows after a press that waits on the person is that question.
   const waitsOnPerson = question !== undefined;
@@ -1289,7 +1319,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     !standingNote &&
     primary !== undefined &&
     primary.enabled &&
-    (primary.label === "Merge" || primary.label === MERGE_AS_IT_IS);
+    (primary.label === "Merge" ||
+      primary.label === "Add to your app" ||
+      primary.label === MERGE_AS_IT_IS);
   const stageDecision = mergeStages({
     state: model.verdict.state,
     recipe: pull.kind === "recipe",
@@ -1328,7 +1360,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         )
       }
       consequence={
-        question !== undefined
+        props.stopError ??
+        (question !== undefined
           ? [question.text, ...question.options.map((option) => option.hint)].join(" ")
           : notOffered !== undefined
             ? notOffered
@@ -1346,7 +1379,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                     productionOutside,
                     mayRelease: props.mayRelease,
                   }),
-                )
+                ))
       }
       noteAction={
         mergeNoteShown &&
@@ -1491,7 +1524,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
               busy: busy || askRunning === "ask",
               label:
                 model.verdict.state === "merging"
-                  ? "Merging"
+                  ? pull.kind === "code"
+                    ? "Adding…"
+                    : "Merging"
                   : model.verdict.state === "closing"
                     ? "Closing"
                     : askRunning === "ask"
@@ -1529,8 +1564,14 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           ? undefined
           : {
               ...secondary,
+              enabled: secondary.enabled && !props.stopping,
+              label:
+                props.stopping && secondary.action === "stop-adding"
+                  ? "Stopping…"
+                  : secondary.label,
               onPress: () => {
-                props.onClosing(asked ? "keep" : "ask");
+                if (secondary.action === "stop-adding") props.onStopAdding?.();
+                else props.onClosing(asked ? "keep" : "ask");
               },
             }
       }

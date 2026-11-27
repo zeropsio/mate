@@ -85,6 +85,10 @@ declare module "../model.ts" {
       /** The head the person was shown: HQ merges only that one. */
       readonly expectedHead: string;
     };
+    readonly "stop-adding": {
+      readonly orgId: string;
+      readonly link: ChangeLink;
+    };
     readonly "close-change": {
       readonly orgId: string;
       readonly link: ChangeLink;
@@ -111,6 +115,7 @@ declare module "../model.ts" {
     readonly "merge-change": {
       readonly deploys: HqDeployAnswer | undefined;
       readonly mergedSha: string | null;
+      readonly state: HqChange["state"];
     };
     /** The ask as HQ's answer holds it: the first one kept, whoever asked it. */
     readonly "ask-merge": MergeAskAnswer;
@@ -290,22 +295,51 @@ const mergeChangeWrite: OperationKind<"merge-change"> = {
   settledBy: (read, intent) => {
     const state = changeOf(read, intent.link)?.state ?? "open";
     if (state === "open") return null;
-    return state === "merged"
+    return state === "closed"
+      ? { kind: "failed", reason: "The change was closed without merging." }
+      : { kind: "succeeded" };
+  },
+  observedIn: (intent) => appDetail(intent.link.appId),
+  effectHandles: (read, intent) => {
+    const change = changeOf(read, intent.link);
+    return change !== undefined &&
+      (((change.state === "adding" || change.state === "merging") &&
+        change.head === intent.expectedHead) ||
+        (change.state === "merged" && change.landedHead === intent.expectedHead))
+      ? [changeHandle(intent.link)]
+      : [];
+  },
+};
+
+const stopAddingWrite: OperationKind<"stop-adding"> = {
+  kind: "stop-adding",
+  executor: "hq",
+  reflected: (read, intent) => {
+    const state = changeOf(read, intent.link)?.state;
+    return state !== undefined && state !== "adding" && state !== "merging";
+  },
+  settledBy: (read, intent) => {
+    const state = changeOf(read, intent.link)?.state;
+    if (state === undefined || state === "adding" || state === "merging") return null;
+    return state === "open"
       ? { kind: "succeeded" }
-      : { kind: "failed", reason: "The change was closed without merging." };
+      : { kind: "failed", reason: "The change ended before adding could be stopped." };
   },
   observedIn: (intent) => appDetail(intent.link.appId),
   effectHandles: (read, intent) =>
-    changeOf(read, intent.link)?.state === "merged" ? [changeHandle(intent.link)] : [],
+    changeOf(read, intent.link)?.state === "open" ? [changeHandle(intent.link)] : [],
 };
 
 const closeChangeWrite: OperationKind<"close-change"> = {
   kind: "close-change",
   executor: "hq",
-  reflected: (read, intent) => (changeOf(read, intent.link)?.state ?? "open") !== "open",
+  reflected: (read, intent) => {
+    const state = changeOf(read, intent.link)?.state;
+    return state === "closed" || state === "merged";
+  },
   settledBy: (read, intent) => {
     const state = changeOf(read, intent.link)?.state ?? "open";
-    if (state === "open") return null;
+    if (state === "open" || state === "adding" || state === "merging") return null;
     return state === "closed"
       ? { kind: "succeeded" }
       : { kind: "failed", reason: "The change was merged instead of closed." };
@@ -358,6 +392,7 @@ export const FLOW_WRITE_KINDS = [
   redeployWrite,
   addServiceWrite,
   mergeChangeWrite,
+  stopAddingWrite,
   closeChangeWrite,
   handChangeWrite,
   askMergeWrite,

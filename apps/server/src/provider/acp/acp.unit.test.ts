@@ -207,7 +207,7 @@ it("AP2: Cursor starts with `--force` only under full access and with `--auto-re
 
 // witness: apps/server/src/provider/acp/CursorAcpSupport.ts | : [...(yield* besideTheWayDown(confine.reads, entriesOf)), `${confine.reads}/.*`]; → : [...(yield* besideTheWayDown(confine.reads, entriesOf))];
 it.effect(
-  "AP+1: A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off",
+  "AP20: A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off",
   () =>
     Effect.gen(function* () {
       const entries: Readonly<Record<string, ReadonlyArray<string>>> = {
@@ -255,7 +255,7 @@ it.effect(
 
 // witness: apps/server/src/provider/acp/CursorAcpSupport.ts | : [...(yield* besideTheWayDown(confine.writes, entriesOf)), `${confine.writes}/.git`]; → : [...(yield* besideTheWayDown(confine.writes, entriesOf))];
 it.effect(
-  "AP+3: A crew writer's Cursor starts with settings of its own that refuse every write beside the way down to its copy and into the copy's git internals, and every read outside the code",
+  "AP+1: A crew writer's Cursor starts with settings of its own that refuse every write beside the way down to its copy and into the copy's git internals, and every read outside the code",
   () =>
     Effect.gen(function* () {
       const entries: Readonly<Record<string, ReadonlyArray<string>>> = {
@@ -298,7 +298,7 @@ it.effect(
 );
 
 // witness: apps/server/src/provider/acp/CursorAcpSupport.ts | if (input.runtimeMode === "approval-required" && !input.writes) { → if (input.runtimeMode === "approval-required") {
-it("AP+4: Cursor runs a supervised thread in its ask mode, which neither edits nor runs commands, except a profiled thread that changes files, which runs in agent mode, and plan stays plan", () => {
+it("AP+2: Cursor runs a supervised thread in its ask mode, which neither edits nor runs commands, except a profiled thread that changes files, which runs in agent mode, and plan stays plan", () => {
   const modeState = {
     currentModeId: "agent",
     availableModes: [

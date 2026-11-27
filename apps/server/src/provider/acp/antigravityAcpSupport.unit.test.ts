@@ -46,7 +46,7 @@ it("AP16: Antigravity starts with its own approve-everything flag only under ful
 });
 
 // witness: apps/server/src/provider/acp/AntigravityAcpSupport.ts | : { ...input.environment, TMPDIR: input.temporaryDirectory }, → : input.environment,
-it("AP+2: Antigravity started with a temporary folder of its own has it as its TMPDIR over the server's, the rest of its environment unchanged", () => {
+it("AP21: Antigravity started with a temporary folder of its own has it as its TMPDIR over the server's, the rest of its environment unchanged", () => {
   const spawn = (temporaryDirectory?: string) =>
     buildAntigravityAcpSpawnInput({
       binaryPath: "agy",
