@@ -1,8 +1,8 @@
 import { expect, it } from "vite-plus/test";
-import { checkNoticeLogin, checkNoticeVerdict } from "./checkNotice.ts";
+import { checkNoticeAfterLimit, checkNoticeLogin, checkNoticeVerdict } from "./checkNotice.ts";
 
-// witness: apps/server/src/zerops/admission/checkNotice.ts | if (input.state !== "authorized") return "unavailable"; → if (input.state !== "authorized") return "unknown";
-it("TA+1: A check notice runs on an admitted owner login, waits while its login or admission is unknown, and ends with no-agent or usage-limit only when no other owner login can run; breaks: a failed check waits forever or an unresolved sign-in is handed to a person too soon", () => {
+// witness: apps/server/src/zerops/admission/checkNotice.ts | return resumes ? { kind: "wait" as const } : { kind: "finish" as const }; → return { kind: "wait" as const };
+it("TA+1: A check notice runs on an admitted owner login, waits while its login or admission is unknown, and ends with no-agent or usage-limit only when no other owner login can run; a limited run with no wake can finish even when another login might work; breaks: a failed check waits forever or an unresolved sign-in is handed to a person too soon", () => {
   const rows = [
     ["authorized", "admit", "ready"],
     ["not-authorized", "refuse", "unavailable"],
@@ -49,5 +49,20 @@ it("TA+1: A check notice runs on an admitted owner login, waits while its login 
   );
   expect(checkNoticeVerdict({ current: "ready", others: ["ready"], usageLimited: true })).toEqual({
     kind: "wait",
+  });
+  for (const other of ["ready", "unknown"] as const) {
+    const verdict = checkNoticeVerdict({
+      current: "ready",
+      others: [other],
+      usageLimited: true,
+    });
+    expect(checkNoticeAfterLimit(verdict, true)).toEqual({ kind: "wait" });
+    expect(checkNoticeAfterLimit(verdict, false)).toEqual({ kind: "finish" });
+  }
+  expect(checkNoticeAfterLimit(undefined, true)).toEqual({ kind: "wait" });
+  expect(checkNoticeAfterLimit(undefined, false)).toEqual({ kind: "finish" });
+  expect(checkNoticeAfterLimit({ kind: "end", reason: "usage-limit" }, false)).toEqual({
+    kind: "end",
+    reason: "usage-limit",
   });
 });

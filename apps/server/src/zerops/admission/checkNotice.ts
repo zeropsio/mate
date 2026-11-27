@@ -44,3 +44,12 @@ export function checkNoticeVerdict(input: {
     return { kind: "wait" };
   return { kind: "end", reason: "no-agent" };
 }
+
+/** A limited notice can wait only if a wake will resume its run. */
+export function checkNoticeAfterLimit(
+  verdict: ReturnType<typeof checkNoticeVerdict> | undefined,
+  resumes: boolean,
+) {
+  if (verdict?.kind === "end") return verdict;
+  return resumes ? { kind: "wait" as const } : { kind: "finish" as const };
+}

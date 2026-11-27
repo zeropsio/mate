@@ -91,7 +91,12 @@ import { type ConversationView, MateEngine } from "../engine/MateEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { mateMessageAgent } from "./admission/mateMessageAgent.ts";
-import { checkNoticeLogin, checkNoticeVerdict, type NoticeLogin } from "./admission/checkNotice.ts";
+import {
+  checkNoticeAfterLimit,
+  checkNoticeLogin,
+  checkNoticeVerdict,
+  type NoticeLogin,
+} from "./admission/checkNotice.ts";
 import { engineShellOf } from "./engineOverview.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
@@ -713,16 +718,25 @@ export const make = Effect.gen(function* () {
             (run.end.admission !== undefined || run.end.forNow === true)))
       ) {
         const candidates = yield* noticeLogins(ownerUserId, admitted);
-        if (candidates === undefined) return;
         const current =
-          view.agent == null ? undefined : yield* noticeCurrent(view.agent.instanceId, candidates);
-        const verdict = checkNoticeVerdict({
-          current: current?.status,
-          others: candidates
-            .filter((login) => login.id !== current?.id)
-            .map((login) => login.status),
-          usageLimited: run.end?.kind === "usage-limit",
-        });
+          view.agent == null || candidates === undefined
+            ? undefined
+            : yield* noticeCurrent(view.agent.instanceId, candidates);
+        const loginVerdict =
+          candidates === undefined
+            ? undefined
+            : checkNoticeVerdict({
+                current: current?.status,
+                others: candidates
+                  .filter((login) => login.id !== current?.id)
+                  .map((login) => login.status),
+                usageLimited: run.end?.kind === "usage-limit",
+              });
+        const verdict =
+          run.end?.kind === "usage-limit"
+            ? checkNoticeAfterLimit(loginVerdict, view.usageResumes?.includes(run.runId) === true)
+            : loginVerdict;
+        if (verdict === undefined) return;
         if (verdict.kind === "end") {
           if (run.end === null) {
             const stopped = yield* engine.deliver(
@@ -735,7 +749,7 @@ export const make = Effect.gen(function* () {
           }
           return yield* settle(id, "not-admitted", undefined, verdict.reason);
         }
-        if (run.end?.kind === "usage-limit") return;
+        if (run.end?.kind === "usage-limit" && verdict.kind === "wait") return;
       }
       if (run.end === null) return;
       // Admission refused the run it opened before any run of it reached the agent (its owner's
