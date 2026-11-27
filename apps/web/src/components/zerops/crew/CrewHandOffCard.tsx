@@ -5,14 +5,16 @@
  * back. The conversation's agent hears of it again when it comes to rest; this card is the
  * person's.
  */
+import type { CrewAccess } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { crewSeamWords } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewCommand, EnvironmentId } from "@t3tools/contracts";
+import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+import type { CrewCommand, CrewSnapshot, EnvironmentId } from "@t3tools/contracts";
 import { MessageSquareIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useCrewValue } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
-import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
+import { useCrewCommand, type UseCrewCommand } from "~/zerops/crew/useCrewCommand";
 import { useOpenReview } from "~/zerops/review";
 import { needsYouTellLabel } from "~/zerops/waiting.logic";
 import { Button } from "../../ui/button";
@@ -40,6 +42,43 @@ export function CrewHandOffCard({
   const access = useCrewAccess(environmentId, snapshot);
   const command = useCrewCommand(environmentId);
   const openReview = useOpenReview();
+  return (
+    <CrewHandOffCardView
+      access={access}
+      command={command}
+      mateName={mateName}
+      number={number}
+      onReview={(reviewed) => {
+        if (environmentId !== null)
+          openReview({ kind: "crew-task", environmentId, taskId: reviewed });
+      }}
+      snapshot={snapshot}
+      taskId={taskId}
+      view={view}
+    />
+  );
+}
+
+/** The card over the crew as read: what the conversation's row and the harness both draw. */
+export function CrewHandOffCardView({
+  snapshot,
+  view,
+  access,
+  command,
+  onReview,
+  taskId,
+  number,
+  mateName,
+}: {
+  readonly snapshot: CrewSnapshot | null;
+  readonly view: CrewView | null;
+  readonly access: Pick<CrewAccess, "command" | "reach">;
+  readonly command: Pick<UseCrewCommand, "send" | "pending" | "errorAt">;
+  readonly onReview: (taskId: string) => void;
+  readonly taskId: string;
+  readonly number: number;
+  readonly mateName: string;
+}) {
   const [open, setOpen] = useState<"answer" | "tell" | null>(null);
   const origin = `hand-off:${taskId}`;
   const task = snapshot?.board.tasks.find((candidate) => candidate.id === taskId);
@@ -76,8 +115,7 @@ export function CrewHandOffCard({
         setOpen(open === "answer" ? null : "answer");
         return;
       case "review":
-        if (environmentId !== null)
-          openReview({ kind: "crew-task", environmentId, taskId: action.taskId });
+        onReview(action.taskId);
         return;
       case "command":
         send(action.command, () => {});

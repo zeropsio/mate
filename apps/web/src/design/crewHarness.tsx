@@ -23,7 +23,8 @@
  * fixture crew; a view (setup, goal, job) is the real view in the same frame,
  * over fixture crew files.
  *
- * Add `&pool=1` for a Mate with only tinypool. Its job view opens a new builder.
+ * Add `&pool=1` for a Mate with only tinypool. Its job view opens a new builder. Add
+ * `&handoffs=1` for the conversation's column with a hand-off card for each writer's task.
  * Served by the dev server at `/design-crew.html`. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
@@ -58,6 +59,7 @@ import { RightPanelTabs } from "~/components/RightPanelTabs";
 import { CrewGoal } from "~/components/zerops/crew/CrewGoal";
 import { crewGoalMarkdown } from "~/components/zerops/crew/CrewGoal.logic";
 import { CrewmateJob } from "~/components/zerops/crew/CrewmateJob";
+import { CrewHandOffCardView } from "~/components/zerops/crew/CrewHandOffCard";
 import { CrewPanelBody, CrewPanelFrame } from "~/components/zerops/crew/CrewPanel";
 import { CrewSetup } from "~/components/zerops/crew/CrewSetup";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
@@ -831,6 +833,45 @@ function Column() {
 }
 
 /**
+ * The conversation's column with `&handoffs=1`: a card for each writer's task, as a person's
+ * conversation that handed it off shows it beside the tab.
+ */
+function HandOffs() {
+  const crew = crewRead();
+  const access = crewAccess({
+    readsAlong: false,
+    snapshot: crew.snapshot,
+    lockOf,
+    defaultLogin: "claudeAgent",
+    reading: false,
+  });
+  const writers = new Set(
+    (crew.snapshot?.crewmates ?? [])
+      .filter((crewmate) => crewmate.kind === "writer")
+      .map((crewmate) => crewmate.handle),
+  );
+  return (
+    <div className="mx-auto flex w-full max-w-208 flex-col gap-3 px-6 py-10">
+      {(crew.snapshot?.board.tasks ?? [])
+        .filter((task) => writers.has(task.owner))
+        .map((task) => (
+          <CrewHandOffCardView
+            access={access}
+            command={FILES}
+            key={task.id}
+            mateName={FEN.name}
+            number={task.number}
+            onReview={noop}
+            snapshot={crew.snapshot}
+            taskId={task.id}
+            view={crew.view}
+          />
+        ))}
+    </div>
+  );
+}
+
+/**
  * The app's row: the left menu, the conversation's column, and the panel with
  * the Zerops and Crew tabs — which, maximized, takes the conversation's room.
  */
@@ -840,7 +881,9 @@ function Harness() {
   return (
     <div className="flex h-screen bg-background text-foreground">
       <div className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU }} />
-      <div className={MAXIMIZED ? "w-0 flex-none" : "min-w-0 flex-1"} />
+      <div className={MAXIMIZED ? "w-0 flex-none" : "min-w-0 flex-1 overflow-y-auto"}>
+        {params.get("handoffs") === "1" && !MAXIMIZED ? <HandOffs /> : null}
+      </div>
       <RightPanelTabs
         activeSurfaceId="crew"
         availability={resolveRightPanelAvailability({
