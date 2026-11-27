@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { draftPane, type DraftPaneState } from "./DraftPanel.logic.ts";
+import { draftPane, draftPaneHandover, type DraftPaneState } from "./DraftPanel.logic.ts";
 
 // witness: apps/web/src/components/zerops/DraftPanel.logic.ts | if (state.invalidated === true) return { kind: "ended" }; → if (false) return { kind: "ended" };
 it("MN123: Opening a draft holds one request per act and shows only zcp's answer; an ended draft returns to availability instead of keeping its frame; breaks: a late answer shows an old copy or two openings overlap.", () => {
@@ -44,4 +44,14 @@ it("MN123: Opening a draft holds one request per act and shows only zcp's answer
       answer: { status: "running", url: "https://draft.example" },
     }),
   ).toEqual({ kind: "ended" });
+});
+
+// witness: apps/web/src/components/zerops/DraftPanel.logic.ts | return look.kind === "added" ? app[0] : undefined; → return look.kind === "discarded" ? app[0] : undefined;
+it("MN+1: The pane of a draft that is in the app now becomes Your app, its part's stage, and a draft still open or discarded, or Your app with no address, keeps its pane; breaks: Open draft pressed after the add says the draft is in the app instead of opening the app", () => {
+  const stage = { service: "appstage", url: "https://appstage.example" };
+  const copy = { kind: "service", hostname: "appdev", branch: "feature" } as const;
+  expect(draftPaneHandover({ kind: "added" }, [stage])).toEqual(stage);
+  expect(draftPaneHandover({ kind: "added" }, [])).toBeUndefined();
+  expect(draftPaneHandover({ kind: "discarded" }, [stage])).toBeUndefined();
+  expect(draftPaneHandover({ kind: "openable", copy }, [stage])).toBeUndefined();
 });

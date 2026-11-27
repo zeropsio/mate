@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { makeDraftPreviewWire } from "@t3tools/client-runtime/data";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -8,7 +8,7 @@ import { AsyncResult } from "effect/reactivity";
 import { RotateCwIcon } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { connectionAtomRuntime } from "~/connection/runtime";
-import type { RightPanelSurface } from "~/rightPanelStore";
+import { useRightPanelStore, type RightPanelSurface } from "~/rightPanelStore";
 import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { Button } from "~/components/ui/button";
 import { PanelBar } from "~/components/ui/panel-bar";
@@ -17,6 +17,7 @@ import { useDraftChange, useMatePreviews } from "./review/reviewReads";
 import {
   draftPane,
   draftPaneFace,
+  draftPaneHandover,
   sameCopy,
   unheldDraftFace,
   type DraftPaneFace,
@@ -101,16 +102,20 @@ export function DraftPaneView({
 
 function LoadedDraft({
   surface,
-  environmentId,
+  threadRef,
+  active,
   pull,
 }: {
   readonly surface: DraftSurface;
-  readonly environmentId: EnvironmentId;
+  readonly threadRef: ScopedThreadRef;
+  /** The pane is the one shown: only then does it hand over to Your app. */
+  readonly active: boolean;
   readonly pull: NonNullable<ReturnType<typeof useDraftChange>["pull"]>;
 }) {
+  const { environmentId } = threadRef;
   const apps = useMemo(() => [surface.groupId], [surface.groupId]);
   const flow = useProjectFlows(apps).flows.get(surface.groupId);
-  const { draft } = useMatePreviews(
+  const { app, draft } = useMatePreviews(
     surface.groupId,
     pull.mateProjectId,
     flow?.mateTier,
@@ -129,6 +134,14 @@ function LoadedDraft({
     pull.branch,
   );
   const mateName = useMateNames().get(pull.mateProjectId) ?? "the Mate";
+  // A draft in the app now is no draft to show: its pane becomes Your app.
+  const handover = active ? draftPaneHandover(draft, app) : undefined;
+  useEffect(() => {
+    if (handover === undefined) return;
+    const panel = useRightPanelStore.getState();
+    panel.openService(threadRef, handover.service, handover.url);
+    panel.closeSurface(threadRef, surface.id);
+  }, [handover, surface.id, threadRef]);
   const registry = Option.getOrUndefined(AsyncResult.value(useAtomValue(registryAtom)));
   const [state, dispatch] = useReducer(draftPane, { kind: "idle" });
   const mountHandled = useRef(false);
@@ -185,10 +198,12 @@ function LoadedDraft({
 
 function DraftPanel({
   surface,
-  environmentId,
+  threadRef,
+  active,
 }: {
   readonly surface: DraftSurface;
-  readonly environmentId: EnvironmentId;
+  readonly threadRef: ScopedThreadRef;
+  readonly active: boolean;
 }) {
   const { pull, read } = useDraftChange(surface);
   if (pull === undefined)
@@ -200,18 +215,18 @@ function DraftPanel({
         onRetry={() => {}}
       />
     );
-  return <LoadedDraft surface={surface} environmentId={environmentId} pull={pull} />;
+  return <LoadedDraft active={active} pull={pull} surface={surface} threadRef={threadRef} />;
 }
 
 /** Kept mounted across tab switches, so a draft and its in-flight opening remain one pane. */
 export function DraftPanels({
   surfaces,
   activeSurfaceId,
-  environmentId,
+  threadRef,
 }: {
   readonly surfaces: readonly RightPanelSurface[];
   readonly activeSurfaceId: string | null;
-  readonly environmentId: EnvironmentId;
+  readonly threadRef: ScopedThreadRef;
 }) {
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
@@ -234,7 +249,11 @@ export function DraftPanels({
         key={surface.id}
         className={surface.id === activeSurfaceId ? "h-full min-h-0" : "hidden"}
       >
-        <DraftPanel surface={surface} environmentId={environmentId} />
+        <DraftPanel
+          active={surface.id === activeSurfaceId}
+          surface={surface}
+          threadRef={threadRef}
+        />
       </div>
     ),
   );

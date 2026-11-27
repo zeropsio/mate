@@ -1,4 +1,8 @@
-import { draftAbsentLine, draftStateLine } from "@t3tools/client-runtime/zerops/partLook";
+import {
+  draftAbsentLine,
+  draftStateLine,
+  type PartLook,
+} from "@t3tools/client-runtime/zerops/partLook";
 import type { DraftLook } from "@t3tools/client-runtime/zerops/draftLook";
 import { isBrowsableUrl } from "@t3tools/client-runtime/zerops/mateParts";
 import type { ZeropsDraftCopy, ZeropsDraftPreview } from "@t3tools/contracts";
@@ -110,4 +114,16 @@ export function unheldDraftFace(read: LinkedChangeState): DraftPaneFace {
     reload: false,
     retry: false,
   };
+}
+
+/**
+ * Where the pane of a draft that is in the app now goes: Your app, the first stage of its part, as
+ * an old Open draft of an added draft opens it (the chat script's rows 6 and 10). None for a draft
+ * still open or discarded, or while Your app has no address, and the pane stays, saying why.
+ */
+export function draftPaneHandover(
+  look: DraftLook,
+  app: PartLook["app"],
+): PartLook["app"][number] | undefined {
+  return look.kind === "added" ? app[0] : undefined;
 }

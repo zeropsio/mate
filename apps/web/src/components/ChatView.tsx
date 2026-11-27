@@ -7911,7 +7911,7 @@ function ConversationView(props: ChatViewProps) {
           <DraftPanels
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
-            environmentId={activeThreadRef.environmentId}
+            threadRef={activeThreadRef}
           />
           <ServiceBrowserPanels
             key={activeThreadKey}
@@ -7971,7 +7971,7 @@ function ConversationView(props: ChatViewProps) {
             <DraftPanels
               surfaces={rightPanelState.surfaces}
               activeSurfaceId={activeRightPanelSurface?.id ?? null}
-              environmentId={activeThreadRef.environmentId}
+              threadRef={activeThreadRef}
             />
             <ServiceBrowserPanels
               key={activeThreadKey}
