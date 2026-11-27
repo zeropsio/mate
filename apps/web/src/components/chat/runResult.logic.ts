@@ -442,10 +442,8 @@ function serviceRow(
 }
 
 /**
- * A page whose check stayed failed, under what it belongs to: its service,
- * else its host. A check of the page already open named no address, so it
- * stands by what it can name — the browser, and the device it was on —
- * never "the page … the page".
+ * A page whose check stayed failed, under its service when known, or the
+ * browser and device otherwise. A workspace host is not a name to keep.
  */
 function failedPageRow(page: CheckedPage, owner: string | null): ResultRow {
   const on = page.failedOn === null ? "" : ` on ${page.failedOn}`;
@@ -483,7 +481,7 @@ function pagesRow(host: string, pages: ReadonlyArray<CheckedPage>): ResultRow {
     group: "running",
     mark: "dot",
     tone: passedOne ? "ok" : "muted",
-    title: host,
+    title: "Browser check",
     words: null,
     version: null,
     sub: null,
@@ -653,11 +651,11 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
   };
   for (const page of pages) {
     if (page.failure !== null && standing(page)) {
-      rows.push(failedPageRow(page, owners.get(page) ?? page.host));
+      rows.push(failedPageRow(page, owners.get(page) ?? null));
     }
   }
-  // A page no service of the run serves stands by its host; one with no
-  // address has nothing a row can say — its picture is the strip's.
+  // Group checks by host without showing it: a workspace address can end
+  // when the draft does. A page with no address is in the picture strip.
   const loose = new Map<string, CheckedPage[]>();
   for (const page of pages) {
     if (page.failure !== null || owners.get(page) !== undefined || page.host === null) continue;
