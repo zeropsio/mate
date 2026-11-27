@@ -666,10 +666,8 @@ export class ZeropsApiClient {
   } | null = null;
 
   /**
-   * The organizations whose direct project list refused this account, each with the account epoch
-   * it refused in. Zerops answers `GET /client/{id}/project` with 403 for a Developer or Guest
-   * membership, whose access is per project, and that is its final answer for the person: their
-   * lists read `/project/search` from then on, the read the platform applies their roles to.
+   * The organizations whose direct project list answered 403, each with the account epoch of the
+   * refusal. It is final for that epoch, so their lists read `/project/search` from then on.
    */
   readonly #projectListRefusals = new Map<string, number>();
 
@@ -711,12 +709,8 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Lists the projects this membership may actually see.
-   *
-   * OWNER/ADMIN-style memberships use the lag-free client read. Zerops
-   * intentionally rejects that endpoint for Developer/Guest memberships,
-   * whose access is expressed by per-project roles; the same `/project/search`
-   * query used by the platform GUI applies those permissions server-side.
+   * Returns the direct client project list as answered. A 403 is final for this organization in
+   * the account epoch; this and later lists use `/project/search` instead.
    */
   async listAccessibleClientProjects(
     clientId: string,
