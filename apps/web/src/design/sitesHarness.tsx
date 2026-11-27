@@ -32,6 +32,8 @@ import {
 } from "~/components/zerops/SidebarProjectSites";
 import { MateFace } from "~/components/zerops/primitives";
 import { OpenInMatePanelContext, type OpenInMatePanel } from "~/zerops/openInMatePanel";
+import { ZeropsSessionContext } from "~/zerops/sessionContext";
+import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import "../index.css";
 
 const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
@@ -460,8 +462,16 @@ function Harness() {
   );
 }
 
+/** The signed-in viewer Your app's reads ask for; HQ is not reached here, so its changes stay unread. */
+const VIEWER = {
+  user: { id: "u-harness" },
+  activeOrganization: null,
+} as unknown as ZeropsSessionValue;
+
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
-    <Harness />
+    <ZeropsSessionContext.Provider value={VIEWER}>
+      <Harness />
+    </ZeropsSessionContext.Provider>
   </StrictMode>,
 );

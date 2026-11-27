@@ -1368,14 +1368,21 @@ function SitesServices({
       // "guestbook · Add a guestbook page · added 08:15", never by its container or its host.
       title:
         row.yourApp === true ? (
-          <>
-            <span className="font-medium text-foreground">{appName}</span>
+          // The title gives way, never the app or when it was added.
+          <span className="flex min-w-0">
+            <span className="flex-none font-medium text-foreground">{appName}</span>
             {row.has === undefined ? null : (
-              <span className="ms-2 font-normal text-muted-foreground">
-                {row.has.title} · added {formatDayAwareTimestamp(row.has.at, "locale")}
-              </span>
+              <>
+                <span className="min-w-0 truncate font-normal text-muted-foreground">
+                  &nbsp;· {row.has.title}
+                </span>
+                <span className="flex-none font-normal whitespace-pre text-muted-foreground">
+                  {" · added "}
+                  {formatDayAwareTimestamp(row.has.at, "locale")}
+                </span>
+              </>
             )}
-          </>
+          </span>
         ) : (
           <>
             <span className="me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
