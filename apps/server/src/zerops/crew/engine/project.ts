@@ -205,11 +205,13 @@ const taskAttention = (
         : row("review-wait");
     }
     case "queued": {
-      // A dependency that will not land holds it for good.
-      const gone = task.dependsOn.some((id) => {
-        const dependency = state.tasks[id]?.state;
-        return dependency === "discarded" || dependency === "parked";
-      });
+      // A dependency that will not land, or a task to review that will not, holds it for good.
+      const gone = [...task.dependsOn, ...(task.reviews === undefined ? [] : [task.reviews])].some(
+        (id) => {
+          const dependency = state.tasks[id]?.state;
+          return dependency === "discarded" || dependency === "parked";
+        },
+      );
       if (gone) return row("dependency-gone");
       return task.cantStart === null
         ? undefined

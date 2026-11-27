@@ -8,7 +8,7 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { CrewCard, CrewTaskSource } from "@t3tools/contracts";
 
 import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "../crewShowOnDev.ts";
-import type { TaskRecord } from "./state.ts";
+import { reviewsOf, type CrewState, type TaskRecord } from "./state.ts";
 
 export interface SentCard {
   readonly text: string;
@@ -121,15 +121,39 @@ export const nudgeCard = (task: TaskRecord): SentCard => ({
   card: taskCardOf(task, "nudge", ""),
 });
 
-/** The lead's wake for a task in review. */
-export const reviewCard = (task: TaskRecord): SentCard => {
+const verdictLine = (reader: TaskRecord, on: TaskRecord): string =>
+  reader.verdict === undefined
+    ? `@${reader.owner} gave no verdict on #${on.number}.`
+    : `@${reader.owner}'s verdict on #${on.number}: ${reader.verdict.verdict}` +
+      (reader.verdict.note.trim() === "" ? "." : ` — ${reader.verdict.note.trim()}`);
+
+/**
+ * The lead's wake for a task in review, with what the readers said of it. A reader's own task
+ * carries its verdict on the task it reviews: only the lead's verdict on that task lands it.
+ */
+export const reviewCard = (state: CrewState, task: TaskRecord): SentCard => {
   const report = task.report?.summary ?? null;
+  const reviewed = task.reviews === undefined ? undefined : state.tasks[task.reviews];
+  const verdicts = reviewsOf(state, task).flatMap((reader) =>
+    reader.verdict === undefined ? [] : [verdictLine(reader, task)],
+  );
+  const read =
+    state.members[task.owner]?.kind === "writer"
+      ? `Read its changes with crew_diff (handle ${task.owner}) and give your verdict on ` +
+        `#${task.number} with crew_review.`
+      : `It changed no files: give your verdict on #${task.number} with crew_review.`;
   return {
     text: lines(`#${task.number} ${task.title} · review @${task.owner}'s work`, [
       ...(report === null ? [] : [`@${task.owner} reports: ${report}`]),
+      ...(reviewed === undefined
+        ? []
+        : [
+            verdictLine(task, reviewed),
+            `Only your verdict on #${reviewed.number} lands it: give it with crew_review.`,
+          ]),
+      ...verdicts,
       "Its check passed on the tree that would land.",
-      `Read its changes with crew_diff (handle ${task.owner}) and give your verdict on ` +
-        `#${task.number} with crew_review.`,
+      read,
     ]),
     card: taskCardOf(task, "review", report ?? "", {
       links: [{ kind: "crewmate", handle: task.owner }],

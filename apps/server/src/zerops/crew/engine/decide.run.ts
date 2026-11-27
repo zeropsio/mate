@@ -19,6 +19,7 @@ import {
   openTaskOf,
   questionKey,
   reviewKey,
+  reviewUnderWay,
   runElapsedMs,
   runningRun,
   sessionHadTurn,
@@ -47,10 +48,14 @@ const HOUR_MS = 3_600_000;
 
 const nextWake = (state: CrewState): { wake: LeadWake; card: SentCard } | undefined => {
   for (const task of tasksInOrder(state)) {
-    if (task.state === "review" && state.lead.woken[reviewKey(task)] === undefined) {
+    if (
+      task.state === "review" &&
+      state.lead.woken[reviewKey(task)] === undefined &&
+      !reviewUnderWay(state, task)
+    ) {
       return {
         wake: { key: reviewKey(task), kind: "review", taskId: task.id },
-        card: reviewCard(task),
+        card: reviewCard(state, task),
       };
     }
     const question = task.report?.question;

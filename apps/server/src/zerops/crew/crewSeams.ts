@@ -75,6 +75,8 @@ export interface CrewProposedTask {
   readonly doneWhen?: string;
   /** Titles or `#N` numbers of tasks in the same plan or on the board. */
   readonly dependsOn?: ReadonlyArray<string>;
+  /** A reader's task: the title or `#N` of the writer's task it reviews. */
+  readonly reviews?: string;
 }
 
 export interface CrewReviewInput {
