@@ -142,7 +142,7 @@ it("ZV197: The Git tab reads the Review build of the change at the reader's cloc
         state: "open",
         ready: true,
         reviewBuild: { state: "failing", head: "a".repeat(40), at },
-        checksGivenUp: true,
+        checksGivenUp: { reason: "tries" },
         pullRequest: {
           number: 7,
           state: "open",

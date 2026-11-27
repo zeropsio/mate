@@ -330,7 +330,9 @@ export const HqChange = Schema.Struct({
   /** Present while HQ holds a Review build for this open code change's current head. */
   reviewBuild: Schema.optionalKey(HqReviewBuild),
   /** The Mate has given up repairing checks; a person is needed. */
-  checksGivenUp: Schema.optionalKey(Schema.Literal(true)),
+  checksGivenUp: Schema.optionalKey(
+    Schema.NullOr(Schema.Struct({ reason: Schema.Literals(["tries", "no-agent", "usage-limit"]) })),
+  ),
   /** HQ still sends null until the retired receipt key is removed from the wire. */
   receipt: Schema.optionalKey(Schema.Null),
 });

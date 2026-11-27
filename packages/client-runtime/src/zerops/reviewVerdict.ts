@@ -296,7 +296,7 @@ export interface ChangeReviewInput {
     readonly repository?: string | undefined;
     readonly headSha?: string | undefined;
     readonly reviewBuild?: HqChange["reviewBuild"];
-    readonly checksGivenUp?: true | undefined;
+    readonly checksGivenUp?: HqChange["checksGivenUp"];
     readonly recipeValidation?: HqRecipeValidation | undefined;
     readonly problems?: ReadonlyArray<HqProblem> | undefined;
     /** Open with nothing pushed yet (`FlowPullRequest.unpushed`). */
@@ -806,7 +806,7 @@ function sentences(...parts: ReadonlyArray<string | undefined>): string {
 export function reviewBuildVerdict(
   build: HqChange["reviewBuild"],
   now: number | undefined,
-  givenUp?: true,
+  givenUp?: HqChange["checksGivenUp"],
 ):
   | {
       readonly state: "awaiting" | "passing" | "failing" | "unavailable";
@@ -821,7 +821,7 @@ export function reviewBuildVerdict(
     now !== undefined &&
     now > Date.parse(build.until);
   const state = expired ? "unavailable" : build.state;
-  const handoff = givenUp === true ? " · over to you" : "";
+  const handoff = givenUp != null ? " · over to you" : "";
   const links =
     state === "awaiting"
       ? []
@@ -854,6 +854,20 @@ export function reviewBuildVerdict(
     }
   }
   return { state, word, ...(links.length === 0 ? {} : { links }) };
+}
+
+/** Why the failed checks were handed to a person, in HQ's words. */
+export function checksGivenUpSentence(givenUp: HqChange["checksGivenUp"]): string | undefined {
+  switch (givenUp?.reason) {
+    case "tries":
+      return "Checks still fail after 3 tries; over to a person.";
+    case "no-agent":
+      return "No agent can work on this Mate: sign one in, then ask it to fix the check.";
+    case "usage-limit":
+      return "Your agent is at its usage limit, so the failed check waits for you: ask again after the limit resets, or sign in another agent.";
+    default:
+      return undefined;
+  }
 }
 
 /** What a change whose GitHub checks failed says of itself, in its review and on every row. */
@@ -1063,7 +1077,7 @@ export function changeMergeVerdict(
         state: reviewBuild.state === "awaiting" ? "review-build-awaiting" : "review-build-failing",
         tone: reviewBuild.state === "awaiting" ? "busy" : "attention",
         title: reviewBuild.word,
-        why: `It still merges cleanly into ${base}`,
+        why: checksGivenUpSentence(pull.checksGivenUp) ?? `It still merges cleanly into ${base}`,
         fix: githubFix,
       },
     };
@@ -1079,8 +1093,11 @@ export function changeMergeVerdict(
       verdict: {
         state: "github-checks-failed",
         tone: "attention",
-        title: `${GITHUB_CHECKS_FAILED}${pull.checksGivenUp === true && reviewBuild === undefined ? " · over to you" : ""}`,
-        why: sentences(`It still merges cleanly into ${base}`, reviewBuild?.word),
+        title: `${GITHUB_CHECKS_FAILED}${pull.checksGivenUp != null && reviewBuild === undefined ? " · over to you" : ""}`,
+        why:
+          checksGivenUpSentence(pull.checksGivenUp) ??
+          sentences(`It still merges cleanly into ${base}`, reviewBuild?.word),
+        ...(pull.checksGivenUp == null ? {} : { showWhy: true as const }),
         fix: githubFix,
       },
     };

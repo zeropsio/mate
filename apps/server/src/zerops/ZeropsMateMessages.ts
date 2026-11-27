@@ -23,12 +23,14 @@
  * - **Admitted for the owner:** the run is for the principal `mate`, with the owner HQ named when
  *   the Mate took the message; it spends the conversation's agent login only where that login's
  *   recorded signer is that owner (`ZeropsTurnAdmission.admitRun`): never a project token, never an
- *   agent nobody signs in to. Until it is, the message waits, said once in the log, asked again
+ *   agent nobody signs in to. Until it is, a peer message waits, said once in the log, asked again
  *   only once a login, its signer, the owner, its conversation or the stand-up's wait moved. Where
  *   admission refused the run it opened before any run of it reached the agent (a sign-in that
  *   moved between, the door unable to say in time), it waits again; a continuation of work already
  *   done is never sent again. HQ naming another owner while it waits, or while its run is still
- *   queued, declines it.
+ *   queued, declines it. A check notice ends `not-admitted` as soon as its owner has no agent that
+ *   can run it, or its run is held at a usage limit and no other such agent can run it. Unknown
+ *   admission keeps the notice taken until its facts move.
  * - **Declined:** on an automated Mate, which takes no Mate's messages, where HQ named no owner,
  *   where the conversation refuses the message for good (archived, an empty message), and after
  *   {@link TAKEN_BACK_WAIT_MS} of sends taken back for now since it was taken; a refusal for
@@ -54,6 +56,9 @@ import {
   type MateMessage,
   type MateMessageEnd,
   type MateMessageFrom,
+  type MateMessageNotAdmittedReason,
+  agentIdForDriverKind,
+  agentIdForProviderInstance,
   type Principal,
   type RunEnd,
   ZeropsUserId,
@@ -64,6 +69,7 @@ import {
 } from "@t3tools/contracts";
 import type { KeyLinkUp } from "@t3tools/shared/mateLink";
 import { leaseMayBeOf } from "@t3tools/shared/hqChanges";
+import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 import {
   conversationOfBranch,
   resolvePrimaryConversation,
@@ -85,6 +91,12 @@ import { type ConversationView, MateEngine } from "../engine/MateEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { mateMessageAgent } from "./admission/mateMessageAgent.ts";
+import {
+  checkNoticeAfterLimit,
+  checkNoticeLogin,
+  checkNoticeVerdict,
+  type NoticeLogin,
+} from "./admission/checkNotice.ts";
 import { engineShellOf } from "./engineOverview.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
@@ -94,8 +106,7 @@ import { type MessageEntry, ZeropsMateMessageLedger } from "./ZeropsMateMessageL
 import { ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
-import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
-import { standUpAgents } from "./zeropsSetupSteps.ts";
+import { type TurnRefused, ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 
 /** What the Mate says of messages up the link. */
 export type MessageUp = Extract<KeyLinkUp, { readonly type: "message-taken" | "message-ended" }>;
@@ -202,6 +213,7 @@ const endedUp = (id: string, entry: MessageEntry): EndedUp | undefined =>
         type: "message-ended",
         id,
         end: entry.end,
+        ...(entry.reason === undefined ? {} : { reason: entry.reason }),
         ...(entry.words === undefined ? {} : { words: entry.words }),
       };
 
@@ -234,7 +246,9 @@ export const make = Effect.gen(function* () {
   // Each message whose end waits on its run's background work: looked at again at its deadline.
   const deadlines = yield* FiberMap.make<string>();
   // What each waiting message's wait was logged as: each wait said once.
-  const waitSaid = new Map<string, "sign-in" | "stand-up">();
+  const waitSaid = new Map<string, "sign-in" | "stand-up" | "provider">();
+  // A selected login's provider snapshot can arrive after its sign-in is admitted.
+  const providerWait = new Map<string, string>();
 
   const principalOf = (id: string, ownerUserId: string): Principal => ({
     kind: "mate",
@@ -278,14 +292,26 @@ export const make = Effect.gen(function* () {
       );
 
   /** Keeps the message's end, and tells it on every link; none when it could not be kept. */
-  const settle = (id: string, end: MateMessageEnd, words?: string) =>
+  const settle = (
+    id: string,
+    end: MateMessageEnd,
+    words?: string,
+    reason?: MateMessageNotAdmittedReason,
+  ) =>
     ledger
       .update(id, (entry) => ({
         ...(entry ?? { takenAt: 0 }),
         end,
+        ...(reason === undefined ? {} : { reason }),
         ...(words === undefined ? {} : { words }),
       }))
       .pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            waitSaid.delete(id);
+            providerWait.delete(id);
+          }),
+        ),
         Effect.tap((entry) => {
           const up = endedUp(id, entry);
           return up === undefined ? Effect.void : PubSub.publish(ends, up);
@@ -453,24 +479,8 @@ export const make = Effect.gen(function* () {
    * The agent a message gives the main conversation that has none, or the one it opens
    * (`mateMessageAgent`): its owner's, on an agent they signed in here that admits it.
    */
-  const agentFor = (
-    main: ConversationView | undefined,
-    ownerUserId: string,
-    admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<string | undefined>,
-  ) =>
+  const agentFor = (main: ConversationView | undefined, mayRun: ReadonlyArray<string>) =>
     Effect.gen(function* () {
-      const owner = ZeropsUserId.make(ownerUserId);
-      const candidates = standUpAgents(
-        (yield* agentAuth.latest).agents,
-        yield* signers.signers,
-        owner,
-      );
-      const mayRun = yield* Effect.filter(candidates, (agentId) =>
-        Effect.map(
-          admitted(defaultInstanceIdForAgent(agentId), ownerUserId),
-          (refused) => refused === undefined,
-        ),
-      );
       return mateMessageAgent({
         main,
         standUpSettled: yield* standUp.settled,
@@ -480,6 +490,68 @@ export const make = Effect.gen(function* () {
       });
     });
 
+  /** Reads each possible owner login through the same admission that starts its run. */
+  const messageLogins = (
+    ownerUserId: string,
+    admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<TurnRefused | undefined>,
+  ) =>
+    Effect.gen(function* () {
+      const snapshot = yield* agentAuth.latest;
+      if (!snapshot.available || snapshot.agents.length === 0) return undefined;
+      const attempts = yield* agentLogin.latest;
+      const rows = [
+        ...snapshot.agents.map((agent) => ({
+          id: defaultInstanceIdForAgent(agent.agentId),
+          loginKey: agent.agentId,
+          state: classifyZeropsAgentAuth(agent).kind,
+        })),
+        ...(yield* logins.latest).map((login) => ({
+          id: login.id,
+          loginKey: login.id,
+          state: login.state,
+        })),
+      ];
+      return yield* Effect.forEach(rows, (row) =>
+        Effect.gen(function* () {
+          const attempt = attempts[row.loginKey];
+          const signingIn =
+            attempt !== undefined &&
+            (attempt.startedBy === undefined || attempt.startedBy === ownerUserId) &&
+            !["succeeded", "failed", "cancelled"].includes(attempt.phase);
+          const refusal =
+            row.state === "authorized" && !signingIn
+              ? yield* admitted(row.id, ownerUserId)
+              : undefined;
+          const status = checkNoticeLogin({
+            state: row.state,
+            signingIn,
+            admission:
+              refusal === undefined ? "admit" : refusal.undetermined ? "unknown" : "refuse",
+          });
+          return { id: row.id, status };
+        }),
+      );
+    });
+
+  /** Resolve a conversation instance to the login its turn admission uses. */
+  const noticeCurrent = (
+    instanceId: string,
+    candidates: ReadonlyArray<{ readonly id: string; readonly status: NoticeLogin }>,
+  ) =>
+    Effect.gen(function* () {
+      const extra = yield* logins.resolve(instanceId);
+      const agent =
+        extra === undefined
+          ? (agentIdForDriverKind(yield* instances.driverKindOf(instanceId)) ??
+            agentIdForProviderInstance(instanceId))
+          : undefined;
+      const id = extra?.id ?? (agent === undefined ? instanceId : defaultInstanceIdForAgent(agent));
+      return {
+        id,
+        status: candidates.find((candidate) => candidate.id === id)?.status ?? "unknown",
+      } as const;
+    });
+
   /** The project's default model, where a V1 project still holds one; none on a new Mate. */
   const projectDefault = projection.getActiveProjectByWorkspaceRoot(cwd).pipe(
     Effect.map((found) => Option.getOrUndefined(found)?.defaultModelSelection ?? null),
@@ -487,7 +559,7 @@ export const make = Effect.gen(function* () {
   );
 
   /** Logs a message's wait once for what it waits on. */
-  const sayWait = (id: string, on: "sign-in" | "stand-up", reason: string) =>
+  const sayWait = (id: string, on: "sign-in" | "stand-up" | "provider", reason: string) =>
     waitSaid.get(id) === on
       ? Effect.void
       : Effect.andThen(
@@ -495,7 +567,9 @@ export const make = Effect.gen(function* () {
           Effect.logInfo(
             on === "sign-in"
               ? "zerops mate messages: a message waits for its owner's sign-in"
-              : "zerops mate messages: a message waits for the stand-up",
+              : on === "stand-up"
+                ? "zerops mate messages: a message waits for the stand-up"
+                : "zerops mate messages: a message waits for its provider snapshot",
             { reason },
           ),
         );
@@ -506,10 +580,12 @@ export const make = Effect.gen(function* () {
     entry: MessageEntry,
     message: MateMessage,
     ownerUserId: string,
-    admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<string | undefined>,
+    admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<TurnRefused | undefined>,
   ) =>
     Effect.gen(function* () {
-      if (yield* waitedOut(entry)) return yield* settle(id, "declined");
+      providerWait.delete(id);
+      if (message.kind !== "notice" && (yield* waitedOut(entry)))
+        return yield* settle(id, "declined");
       const found = yield* placeOf(id, entry, message);
       if (found === undefined) return;
       const { view, askedFrom } = found;
@@ -522,20 +598,57 @@ export const make = Effect.gen(function* () {
         (yield* engine.generation(ConversationId.make(found.place))) === entry.held.generation
       )
         return;
+      // Only a check notice gives up on a definite absence; unknown and registration wait.
+      let noticeCandidates:
+        | ReadonlyArray<{
+            readonly id: string;
+            readonly status: NoticeLogin;
+          }>
+        | undefined;
+      if (message.kind === "notice") {
+        noticeCandidates = yield* messageLogins(ownerUserId, admitted);
+        if (noticeCandidates === undefined) return;
+        const current =
+          view?.agent == null
+            ? undefined
+            : yield* noticeCurrent(view.agent.instanceId, noticeCandidates);
+        const verdict = checkNoticeVerdict({
+          current: current?.status,
+          others: noticeCandidates
+            .filter((login) => login.id !== current?.id)
+            .map((login) => login.status),
+          usageLimited: false,
+        });
+        if (verdict.kind === "end")
+          return yield* settle(id, "not-admitted", undefined, verdict.reason);
+        if (verdict.kind === "wait")
+          return yield* sayWait(id, "sign-in", "the notice's login is not ready");
+        if (view?.agent == null && !(yield* standUp.settled))
+          return yield* sayWait(id, "stand-up", "the stand-up may open the conversation yet");
+      }
       // A conversation with no agent, or none at all: given its owner's first.
       let given: ConversationAgent | undefined;
       if (view?.agent == null) {
-        const chosen = yield* agentFor(view, ownerUserId, admitted);
+        const candidates = noticeCandidates ?? (yield* messageLogins(ownerUserId, admitted));
+        if (candidates === undefined) return;
+        const mayRun = candidates
+          .filter((login) => login.status === "ready")
+          .map((login) => login.id);
+        if (mayRun[0] !== undefined) providerWait.set(id, mayRun[0]);
+        const chosen = yield* agentFor(view, mayRun);
+        if (chosen.kind !== "wait-provider") providerWait.delete(id);
         if (chosen.kind === "wait-stand-up")
           return yield* sayWait(id, "stand-up", "the stand-up may open the conversation yet");
         if (chosen.kind === "wait-sign-in")
           return yield* sayWait(id, "sign-in", "no agent its owner signed in here admits it");
+        if (chosen.kind === "wait-provider")
+          return yield* sayWait(id, "provider", "the admitted login's snapshot has not arrived");
         given = chosen.agent;
       }
       const instanceId = given?.instanceId ?? view?.agent?.instanceId;
       if (instanceId === undefined) return;
       const refused = yield* admitted(instanceId, ownerUserId);
-      if (refused !== undefined) return yield* sayWait(id, "sign-in", refused);
+      if (refused !== undefined) return yield* sayWait(id, "sign-in", refused.message);
       // Its conversation is kept before the engine is touched: a restart never sends it to a
       // second one, nor opens a second one. One it opens is chosen once.
       const place = found.place ?? entry.opens ?? (yield* crypto.uuidV4());
@@ -594,7 +707,13 @@ export const make = Effect.gen(function* () {
     );
 
   /** A message in the engine: its end once its run ended and nothing of it is still to come. */
-  const follow = (id: string, entry: MessageEntry, conversation: string, ownerUserId: string) =>
+  const follow = (
+    id: string,
+    entry: MessageEntry,
+    conversation: string,
+    ownerUserId: string,
+    admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<TurnRefused | undefined>,
+  ) =>
     Effect.gen(function* () {
       const conversationId = ConversationId.make(conversation);
       const view = yield* engine.conversation(conversationId);
@@ -613,10 +732,53 @@ export const make = Effect.gen(function* () {
             CommandId.make(`mate-message-decline:${id}`),
             principalOf(id, ownerUserId),
           );
-          yield* settle(id, "declined");
+          return yield* settle(id, "declined");
         }
-        return;
       }
+      if (
+        entry.message?.kind === "notice" &&
+        (run.end === null ||
+          run.end.kind === "usage-limit" ||
+          (run.end.kind === "failed" &&
+            run.message?.opened === true &&
+            run.message.reached === false &&
+            (run.end.admission !== undefined || run.end.forNow === true)))
+      ) {
+        const candidates = yield* messageLogins(ownerUserId, admitted);
+        const current =
+          view.agent == null || candidates === undefined
+            ? undefined
+            : yield* noticeCurrent(view.agent.instanceId, candidates);
+        const loginVerdict =
+          candidates === undefined
+            ? undefined
+            : checkNoticeVerdict({
+                current: current?.status,
+                others: candidates
+                  .filter((login) => login.id !== current?.id)
+                  .map((login) => login.status),
+                usageLimited: run.end?.kind === "usage-limit",
+              });
+        const verdict =
+          run.end?.kind === "usage-limit"
+            ? checkNoticeAfterLimit(loginVerdict, view.usageResumes?.includes(run.runId) === true)
+            : loginVerdict;
+        if (verdict === undefined) return;
+        if (verdict.kind === "end") {
+          if (run.end === null) {
+            const stopped = yield* engine.deliver(
+              conversationId,
+              { _tag: "Stop", runId: run.runId },
+              CommandId.make(`mate-message-no-agent:${id}`),
+              principalOf(id, ownerUserId),
+            );
+            if (stopped._tag === "Rejected") return;
+          }
+          return yield* settle(id, "not-admitted", undefined, verdict.reason);
+        }
+        if (run.end?.kind === "usage-limit" && verdict.kind === "wait") return;
+      }
+      if (run.end === null) return;
       // Admission refused the run it opened before any run of it reached the agent (its owner's
       // sign-in moved, or the door could not say in time): it waits again, for its while.
       if (
@@ -625,9 +787,11 @@ export const make = Effect.gen(function* () {
         run.message.reached === false &&
         (run.end.admission !== undefined || run.end.forNow === true)
       )
-        return (yield* waitedOut({ ...entry, attempt: (entry.attempt ?? 0) + 1 }))
-          ? yield* settle(id, "failed")
-          : yield* again(id);
+        return entry.message?.kind === "notice"
+          ? yield* again(id)
+          : (yield* waitedOut({ ...entry, attempt: (entry.attempt ?? 0) + 1 }))
+            ? yield* settle(id, "failed")
+            : yield* again(id);
       const last = view.lastEnded?.id === run.runId ? view.lastEnded : undefined;
       // A restart's continuation, or the agent's own turn on its finished work, is still to come.
       if (last !== undefined && (view.runDue === true || view.turnDue === true)) return;
@@ -689,7 +853,7 @@ export const make = Effect.gen(function* () {
     if (open.length === 0) return;
     const automated = yield* automation.automated;
     const now = yield* owner.owner;
-    const answers = new Map<string, string | undefined>();
+    const answers = new Map<string, TurnRefused | undefined>();
     const admitted = (instanceId: string, ownerUserId: string) => {
       const key = `${instanceId}\n${ownerUserId}`;
       if (answers.has(key)) return Effect.succeed(answers.get(key));
@@ -701,7 +865,7 @@ export const make = Effect.gen(function* () {
         .pipe(
           Effect.as(undefined),
           Effect.catchTags({
-            TurnRefused: (refusal) => Effect.succeed(refusal.message),
+            TurnRefused: (refusal) => Effect.succeed(refusal),
           }),
           Effect.tap((answer) => Effect.sync(() => answers.set(key, answer))),
         );
@@ -714,8 +878,10 @@ export const make = Effect.gen(function* () {
         if (automated || message === undefined || ownerUserId === undefined)
           return settle(id, "declined");
         if (entry.conversationId !== undefined)
-          return all || conversations.has(entry.conversationId)
-            ? follow(id, entry, entry.conversationId, ownerUserId)
+          return all ||
+            conversations.has(entry.conversationId) ||
+            (message.kind === "notice" && admissionDue)
+            ? follow(id, entry, entry.conversationId, ownerUserId, admitted)
             : Effect.void;
         // HQ names another owner while it waits: not theirs to run.
         if (now !== undefined && now !== ownerUserId) return settle(id, "declined");
@@ -810,6 +976,21 @@ export const make = Effect.gen(function* () {
           }),
           Queue.offer(wake, undefined),
         ),
+    ),
+  );
+  // Only waiting selections need a wake when their instance's snapshot appears.
+  yield* Effect.forkScoped(
+    Stream.runForEach(instances.snapshots, (providers) =>
+      [...providerWait.values()].some((id) =>
+        providers.some((provider) => provider.instanceId === id),
+      )
+        ? Effect.andThen(
+            Effect.sync(() => {
+              admissionMoved = true;
+            }),
+            Queue.offer(wake, undefined),
+          )
+        : Effect.void,
     ),
   );
   // Another owner reaches a message waiting to be sent and one sent whose run is still queued.

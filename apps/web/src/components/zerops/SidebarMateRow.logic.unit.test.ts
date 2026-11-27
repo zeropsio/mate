@@ -127,7 +127,12 @@ it("MN113: A task's row reads its own change's Review build and the given-up dec
       undefined,
       "up for review · Review build unavailable (no result arrived)",
     ],
-    [{ state: "failing", head, at }, Date.parse(until), true, "Review build failed · over to you"],
+    [
+      { state: "failing", head, at },
+      Date.parse(until),
+      { reason: "tries" },
+      "Review build failed · over to you",
+    ],
     [
       { state: "passing", head, at },
       Date.parse(until),
@@ -150,7 +155,7 @@ it("MN113: A task's row reads its own change's Review build and the given-up dec
         title: "Fix checkout",
         done: true,
         reviewBuild: { state: "passing", head, at },
-        checksGivenUp: true,
+        checksGivenUp: { reason: "tries" },
         pullRequest: { number: 7, state: "open", checks: "failing" },
       },
     },

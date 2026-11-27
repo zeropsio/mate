@@ -80,12 +80,12 @@ it("ZV196: A change read from navigation alone carries its Review build and give
         mergeability: "clean",
         ready: true,
         reviewBuild: build,
-        checksGivenUp: true,
+        checksGivenUp: { reason: "tries" },
       },
     ],
   });
   expect(result.pullRequests[0]?.reviewBuild).toEqual(build);
-  expect(result.pullRequests[0]?.checksGivenUp).toBe(true);
+  expect(result.pullRequests[0]?.checksGivenUp).toEqual({ reason: "tries" });
   expect(changeState(result.pullRequests[0]!, Date.parse("2026-11-26T20:10:00Z"))?.word).toBe(
     "Review build failed · over to you",
   );

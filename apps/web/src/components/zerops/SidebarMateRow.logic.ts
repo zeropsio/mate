@@ -1,5 +1,5 @@
 import { reviewBuildVerdict } from "@t3tools/client-runtime/zerops/reviewVerdict";
-import type { HqReviewBuild } from "@t3tools/shared/hqChanges";
+import type { HqChange, HqReviewBuild } from "@t3tools/shared/hqChanges";
 import { mateSignInWait } from "@t3tools/client-runtime/zerops/mateAccess";
 import { personMark } from "./primitives/person.logic";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
@@ -1169,7 +1169,7 @@ export interface MateAutomationLine {
     /** Its Mate finished it; its change waits for review. */
     readonly done?: true | undefined;
     readonly reviewBuild?: HqReviewBuild | undefined;
-    readonly checksGivenUp?: true | undefined;
+    readonly checksGivenUp?: HqChange["checksGivenUp"];
     readonly pullRequest?: MateTaskPullRequest | undefined;
   } | null;
   /** Free (`task` null), the task it had last, once it ended; absent: it never had one. */
@@ -1261,7 +1261,7 @@ export function mateAutomatedLine(
       on: build.state === "failing" || review,
     };
   }
-  if (task.checksGivenUp === true && task.waiting !== true && !(working && task.done !== true))
+  if (task.checksGivenUp != null && task.waiting !== true && !(working && task.done !== true))
     return {
       kind: "task",
       text: line([pullRequest, "over to you"].filter((word) => word !== null).join(" · ")),
@@ -1312,7 +1312,7 @@ export function mateAutomation(
               readonly stopping?: true | undefined;
               readonly done?: true | undefined;
               readonly reviewBuild?: HqReviewBuild | undefined;
-              readonly checksGivenUp?: true | undefined;
+              readonly checksGivenUp?: HqChange["checksGivenUp"];
               readonly pullRequest?: MateTaskPullRequest | undefined;
               readonly ended?: MateLastTask["ended"] | undefined;
               readonly endedAt?: string | undefined;
@@ -1343,7 +1343,7 @@ export function mateAutomation(
             ...(task.stopping === true ? { stopping: true } : {}),
             ...(task.done === true ? { done: true } : {}),
             ...(task.reviewBuild === undefined ? {} : { reviewBuild: task.reviewBuild }),
-            ...(task.checksGivenUp === true ? { checksGivenUp: true as const } : {}),
+            ...(task.checksGivenUp == null ? {} : { checksGivenUp: task.checksGivenUp }),
             ...(task.pullRequest === undefined
               ? {}
               : {

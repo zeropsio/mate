@@ -132,7 +132,7 @@ it("ZV194: A Review build's take turns unavailable only after its deadline by th
     [
       { head: HEAD, at, state: "failing" },
       deadline,
-      true,
+      { reason: "tries" },
       "failing",
       "Review build failed · over to you",
     ],
@@ -147,7 +147,7 @@ it("ZV194: A Review build's take turns unavailable only after its deadline by th
     [
       { head: HEAD, at, state: "passing" },
       deadline,
-      true,
+      { reason: "tries" },
       "passing",
       "Review build passed · over to you",
     ],
@@ -230,7 +230,7 @@ it("ZV195: The review leaves Merge available and plain while a Review build awai
       ...openChange,
       pullRequest: { ...pullRequest, checks: "failing" },
       reviewBuild: { state: "failing", at, head: HEAD },
-      checksGivenUp: true,
+      checksGivenUp: { reason: "tries" },
     },
     "read",
     { merge: true, close: false },
@@ -239,4 +239,37 @@ it("ZV195: The review leaves Merge available and plain while a Review build awai
   expect(both.githubChecks?.words).toBe("GitHub's checks failed on its latest push");
   expect(both.verdict.fix?.verb).toBe("fix them");
   expect(both.primary?.plain).toBe(true);
+});
+
+// witness: packages/client-runtime/src/zerops/reviewVerdict.ts | return "No agent can work on this Mate: sign one in, then ask it to fix the check."; → return "Checks still fail after 3 tries; over to a person.";
+it("ZV205: A change handed to a person for failed checks says whether its Mate ran out of tries, has no usable agent or reached a usage limit, on the Review build and GitHub verdicts; breaks: the person cannot tell what to do next", () => {
+  const rows = [
+    ["tries", "Checks still fail after 3 tries; over to a person."],
+    ["no-agent", "No agent can work on this Mate: sign one in, then ask it to fix the check."],
+    [
+      "usage-limit",
+      "Your agent is at its usage limit, so the failed check waits for you: ask again after the limit resets, or sign in another agent.",
+    ],
+  ] as const;
+  for (const [reason, sentence] of rows) {
+    const base = { ...openChange, checksGivenUp: { reason } };
+    const build = changeMergeVerdict({
+      pull: { ...base, reviewBuild: { state: "failing", head: HEAD, at: "2026-11-26T20:00:00Z" } },
+      mateName: "Nova",
+    });
+    expect(build.verdict.why).toBe(sentence);
+    const github = changeMergeVerdict({
+      pull: {
+        ...base,
+        pullRequest: {
+          state: "open",
+          checks: "failing",
+          url: "https://github.com/o/r/pull/7",
+        },
+      },
+      mateName: "Nova",
+    });
+    expect(github.verdict.why).toBe(sentence);
+    expect(github.verdict.showWhy).toBe(true);
+  }
 });

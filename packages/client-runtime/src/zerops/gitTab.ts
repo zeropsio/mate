@@ -45,7 +45,7 @@ import {
   type ZeropsMateCopies,
 } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { leaseMayBeOf, repoOfUrl } from "@t3tools/shared/hqChanges";
+import { leaseMayBeOf, repoOfUrl, type HqChange } from "@t3tools/shared/hqChanges";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
@@ -402,7 +402,7 @@ function gitVerdict(input: {
   /** GitHub's checks failed on the change's latest push (`githubChecksFailed`). */
   readonly checksFailed: boolean;
   readonly reviewBuild: ReturnType<typeof reviewBuildVerdict>;
-  readonly checksGivenUp?: true | undefined;
+  readonly checksGivenUp?: HqChange["checksGivenUp"];
   readonly githubHandoff: boolean;
   readonly baseBranch: string;
   readonly trouble: string;
@@ -492,7 +492,7 @@ function inReview(
   checksFailed: boolean,
   githubHandoff: boolean,
   build: ReturnType<typeof reviewBuildVerdict>,
-  givenUp?: true,
+  givenUp?: HqChange["checksGivenUp"],
 ): Omit<GitVerdict, "ask"> {
   switch (mergeability) {
     case "mergeable":
@@ -506,7 +506,7 @@ function inReview(
       return checksFailed
         ? {
             tone: "attention",
-            text: `${GITHUB_CHECKS_FAILED}${givenUp === true && build === undefined ? " · over to you" : ""}${build === undefined ? "" : ` · ${build.word}`}`,
+            text: `${GITHUB_CHECKS_FAILED}${givenUp != null && build === undefined ? " · over to you" : ""}${build === undefined ? "" : ` · ${build.word}`}`,
           }
         : {
             tone: "off",
