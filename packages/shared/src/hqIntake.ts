@@ -372,8 +372,53 @@ export const HqPutTaskRequest = Schema.Struct({
     mateProjectId: TrimmedNonEmptyString,
     conversationId: TrimmedNonEmptyString,
   }),
+  /**
+   * The put's own request id, the same on every send of one card's put (`boardPutRequestId`): HQ
+   * puts one task per id however often it arrives. The client's operation adds it; a surface never
+   * names one.
+   */
+  requestId: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type HqPutTaskRequest = typeof HqPutTaskRequest.Type;
+
+/**
+ * The request id a Put on board is sent under (`HqPutTaskRequest.requestId`): one per card — the
+ * board ask's request in its chat of its Mate — the same on every send of it, from any tab or
+ * device, so HQ answers a repeated put with the task the first made. A UUID (version 8) of a
+ * 128-bit hash of the three; HQ scopes it to the application and the person.
+ */
+export function boardPutRequestId(
+  from: { readonly mateProjectId: string; readonly conversationId: string },
+  card: string,
+): string {
+  const hex = hash128(`${from.mateProjectId}\n${from.conversationId}\n${card}`);
+  const variant = ((Number.parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/** Four 32-bit lanes of a string's hash (cyrb128), as 32 hex digits: the same on every runtime. */
+function hash128(text: string): string {
+  let h1 = 1779033703;
+  let h2 = 3144134277;
+  let h3 = 1013904242;
+  let h4 = 2773480762;
+  for (let at = 0; at < text.length; at++) {
+    const code = text.charCodeAt(at);
+    h1 = h2 ^ Math.imul(h1 ^ code, 597399067);
+    h2 = h3 ^ Math.imul(h2 ^ code, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ code, 951274213);
+    h4 = h1 ^ Math.imul(h4 ^ code, 2716044179);
+  }
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+  h1 ^= h2 ^ h3 ^ h4;
+  h2 ^= h1;
+  h3 ^= h1;
+  h4 ^= h1;
+  return [h1, h2, h3, h4].map((lane) => (lane >>> 0).toString(16).padStart(8, "0")).join("");
+}
 
 /**
  * `POST /api/apps/:appId/tasks/:taskId/take` `{mateProjectId}`: a queued task taken for one of the

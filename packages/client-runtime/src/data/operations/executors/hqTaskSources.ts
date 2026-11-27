@@ -6,7 +6,7 @@
  */
 import * as Effect from "effect/Effect";
 import type { HqGithubManifestView } from "@t3tools/shared/hqGithub";
-import type { HqAppTask, HqWebhookView } from "@t3tools/shared/hqIntake";
+import { boardPutRequestId, type HqAppTask, type HqWebhookView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 
@@ -162,10 +162,24 @@ export function makeTaskSourceExecutor(options: {
               return api.setTaskLimits(write.limits);
             case "task-stop":
               return api.stopAppTask(appId, write.taskId);
-            case "task-put":
-              return api.putAppTask(appId, write.request).then((task) => {
-                options.answeredTask(requestId, task);
-              });
+            case "task-put": {
+              // One task per card however often it is sent — again after a lost answer, from
+              // another tab or device: HQ keys the put by the card's own id and answers the task
+              // the first send made. A send whose answer was lost goes once more under that id.
+              const request = {
+                ...write.request,
+                requestId: boardPutRequestId(write.request.from, write.card),
+              };
+              const put = () => api.putAppTask(appId, request);
+              return put()
+                .catch((cause: unknown) => {
+                  if (cause instanceof HqError && cause.kind === "refused") throw cause;
+                  return put();
+                })
+                .then((task) => {
+                  options.answeredTask(requestId, task);
+                });
+            }
             case "task-take":
               return api
                 .takeAppTask(appId, write.taskId, { mateProjectId: write.mateProjectId })
