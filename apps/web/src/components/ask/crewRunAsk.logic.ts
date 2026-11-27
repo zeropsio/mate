@@ -4,7 +4,7 @@
  * The crew's latest run names the card whose press started it (`CrewRun.ask`), so the card reads
  * what became of its press from the crew, never from the press.
  */
-import type { CrewRun, CrewStatus } from "@t3tools/contracts";
+import type { CrewCommand, CrewRun, CrewStatus } from "@t3tools/contracts";
 
 import { crewGoalTitleOf } from "../zerops/crew/CrewGoal.logic";
 import { type AskState, askKeyOf } from "./ask.logic";
@@ -57,13 +57,32 @@ export function crewRunBrief(ask: Pick<CrewRunAsk, "goal">): {
 }
 
 /**
+ * What Start tells the crew once its run is on: the goal, for its lead to plan. A run's start
+ * wakes a lead only for the reviews and questions already waiting, so without it the crew's run
+ * is on and nobody works.
+ */
+export function crewRunTell(ask: Pick<CrewRunAsk, "goal">): CrewCommand {
+  return {
+    _tag: "tell",
+    text: `Plan and run the crew's new goal: ${crewRunBrief(ask).title}`,
+    mentions: [],
+  };
+}
+
+/**
  * The card's state, read off the Mate's crew: set up only once a crew stands; done once the
  * crew's latest run is the one this card's press started, saying what became of it; any other
- * run under way (on, paused or finishing) took its place, since a crew runs one at a time. While
- * the crew is unread it waits as it would with no run.
+ * run under way (on, paused or finishing) took its place, since a crew runs one at a time; a crew
+ * with no lead has nobody to plan the goal (`crewRunTell`). While the crew is unread it waits as
+ * it would with no run.
  */
 export function crewRunAskState(
-  crew: { readonly status: CrewStatus | null; readonly run: CrewRun | null },
+  crew: {
+    readonly status: CrewStatus | null;
+    readonly run: CrewRun | null;
+    /** `null` while the crew is unread. */
+    readonly hasLead: boolean | null;
+  },
   key: string,
   mate: string | undefined,
 ): AskState {
@@ -87,6 +106,9 @@ export function crewRunAskState(
     (run.state === "running" || run.state === "paused" || run.state === "finishing")
   ) {
     return { kind: "replaced", words: "The crew is already at work" };
+  }
+  if (crew.hasLead === false) {
+    return { kind: "failed", words: `${name}'s crew has no lead to plan it.` };
   }
   return { kind: "waiting" };
 }

@@ -1,9 +1,10 @@
 /**
  * A Mate's crew run ask (`crew-run` fence) as its card: the goal it gives the crew this Mate has,
  * then who's on it, as the crew stands. Its press opens the run's limits right here, in the
- * conversation (`CrewRunDialog`); Start saves the goal as the crew's brief and starts the crew,
- * whose run then names this card, so the card follows it (`crewRunAskState`). A viewer who may
- * not run the crew (D6) reads the card with the reason in place of the press.
+ * conversation (`CrewRunDialog`); Start saves the goal as the crew's brief, starts the crew and
+ * tells its lead to plan the goal (`crewRunTell`). The run names this card, so the card follows it
+ * (`crewRunAskState`). A viewer who may not run the crew (D6) reads the card with the reason in
+ * place of the press.
  */
 import {
   CREW_SETUP_WORDS,
@@ -24,7 +25,7 @@ import { openCrewTab } from "~/zerops/crew/crewTab";
 import { withBrief } from "~/zerops/crew/crewHome";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
-import type { UseCrewCommand } from "~/zerops/crew/useCrewCommand";
+import { type UseCrewCommand, useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -39,6 +40,7 @@ import {
   type CrewRunAsk,
   crewRunAskState,
   crewRunBrief,
+  crewRunTell,
   parseCrewRunAsk,
 } from "./crewRunAsk.logic";
 
@@ -94,6 +96,7 @@ function CrewRunAskCard({
   const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
   const { status, snapshot, view, current } = useCrew(environmentId);
   const access = useCrewAccess(environmentId, snapshot);
+  const commands = useCrewCommand(environmentId);
   const [dialog, setDialog] = useState<CrewRunDialogAsk | null>(null);
   const lock = access.reach({ kind: "crew" });
   // `null` while the crew is unread: who is on it is not known yet, never no one.
@@ -115,7 +118,7 @@ function CrewRunAskCard({
             : () =>
                 setDialog({
                   mode: "start",
-                  after: null,
+                  after: crewRunTell(ask),
                   card: { key: ask.key, before: saveGoal(ask) },
                 })
         }
@@ -129,7 +132,9 @@ function CrewRunAskCard({
         hasLead={view?.lead != null}
         mateName={mate?.name ?? "the Mate"}
         onClose={() => setDialog(null)}
-        onDone={() => undefined}
+        onDone={(after) => {
+          if (after !== null) void commands.send(after);
+        }}
         snapshot={snapshot}
       />
     </>
@@ -161,7 +166,9 @@ export function CrewRunAskCardView({
   readonly onStart: (() => void) | null;
   readonly onOpenCrew: () => void;
 }) {
-  const state = crewRunAskState({ status, run }, ask.key, mate?.name);
+  const hasLead =
+    crewmates === null ? null : crewmates.some((crewmate) => crewmate.kind === "lead");
+  const state = crewRunAskState({ status, run, hasLead }, ask.key, mate?.name);
   const live = state.kind === "waiting";
   return (
     <AskCard

@@ -1329,13 +1329,14 @@ const CREW_RUN_CREW = [
   },
 ] as const;
 
-type CrewRunState = "ready" | "locked" | "started" | "over" | "other" | "none";
+type CrewRunState = "ready" | "locked" | "started" | "over" | "other" | "noLead" | "none";
 const CREW_RUN_STATES: ReadonlyArray<readonly [CrewRunState, string]> = [
   ["ready", "Waiting"],
   ["locked", "Not yours to run"],
   ["started", "Started from the card"],
   ["over", "Its run is over"],
   ["other", "Another run works"],
+  ["noLead", "No lead"],
   ["none", "No crew"],
 ];
 
@@ -1375,7 +1376,13 @@ function CrewRun({ density }: { readonly density: AskDensity }) {
     >
       <CrewRunAskCardView
         ask={CREW_RUN_ASK}
-        crewmates={state === "none" ? [] : CREW_RUN_CREW}
+        crewmates={
+          state === "none"
+            ? []
+            : state === "noLead"
+              ? CREW_RUN_CREW.filter((crewmate) => crewmate.kind !== "lead")
+              : CREW_RUN_CREW
+        }
         lock={state === "locked" ? "someone-else" : null}
         mate={{ name: MATE }}
         onOpenCrew={NOTHING}

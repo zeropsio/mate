@@ -1,6 +1,7 @@
-next: AK5
+next: AK6
 
 - AK1 — A schedule ask proposes the schedule its fence names, its weekday and its clock as HQ counts them and its zone the Mate's or else the person's, and a fence with no brief, a cadence HQ has not, a week with no day or a time off the clock proposes none; breaks: the card offers a schedule HQ refuses, or makes one on another day or at another time than the Mate proposed
 - AK2 — A crew card says its crew is set up only once the Mate's own crew names that card as the one it was set up from; a crew set up otherwise, or one only HQ's last word names, says only that the Mate has a crew; breaks: a card nobody pressed says its crew is set up
 - AK3 — A crew card's builder works on the place the card named only where the Mate has it, else on the Mate's one place, and among several the person chooses; nothing is placed before the Mate's dev services and pools are read; breaks: a card's named pool is saved as a dev service, or a builder starts on a place nobody chose
 - AK4 — A crew run card says it started the crew only once the crew's latest run names that card, and then what became of that run; another run under way took its place, and a Mate with no crew, or crews off, has nothing to start; breaks: a card nobody pressed says the crew is on it, or a card offers Start while another run works
+- AK5 — A crew run card's Start tells the crew's lead to plan the new goal once the run is on, and a crew with no lead has nobody to plan it, so its card offers no Start; breaks: the run starts and nobody works, its clock never moving

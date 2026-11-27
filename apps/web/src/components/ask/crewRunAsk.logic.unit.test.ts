@@ -1,13 +1,13 @@
 import type { CrewRun } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 
-import { crewRunAskState } from "./crewRunAsk.logic";
+import { crewRunAskState, crewRunTell } from "./crewRunAsk.logic";
 
 const runOf = (state: CrewRun["state"], ask?: string) =>
   ({ state, ...(ask === undefined ? {} : { ask }) }) as CrewRun;
 
 const stateOf = (status: "off" | "none" | "applied" | null, run: CrewRun | null) =>
-  crewRunAskState({ status, run }, "card-a", "Fen");
+  crewRunAskState({ status, run, hasLead: true }, "card-a", "Fen");
 
 // witness: apps/web/src/components/ask/crewRunAsk.logic.ts | if (run?.ask === key) { → if (run !== null) {
 it("AK4: A crew run card says it started the crew only once the crew's latest run names that card, and then what became of that run; another run under way took its place, and a Mate with no crew, or crews off, has nothing to start; breaks: a card nobody pressed says the crew is on it, or a card offers Start while another run works", () => {
@@ -33,5 +33,22 @@ it("AK4: A crew run card says it started the crew only once the crew's latest ru
     "waiting",
     "failed: Fen has no crew yet.",
     "failed: Crews are turned off for Fen.",
+  ]);
+});
+
+// witness: apps/web/src/components/ask/crewRunAsk.logic.ts | if (crew.hasLead === false) { → if (crew.hasLead === null) {
+it("AK5: A crew run card's Start tells the crew's lead to plan the new goal once the run is on, and a crew with no lead has nobody to plan it, so its card offers no Start; breaks: the run starts and nobody works, its clock never moving", () => {
+  const ask = { goal: "Show one quiet line above the form.\n\n## Done when\n- It shows." };
+  const lead = (hasLead: boolean | null) =>
+    crewRunAskState({ status: "applied", run: null, hasLead }, "card-a", "Fen");
+  expect([crewRunTell(ask), lead(true), lead(false), lead(null)]).toEqual([
+    {
+      _tag: "tell",
+      text: "Plan and run the crew's new goal: Show one quiet line above the form",
+      mentions: [],
+    },
+    { kind: "waiting" },
+    { kind: "failed", words: "Fen's crew has no lead to plan it." },
+    { kind: "waiting" },
   ]);
 });
