@@ -3,6 +3,10 @@ import { ZeropsStateEnvelope } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { keyRenewFailureWords, keyRenewOffer } from "../../../zerops/renewDeployKey.logic.ts";
 import { operationFailureWords, type HqOperationStanding } from "@t3tools/client-runtime/data";
+import {
+  changeMergeVerdict,
+  type ChangeReviewInput,
+} from "@t3tools/client-runtime/zerops/reviewVerdict";
 import recordedLeases from "../../../../../../packages/client-runtime/src/zerops/fixtures/zcp/envelope.lease-status.json" with { type: "json" };
 import recordedClassic from "../../../../../../packages/client-runtime/src/zerops/fixtures/zcp/envelope.single-pair.json" with { type: "json" };
 import {
@@ -12,6 +16,7 @@ import {
   mergeStages,
   releaseChangeRows,
   tryItTargets,
+  whySaid,
 } from "./ZeropsReview.logic.ts";
 
 // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | branch: pull.branch, → branch: undefined,
@@ -358,4 +363,36 @@ it("RV10: A Review build link opens a public stage only when its result passed a
       tryItTargets({ ...previewInput, reviewBuild: build, head }).builds.map((entry) => entry.url),
     ).toEqual(urls);
   }
+});
+
+// witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | return verdict.state !== "ready" || more || verdict.showWhy === true; → return verdict.state !== "ready" || more;
+it("RV11: A ready, current change says its Review build result once, and stays quiet without one; breaks: a passing build is hidden under Ready to merge.", () => {
+  const head = "a".repeat(40);
+  const pull: ChangeReviewInput["pull"] = {
+    number: 7,
+    headSha: head,
+    kind: "code",
+    baseBranch: "main",
+    mergeability: "mergeable",
+    merged: false,
+    mergedAt: undefined,
+    state: "open",
+    behind: false,
+    ready: true,
+  };
+  const shown = (reviewBuild: ChangeReviewInput["pull"]["reviewBuild"]) => {
+    const { verdict } = changeMergeVerdict({
+      pull: { ...pull, ...(reviewBuild === undefined ? {} : { reviewBuild }) },
+      mateName: "Nova",
+    });
+    expect(verdict.title).toBe("Ready to merge");
+    return whySaid(verdict, false) ? verdict.why : undefined;
+  };
+  expect(shown({ state: "passing", head, at: "2026-11-26T20:00:00Z" })).toBe(
+    "No conflicts with main · Review build passed",
+  );
+  expect(shown({ state: "unavailable", head, at: "2026-11-26T20:00:00Z" })).toBe(
+    "No conflicts with main · Review build unavailable",
+  );
+  expect(shown(undefined)).toBeUndefined();
 });

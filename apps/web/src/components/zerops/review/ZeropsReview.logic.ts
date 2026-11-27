@@ -564,7 +564,7 @@ const WAITING_ON_PRESS: ReadonlySet<ReviewState> = new Set(["ready", "github-che
 /**
  * The foot explains the wait for GitHub, so that verdict leaves its why empty. A ready
  * release's title and a failed GitHub check's own line already explain those verdicts.
- * A ready change says more only for a draft or when `main` moved on under it.
+ * A ready change also says its why for a draft, when `main` moved on, or when its verdict asks.
  */
 export function whySaid(verdict: ReviewVerdict, more: boolean): boolean {
   if (
@@ -574,7 +574,7 @@ export function whySaid(verdict: ReviewVerdict, more: boolean): boolean {
   ) {
     return false;
   }
-  return verdict.state !== "ready" || more;
+  return verdict.state !== "ready" || more || verdict.showWhy === true;
 }
 
 /** "a", "a and b", "a, b and c". */

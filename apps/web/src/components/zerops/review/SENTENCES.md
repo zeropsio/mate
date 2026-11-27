@@ -1,4 +1,4 @@
-next: RV11
+next: RV12
 
 - RV1 — A change that conflicts with main asks its branch's conversation to resolve it, about the change at its head
 - RV2 — A description picture is read as the person's only when it is a change's picture at the official HQ's own origin, and none is while the official HQ is unknown
@@ -10,3 +10,4 @@ next: RV11
 - RV8 — A creation HQ refused is said as HQ's refusal in HQ's words, and one Zerops failed as Zerops'; breaks: the release sheet blames Zerops for HQ's decision and the person looks for the fault in the wrong place.
 - RV9 — A change's Preview opens only a running workspace on its branch and repository, and an unread workspace is not claimed stopped; breaks: a review opens another change's workspace.
 - RV10 — A Review build link opens a public stage only when its result passed at the change's head; breaks: a review offers a stage built for another commit.
+- RV11 — A ready, current change says its Review build result once, and stays quiet without one; breaks: a passing build is hidden under Ready to merge.

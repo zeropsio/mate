@@ -147,6 +147,8 @@ export interface ReviewVerdict {
   readonly title: string;
   /** The explanation under the title. Empty when the verdict needs no further words. */
   readonly why: string;
+  /** The explanation carries a result that must be said even on a ready change. */
+  readonly showWhy?: true;
   /** Where handing it to a Mate is what moves it. */
   readonly fix: ReviewFix | undefined;
   /** `why` is one sentence the person copies as it is and gives to their Mate. */
@@ -1091,6 +1093,7 @@ export function changeMergeVerdict(
       ]
         .filter((part) => part !== undefined)
         .join(" · "),
+      ...(reviewBuild === undefined ? {} : { showWhy: true }),
       fix:
         again === undefined
           ? undefined
