@@ -314,6 +314,8 @@ const VERBS: BoardVerbs = {
     { projectId: "p-quill", name: "Quill" },
   ],
   pressOf: () => ({ kind: "idle" }),
+  strandedOf: () => false,
+  onOpenTaken: nothing,
   onAsk: nothing,
   onKeep: nothing,
   onStop: nothing,
@@ -331,6 +333,8 @@ function board(
     /** Mara's role in the organization: what the rules offer her. */
     readonly role?: string;
     readonly takeInto?: BoardVerbs["takeInto"];
+    /** Tasks Mara took whose conversation did not open. */
+    readonly stranded?: ReadonlyArray<string>;
   } = {},
 ): BoardView {
   return {
@@ -354,6 +358,7 @@ function board(
       ...VERBS,
       offerOf: offers(tasks, more.role ?? "OWNER"),
       pressOf: more.pressOf ?? VERBS.pressOf,
+      strandedOf: (taskId) => more.stranded?.includes(taskId) === true,
       ...(more.takeInto === undefined ? {} : { takeInto: more.takeInto }),
     },
   };
@@ -544,7 +549,7 @@ const STATES: ReadonlyArray<{
   },
   {
     id: "board-presses",
-    title: "Presses: a Take under way, a Release refused, a Stop asking",
+    title: "Presses: a Take under way, a Take whose conversation did not open, a Stop asking",
     view: (
       <ProjectAutomationView
         admin={ADMIN}
@@ -554,10 +559,11 @@ const STATES: ReadonlyArray<{
             id === GIFT_WRAP.id
               ? { kind: "working", words: "Taking it…" }
               : id === REPOT.id
-                ? { kind: "refused", words: "That task moved meanwhile. Look at the Board again." }
+                ? { kind: "refused", words: "Its Mate did not open in time." }
                 : id === STALE.id
                   ? { kind: "asking" }
                   : { kind: "idle" },
+          stranded: [REPOT.id],
         })}
         onOpenMate={nothing}
         pool={BUSY_POOL}

@@ -57,6 +57,7 @@ import {
   useBoardRevision,
   useMateFaces,
   useOpenTaskConversation,
+  useTakeOpenings,
   useTakeTask,
   type BoardFace,
 } from "~/zerops/useBoardTasks";
@@ -417,6 +418,7 @@ function useTaskBoard(
   const offers = useBoardOffers(groupId);
   const writes = useBoardTaskWrites(groupId);
   const take = useTakeTask(groupId);
+  const openings = useTakeOpenings();
   const openConversation = useOpenTaskConversation();
   const [asking, setAsking] = useState<string | null>(null);
   const setting = tasks.read.setting;
@@ -468,7 +470,14 @@ function useTaskBoard(
               projectId,
               name: faces.get(projectId)?.name ?? "Your Mate",
             })),
-            pressOf: (taskId) => taskRowPress({ taskId, asking, action: stops.stops[taskId] }),
+            pressOf: (taskId) =>
+              taskRowPress({
+                taskId,
+                asking,
+                action: stops.stops[taskId],
+                opening: openings[taskId],
+              }),
+            strandedOf: (taskId) => openings[taskId]?.kind === "stranded",
             onAsk: (taskId) => {
               setAsking(taskId);
             },
@@ -480,7 +489,11 @@ function useTaskBoard(
               stops.stop(taskId);
             },
             onTake: (taskId, mateProjectId) => {
-              void take(taskId, mateProjectId);
+              void take.take(taskId, mateProjectId);
+            },
+            onOpenTaken: (taskId) => {
+              const task = held?.find((each) => each.id === taskId);
+              if (task?.taker?.kind === "person") void take.open(task, task.taker.mateProjectId);
             },
             onRelease: (taskId) => {
               void writes?.release(taskId);
@@ -763,6 +776,10 @@ export interface BoardVerbs {
   readonly takeInto: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
   /** Where the row's press stands: its Stop asking, a write under way or refused (`taskRowPress`). */
   readonly pressOf: (taskId: string) => RowPress;
+  /** HQ took it for the reader, but its conversation did not open (`TakeOpening`). */
+  readonly strandedOf: (taskId: string) => boolean;
+  /** Opens a stranded Take's conversation again, under the same task. */
+  readonly onOpenTaken: (taskId: string) => void;
   readonly onAsk: (taskId: string) => void;
   readonly onKeep: () => void;
   readonly onStop: (taskId: string) => void;
@@ -1306,22 +1323,26 @@ function BoardRowView({
   const release = offer?.release === true;
   const stop = offer?.stop === true && !stopping;
   const review = row.lane === "review" ? row.change : null;
+  const stranded = verbs?.strandedOf(row.id) === true;
   const holderName =
     row.holder?.kind === "pool" ? (face?.name ?? row.holder.name) : (row.holder?.mate ?? null);
   // The seat's one press; a taken task's other verbs in a menu beside it; a Stop alone on hover.
   const primary = busy
     ? null
-    : take
-      ? "take"
-      : review !== null
-        ? "review"
-        : done
-          ? "done"
-          : asks && row.route !== null
-            ? "answer"
-            : null;
-  // Done stands in the menu where Review takes the seat; a task that asks keeps its Stop in its chat.
-  const doneInMenu = done && primary === "review";
+    : stranded
+      ? "open"
+      : take
+        ? "take"
+        : review !== null
+          ? "review"
+          : done
+            ? "done"
+            : asks && row.route !== null
+              ? "answer"
+              : null;
+  // Done stands in the menu where Review or a stranded Take's Open takes the seat; a task that asks
+  // keeps its Stop in its chat.
+  const doneInMenu = done && (primary === "review" || primary === "open");
   const more =
     !busy && (release || doneInMenu || (stop && primary !== null && primary !== "answer"));
   const hoverStop = !busy && stop && !more && primary === null;
@@ -1412,7 +1433,17 @@ function BoardRowView({
               verbs={verbs}
             />
           ) : null}
-          {primary === "take" ? (
+          {primary === "open" ? (
+            <Button
+              onClick={() => {
+                verbs.onOpenTaken(row.id);
+              }}
+              size="xs"
+              variant="secondary"
+            >
+              Open its conversation
+            </Button>
+          ) : primary === "take" ? (
             <TakePress taskId={row.id} title={row.title} verbs={verbs} />
           ) : primary === "done" ? (
             <Button

@@ -434,7 +434,8 @@ const UNDER_WAY: Readonly<Partial<Record<TaskSourceWrite["kind"], string>>> = {
 
 /**
  * Where a row's press stands: its Stop asking in the row, this account's write to the task under
- * way (in words), or refused in HQ's words; else at rest.
+ * way (in words) or its Take's conversation opening, refused in HQ's words or the Take stranded in
+ * its own; else at rest.
  */
 export function taskRowPress(input: {
   readonly taskId: string;
@@ -442,9 +443,16 @@ export function taskRowPress(input: {
   readonly asking: string | null;
   /** This account's latest write to the task (`appTaskWrites`); absent: none. */
   readonly action: TaskWriteAction | undefined;
+  /** Where its Take's conversation stands (`TakeOpening`); absent: none was taken here. */
+  readonly opening?:
+    | { readonly kind: "opening" }
+    | { readonly kind: "stranded"; readonly words: string }
+    | undefined;
 }): RowPress {
   if (input.asking === input.taskId) return { kind: "asking" };
-  const { action } = input;
+  const { action, opening } = input;
+  if (opening?.kind === "opening") return { kind: "working", words: "Opening its conversation…" };
+  if (opening?.kind === "stranded") return { kind: "refused", words: opening.words };
   if (action?.kind === "working") return { kind: "working", words: UNDER_WAY[action.verb] ?? "…" };
   if (action?.kind === "failed" || action?.kind === "unresolved")
     return { kind: "refused", words: action.words };
