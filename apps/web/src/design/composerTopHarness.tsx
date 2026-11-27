@@ -416,6 +416,25 @@ const ACTS: ReadonlyArray<{
     ),
   },
   {
+    state: "adding-several",
+    name: "Two drafts · one HQ is adding",
+    strip: standingStrip(
+      [
+        teaChange(21, GIFT, false),
+        {
+          ...teaChange(22, DAYS, false),
+          state: "adding",
+          reviewBuild: {
+            state: "awaiting",
+            head: "b".repeat(40),
+            at: "2026-11-27T21:18:10Z",
+          },
+        },
+      ],
+      AS_ADA,
+    ),
+  },
+  {
     state: "merging-several",
     name: "Two changes · one merging",
     strip: standingStrip(

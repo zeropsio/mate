@@ -61,7 +61,7 @@ const callEntry = (
 });
 
 // witness: packages/client-runtime/src/zerops/model/handedChange.ts | completed: entry.call.status === "completed", → completed: entry.call.status !== "completed",
-it("ZV+1: A conversation's own changes are each one its runs pushed or a finished zcp handover named, though no message links it, and never one a call is still opening or closes; breaks: after Add to your app the conversation draws no row saying the app has the change", () => {
+it("ZV219: A conversation's own changes are each one its runs pushed or a finished zcp handover named, though no message links it, and never one a call is still opening or closes; breaks: after Add to your app the conversation draws no row saying the app has the change", () => {
   expect([
     ...changesLeftIn([
       callEntry("a", "open-change", "completed", answer(7)),

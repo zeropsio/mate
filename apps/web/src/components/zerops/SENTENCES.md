@@ -1,4 +1,4 @@
-next: MN134
+next: MN136
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -125,5 +125,5 @@ next: MN134
 - MN130 — A failed Put it live keeps the project HQ says it could not place, and names none when HQ omits it; breaks: its production row cannot identify the project involved.
 - MN131 — The crew's work in the Mate's code is marked not shipped only where the Mate read it as not shipped: the pieces it did not deliver, and none while they are not what it read or some is still unread; breaks: the Crew tab says work that went out hasn't shipped
 - MN133 — A place's address that names no place of its project says so once HQ told the project's environments and the inventory is read, and waits until both are; breaks: a removed place's link, or an address this version has no page for, stands in with a skeleton forever
-- MN+1 — The pane of a draft that is in the app now becomes Your app, its part's stage, and a draft still open or discarded, or Your app with no address, keeps its pane; breaks: Open draft pressed after the add says the draft is in the app instead of opening the app
-- MN+2 — Of a Mate's part, Sites takes its stage for Your app and never its dev; breaks: Sites names the app by its stage container, or calls the dev service Your app
+- MN134 — The pane of a draft that is in the app now becomes Your app, its part's stage, and a draft still open or discarded, or Your app with no address, keeps its pane; breaks: Open draft pressed after the add says the draft is in the app instead of opening the app
+- MN135 — Of a Mate's part, Sites takes its stage for Your app and never its dev; breaks: Sites names the app by its stage container, or calls the dev service Your app
