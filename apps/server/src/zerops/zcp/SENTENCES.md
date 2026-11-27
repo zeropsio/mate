@@ -24,3 +24,4 @@ next: ZC25
 - ZC22 — zcp is asked where the work stands as `where --json`, with `--lease` and the alias when the conversation holds one, its stdin closed; breaks: zcp marks no copy as the conversation's
 - ZC23 — A where answer reads its text only on exit 0 with a text; an empty text, an error answer, an exit of a zcp without the verb, stdout that is no answer, a zcp that did not answer in time and a missing zcp all read none and never fail; breaks: a zcp that cannot answer fails or holds a person's message
 - ZC24 — A zcp older than 9.275.0, a dev build of one, or one whose version cannot be read is asked only its version, never where; breaks: an old zcp starts its MCP server on the verb it does not know
+- ZC+1 — zcp's preview answer reaches the pane with its running address or failure reason even when zcp exits 1; breaks: a failed draft loses zcp's reason.

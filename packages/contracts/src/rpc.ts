@@ -1097,6 +1097,12 @@ const WsZeropsMacForgetRpc = Rpc.make(WS_METHODS.zeropsMacForget, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsZeropsDraftPreviewRpc = Rpc.make(WS_METHODS.zeropsDraftPreview, {
+  payload: ZeropsDraftCopy,
+  success: ZeropsDraftPreview,
+  error: Schema.Union([ZeropsDraftPreviewError, EnvironmentAuthorizationError]),
+});
+
 /**
  * Runs `zcp mate update --json` (spec-mate.md §2.9 MU-2): offered only
  * inside a Zerops project with `zcp` on PATH, gated by `exec:operate`. A
@@ -1106,12 +1112,6 @@ const WsZeropsMacForgetRpc = Rpc.make(WS_METHODS.zeropsMacForget, {
  * covers the RPC not being offered here or the caller lacking the scope —
  * the same pairing upstream's own self-update RPC uses.
  */
-const WsZeropsDraftPreviewRpc = Rpc.make(WS_METHODS.zeropsDraftPreview, {
-  payload: ZeropsDraftCopy,
-  success: ZeropsDraftPreview,
-  error: Schema.Union([ZeropsDraftPreviewError, EnvironmentAuthorizationError]),
-});
-
 const WsZeropsMateUpdateRpc = Rpc.make(WS_METHODS.zeropsMateUpdate, {
   payload: Schema.Struct({}),
   success: ZeropsMateUpdateResult,
