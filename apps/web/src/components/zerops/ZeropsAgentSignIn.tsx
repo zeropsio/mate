@@ -415,7 +415,7 @@ function OpenCard({
     replace !== null
       ? "replace"
       : steps.kind === "steps"
-        ? `${steps.second.kind}${sendFailed ? ":unsent" : ""}`
+        ? `${steps.page.state}:${steps.second.kind}${sendFailed ? ":unsent" : ""}`
         : steps.kind,
   );
 
@@ -556,7 +556,9 @@ const STEP_GLIDE_MS = 240;
 /**
  * The open card's body glides to each step's height instead of jumping, so a dialog, centred,
  * re-centres smoothly and the arrival's slot grows with it. A glide still running is taken up
- * where it stands; what grows is clipped only while it glides.
+ * where it stands; what grows is clipped only while it glides. Heights are layout heights, never
+ * drawn ones: read while the dialog scales open, a drawn height is short, and the next step would
+ * glide up from it.
  */
 function useStepGlide(
   body: RefObject<HTMLDivElement | null>,
@@ -569,7 +571,7 @@ function useStepGlide(
     const node = body.current;
     if (node === null || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if (node.getAnimations().length === 0) settled.current = node.getBoundingClientRect().height;
+      if (node.getAnimations().length === 0) settled.current = node.offsetHeight;
     });
     observer.observe(node);
     return () => observer.disconnect();
@@ -580,9 +582,9 @@ function useStepGlide(
     shown.current = step;
     if (node === null || before === step) return;
     const running = node.getAnimations();
-    const from = running.length > 0 ? node.getBoundingClientRect().height : settled.current;
+    const from = running.length > 0 ? node.offsetHeight : settled.current;
     for (const glide of running) glide.cancel();
-    const to = node.getBoundingClientRect().height;
+    const to = node.offsetHeight;
     settled.current = to;
     if (from === null || Math.abs(from - to) < 1 || prefersReducedMotion()) return;
     node.animate(
@@ -648,29 +650,30 @@ function OpenCardSteps({
     <>
       <div className={STEP_CLASS} data-sign-in-step="page">
         <StepNumber n={1} state={pageDone ? "done" : "todo"} />
-        <span className={pageDone ? "text-body text-muted-foreground" : STEP_WORDS_CLASS}>
-          {pageDone ? words.opened : words.open}
+        {/* Until its address is printed the step says what is happening, in its own words' place,
+            and the press stands where it will, waiting: once the address is there only the words
+            and the press's end change, and nothing moves. */}
+        <span
+          className={pageDone ? "text-body text-muted-foreground" : STEP_WORDS_CLASS}
+          role={page.state === "preparing" ? "status" : undefined}
+        >
+          {pageDone ? words.opened : page.state === "preparing" ? words.preparing : words.open}
         </span>
         {pageDone ? (
-          <InlineButton
-            className={STEP_PRESS_CLASS}
-            render={<a href={page.url} rel="noopener noreferrer" target="_blank" />}
-            tone="muted"
-          >
-            {words.openAgain}
-          </InlineButton>
+          // The press's height, so the step does not shrink as the page opens.
+          <span className={cn(STEP_PRESS_CLASS, "flex h-7 items-center")}>
+            <InlineButton
+              render={<a href={page.url} rel="noopener noreferrer" target="_blank" />}
+              tone="muted"
+            >
+              {words.openAgain}
+            </InlineButton>
+          </span>
         ) : page.state === "preparing" ? (
-          // Its address is not printed yet: what is happening stands where the press will, at the
-          // press's height, and the press takes its place once the address is there.
-          <Text
-            className={cn(STEP_PRESS_CLASS, "flex h-7 items-center gap-2")}
-            data-sign-in-open={agentId}
-            role="status"
-            variant="remark"
-          >
-            <Spinner aria-hidden="true" size="sm" tone="muted" />
-            {words.preparing}
-          </Text>
+          <Button className={STEP_PRESS_CLASS} data-sign-in-open={agentId} disabled size="sm">
+            {words.openPress}
+            <Spinner aria-hidden="true" />
+          </Button>
         ) : (
           <Button
             className={STEP_PRESS_CLASS}
@@ -686,7 +689,7 @@ function OpenCardSteps({
         )}
       </div>
       {second.kind === "type" ? (
-        <TypeCodeStep code={second.code} words={words} />
+        <TypeCodeStep code={second.code} waiting={pageDone} words={words} />
       ) : second.kind === "approve" ? (
         <ApproveStep waiting={page.state === "opened"} words={words} />
       ) : (
@@ -724,8 +727,13 @@ function PasteCodeStep({
 }) {
   const [value, setValue] = useState("");
   const field = useRef<HTMLInputElement>(null);
+  // The field takes focus when the person comes back from the opened page with its code, so a
+  // paste lands in it; never before, when a focused field asks for a code they cannot have yet.
   useEffect(() => {
-    if (!disabled && focus && checking === null) field.current?.focus();
+    if (disabled || !focus || checking !== null) return;
+    const onReturn = () => field.current?.focus();
+    window.addEventListener("focus", onReturn, { once: true });
+    return () => window.removeEventListener("focus", onReturn);
   }, [checking, disabled, focus]);
   return (
     <div className={STEP_CLASS} data-sign-in-step="code">
@@ -791,18 +799,23 @@ function PasteCodeStep({
   );
 }
 
+/**
+ * A code to type on the provider's page (Codex, Grok): the code with Copy at its end, standing in
+ * its own room while the login has not printed it yet. The waiting shows once the page is open.
+ */
 function TypeCodeStep({
   code,
+  waiting,
   words,
 }: {
   readonly code: string | undefined;
+  readonly waiting: boolean;
   readonly words: ReturnType<typeof agentSignInWords>;
 }) {
   return (
     <div className={STEP_CLASS} data-sign-in-step="code">
       <StepNumber n={2} />
       <span className={STEP_WORDS_CLASS}>{words.type}</span>
-      {/* Codex's code, to type on OpenAI's page; Copy at its end. */}
       <CopyLine
         className={STEP_FIELD_CLASS}
         data-sign-in-device-code
@@ -811,7 +824,7 @@ function TypeCodeStep({
         value={code ?? null}
       />
       <span className={STEP_HINT_CLASS}>
-        <Spinner aria-hidden="true" size="sm" tone="muted" />
+        {waiting ? <Spinner aria-hidden="true" size="sm" tone="muted" /> : null}
         {words.typeHint}
       </span>
     </div>
@@ -1070,16 +1083,21 @@ export function ZeropsAgentSignInDialogPopup({
   readonly title?: string | undefined;
   readonly children: ReactNode;
 }) {
-  const popup = useRef<HTMLDivElement>(null);
+  // The panel, not the popup: the popup's forwarded ref is set only after the dialog has chosen
+  // where focus starts, while the panel's is set before.
+  const panel = useRef<HTMLDivElement>(null);
   return (
     <DialogPopup
-      ref={popup}
       bottomStickOnMobile={false}
       className="max-w-xl"
       placement="center"
-      initialFocus={() =>
-        popup.current?.querySelector<HTMLElement>("[data-sign-in-replace-cancel]") ?? true
-      }
+      // The dialog itself, never its first field or link: a focused code field before the page
+      // is open asks for a code the person cannot have yet. Only replacing a sign-in starts on its
+      // Cancel.
+      initialFocus={() => {
+        const dialog = panel.current?.closest<HTMLElement>("[data-slot=dialog-popup]") ?? null;
+        return dialog?.querySelector<HTMLElement>("[data-sign-in-replace-cancel]") ?? dialog;
+      }}
     >
       <DialogHeader>
         <DialogTitle>
@@ -1090,7 +1108,7 @@ export function ZeropsAgentSignInDialogPopup({
               : `Sign ${mateName} in`}
         </DialogTitle>
       </DialogHeader>
-      <DialogPanel>{children}</DialogPanel>
+      <DialogPanel ref={panel}>{children}</DialogPanel>
     </DialogPopup>
   );
 }

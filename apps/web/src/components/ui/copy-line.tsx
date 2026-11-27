@@ -5,6 +5,7 @@ import type { ComponentProps } from "react";
 import { cn } from "~/lib/utils";
 
 import { CopyButton } from "./copy-button";
+import { Skeleton } from "./skeleton";
 
 /**
  * One value to copy, on a line of its own: a command to run, a path, an address to give another
@@ -18,6 +19,7 @@ import { CopyButton } from "./copy-button";
  *
  * `size="lg"` is a code the person types by hand on another page (a device sign-in's code): its
  * figures at the title step and spaced, to be read across a desk, the line as wide as the code.
+ * While it is read, a code's width of shimmer holds that room.
  *
  * Its name, where it has one, stands beside or over it as the place's own label. Several lines of
  * text are a `CodeBlock`; a literal inside a sentence is `Text variant="code"`.
@@ -76,7 +78,11 @@ function CopyLine({
         )}
         data-slot="copy-line-value"
       >
-        {value}
+        {value === null && size === "lg" ? (
+          <Skeleton className="my-0.5 h-4 w-[10ch]" surface="card" />
+        ) : (
+          value
+        )}
       </code>
       <CopyButton label={label} value={value} />
     </div>
