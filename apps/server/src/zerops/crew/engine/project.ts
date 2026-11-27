@@ -42,6 +42,7 @@ import {
   leadOf,
   membersInOrder,
   questionKey,
+  reviewUnderWay,
   runElapsedMs,
   tasksInOrder,
   usagePercentOf,
@@ -200,7 +201,9 @@ const taskAttention = (
       const lead = leadOf(state);
       const reviewing =
         state.lead.serving?.taskId === task.id && lead !== undefined && lead.active !== null;
-      return reviewing || view.nowMs - task.updatedAt < UNATTENDED_MS
+      // The lead waits for a review it planned (`reviewUnderWay`): that review's own row says what
+      // holds it (its question to you, its plan to start), never a second need here.
+      return reviewing || reviewUnderWay(state, task) || view.nowMs - task.updatedAt < UNATTENDED_MS
         ? undefined
         : row("review-wait");
     }

@@ -278,3 +278,27 @@ it("CD34: A crewmate's copy reads as being made, set up, frozen by a redeploy, g
   expect(laneOf(withLane(applied(), { state: "missing" }))).toBe("missing");
   expect(laneOf(withLane(applied(), { state: "failed", detail: "lost" }))).toBe("failed");
 });
+
+// witness: apps/server/src/zerops/crew/engine/project.ts | return reviewing || reviewUnderWay(state, task) || view.nowMs - task.updatedAt < UNATTENDED_MS → return reviewing || view.nowMs - task.updatedAt < UNATTENDED_MS
+it("CD+2: Work waiting for the lead's review raises no need of its own while a review the lead planned of it is under way, its question to the person included; once that review is over, an unattended wait shows again; breaks: one question to the person shows as two crewmates needing them", () => {
+  const since = AT - UNATTENDED;
+  const built = task("t-1", 1, { state: "review", started: true, updatedAt: since });
+  const review = (state: TaskRecord["state"]) =>
+    task("t-2", 2, {
+      owner: "reviewer",
+      state,
+      started: true,
+      reviews: "t-1",
+      askedAt: since,
+      report:
+        state === "blocked"
+          ? { status: "blocked", summary: "?", question: "May I open the live page?" }
+          : null,
+    });
+  const waits = (reviewState: TaskRecord["state"]) =>
+    crewSnapshotOf(
+      withTasks(applied(), [built, review(reviewState)]),
+      view({ nowMs: AT + 30 * 60_000 }),
+    ).attention.map((row) => row.id);
+  expect([waits("blocked"), waits("landed")]).toEqual([["question:t-2"], ["review-wait:t-1"]]);
+});
