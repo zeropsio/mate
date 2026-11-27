@@ -26,6 +26,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useEffect, useMemo } from "react";
 
 import { reviewQueueOrder } from "~/zerops/reviewQueue.logic";
+import { useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
 import { useMenuProjects } from "~/components/zerops/SidebarOverview";
 import {
   needsYou,
@@ -222,9 +223,20 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
       waitsOnViewer,
     ],
   );
+  // What the person set aside until it changes, theirs on every device (HQ's snoozes).
+  const snoozeRead = useOrgTaskSource("hqSnoozes").read.setting;
+  const snoozes = snoozeRead.state === "known" ? snoozeRead.held : undefined;
   return useMemo(
-    () => needsYou({ mates, order, releases, dayStart: startOfToday() }),
-    [mates, order, releases],
+    () =>
+      needsYou({
+        mates,
+        order,
+        releases,
+        dayStart: startOfToday(),
+        viewer: viewerSubject,
+        snoozes,
+      }),
+    [mates, order, releases, snoozes, viewerSubject],
   );
 }
 

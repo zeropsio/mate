@@ -96,7 +96,7 @@ it("MN120: Finished crew work waits on the viewer once per task, only where the 
   ).toEqual(["c:fen:t:t1"]);
 });
 
-// witness: apps/web/src/zerops/waiting.logic.ts | if (mate.mine && wait === undefined && task?.waiting === true) → if (mate.mine && task?.waiting === true)
+// witness: apps/web/src/zerops/waiting.logic.ts | wait === undefined && → true &&
 it("MN121: An automated Mate's task waiting for an answer waits on the viewer only while the Mate's conversation says nothing of its own; breaks: the one question is counted twice", () => {
   const task = { id: "k1", title: "Fix the invoice total", url: null, waiting: true as const };
   expect(
@@ -124,4 +124,46 @@ it("MN122: Running counts the working chats of the viewer's own Mates while thei
     dayStart: DAY,
   });
   expect(counts).toEqual({ running: 3, doneToday: 1 });
+});
+
+const POOL_TASK = {
+  id: "task-9",
+  title: "Cache the menu",
+  url: null,
+  waiting: true,
+  askedAt: "2026-11-27T09:00:00Z",
+  putBy: "ana",
+} as const;
+
+// witness: apps/web/src/zerops/waiting.logic.ts | (mate.mine || (input.viewer !== undefined && task.putBy === input.viewer)) → mate.mine
+it("MN+1: A task the viewer put on the Board that a colleague's automated Mate holds waits on the viewer while it asks, and on nobody else who did not put it; breaks: the person who put the task never hears its question", () => {
+  const pool = mate({ projectId: "pool-1", name: "Pool", mine: false, task: POOL_TASK });
+  const keysFor = (viewer: string) =>
+    needsYou({ mates: [pool], order: [], releases: [], dayStart: DAY, viewer }).items.map(
+      (item) => item.key,
+    );
+  expect({ ana: keysFor("ana"), ben: keysFor("ben") }).toEqual({
+    ana: ["t:pool-1:task-9"],
+    ben: [],
+  });
+});
+
+// witness: apps/web/src/zerops/waiting.logic.ts | return snooze === null || aside.get(snooze.item) !== snooze.revision; → return snooze === null || !aside.has(snooze.item);
+it("MN+2: What the viewer set aside stays out of Needs you while its revision is the one set aside, and comes back once it changes; breaks: a new question on a set-aside task stays hidden, or a snooze hides nothing", () => {
+  const pool = (askedAt: string) =>
+    mate({ projectId: "pool-1", name: "Pool", mine: false, task: { ...POOL_TASK, askedAt } });
+  const snoozes = [{ item: "task:task-9", revision: "2026-11-27T09:00:00Z" }];
+  const keysWhen = (askedAt: string) =>
+    needsYou({
+      mates: [pool(askedAt)],
+      order: [],
+      releases: [],
+      dayStart: DAY,
+      viewer: "ana",
+      snoozes,
+    }).items.map((item) => item.key);
+  expect({
+    same: keysWhen("2026-11-27T09:00:00Z"),
+    askedAgain: keysWhen("2026-11-27T11:30:00Z"),
+  }).toEqual({ same: [], askedAgain: ["t:pool-1:task-9"] });
 });

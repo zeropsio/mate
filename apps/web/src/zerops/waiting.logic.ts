@@ -2,8 +2,10 @@
  * What needs the viewer, one list, and its one unit: one thing to act on — a Mate's plan to
  * approve, a question to answer, a Mate of theirs stopped on an error, a Mate's changes to review,
  * its agent's sign-in only the viewer can make, a crewmate's question or finished work, an
- * automated Mate's task waiting for an answer — in the menu's order, then every project whose
- * release is offered. One decision makes it (`needsYou`); every surface that counts or says what
+ * automated Mate's task waiting for an answer from the Mate's owner or the person who put it on the
+ * Board — in the menu's order, then every project whose release is offered, less what the viewer
+ * set aside until it changes (`snoozeOf`). One decision makes it (`needsYou`); every surface that
+ * counts or says what
  * waits reads this list and these words: the menu's badge, its Needs you list and the rail, the
  * overview's tab, a project's card and page.
  */
@@ -40,6 +42,8 @@ export interface WaitingChange {
    * what waits on them is their ask to merge, never a review.
    */
   readonly ask?: true | undefined;
+  /** Its head as HQ last said it: a push is a new revision of the change (`snoozeOf`). */
+  readonly head?: string | undefined;
   /**
    * Two or more of its Mate's changes the person reviews themselves, in the order reviewing them
    * together goes through (`reviewQueueOrder`): its Review steps through every one.
@@ -66,6 +70,8 @@ export interface WaitingMate {
   readonly threadId?: string | undefined;
   /** Its change waiting for review, where that is what waits. */
   readonly change?: WaitingChange | undefined;
+  /** When its conversation last moved (`ZeropsAgentActivity.at`): a new ask is a new revision. */
+  readonly at?: string | undefined;
 }
 
 /** A project whose next release is offered: what is on its stage, not yet in production. */
@@ -118,6 +124,8 @@ export interface WaitingTask {
   readonly title: string;
   /** Where it came from, where its question was asked; none for a schedule's. */
   readonly url: string | null;
+  /** When it last asked (`HqNavigationMateTask.askedAt`): a new question is a new revision. */
+  readonly askedAt?: string | undefined;
 }
 
 export type WaitingItem =
@@ -187,7 +195,9 @@ export type NeedsYouActivity = Pick<
   | "usageLimited"
   | "errorLine"
   | "question"
->;
+> &
+  /** When its conversation last moved: a new ask is a new revision of it (`snoozeOf`). */
+  Partial<Pick<ZeropsAgentActivity, "at">>;
 
 /**
  * One of the viewer's listed Mates, as the data layer answers for it: what its row reads, what HQ
@@ -227,6 +237,9 @@ export interface NeedsYouMate {
         readonly title: string;
         readonly url: string | null;
         readonly waiting?: true | undefined;
+        readonly askedAt?: string | undefined;
+        /** Who put it on the Board from a conversation, by Zerops user id: it waits on them too. */
+        readonly putBy?: string | undefined;
       }
     | null
     | undefined;
@@ -290,6 +303,7 @@ function conversationWait(mate: NeedsYouMate): WaitingMate | undefined {
     face,
     kind,
     ...(text === undefined ? {} : { text }),
+    ...(activity?.at === undefined ? {} : { at: activity.at }),
     ...(kind === "change" ? { changes: mate.reviewCount } : {}),
     ...(activity?.threadId === undefined ? {} : { threadId: activity.threadId }),
     ...(change === undefined ? {} : { change }),
@@ -348,18 +362,78 @@ function crewWaits(mate: NeedsYouMate): ReadonlyArray<WaitingItem> {
 }
 
 /**
+ * What the viewer set aside until it changes (HQ's `HqSnooze`), as the decision reads it: an item's
+ * key (`snoozeOf`) and its revision when it was set aside.
+ */
+export interface NeedsYouSnooze {
+  readonly item: string;
+  readonly revision: string;
+}
+
+/**
+ * An item as the viewer sets it aside (`PUT /api/me/snoozes`): its key — `task:<id>`,
+ * `change:<project>/<repo>#<n>`, `ask:<mate>:<what>`, `release:<project>` — and its own revision,
+ * which moves when it changes (a new question, a push, a release grown); `null` for one whose
+ * revision is not known, which cannot be set aside.
+ */
+export function snoozeOf(item: WaitingItem): NeedsYouSnooze | null {
+  switch (item.kind) {
+    case "task":
+      return item.task.askedAt === undefined
+        ? null
+        : { item: `task:${item.task.taskId}`, revision: item.task.askedAt };
+    case "release":
+      return item.release.ahead === undefined
+        ? null
+        : { item: `release:${item.release.groupId}`, revision: String(item.release.ahead) };
+    case "crew": {
+      // A crewmate's new ask is a new row of its crew's list, and a new ready task its own: the
+      // row's or the task's id is the revision. What its chat asks carries no time in the crew's
+      // digest, so it cannot be set aside.
+      const { need, crewmate } = item.crew;
+      const who = `ask:${item.crew.projectId}:${crewmate.handle}`;
+      return need.kind === "row"
+        ? { item: `${who}:row`, revision: need.rowId }
+        : need.kind === "ready"
+          ? { item: `${who}:ready:${need.taskId}`, revision: need.taskId }
+          : null;
+    }
+    case "change": {
+      const change = item.mate.change;
+      return change?.head === undefined
+        ? null
+        : {
+            item: `change:${change.groupId}/${change.repository}#${String(change.number)}`,
+            revision: change.head,
+          };
+    }
+    default: {
+      // What its conversation asks, by when it last moved: a new question is a new ask.
+      const at = item.mate.at;
+      return at === undefined
+        ? null
+        : { item: `ask:${item.mate.projectId}:${item.kind}`, revision: at };
+    }
+  }
+}
+
+/**
  * What needs the viewer, the one decision every surface reads: for each of their Mates in the
  * menu's order (one the menu does not hold, last), what waits in its conversation, then what its
  * crew needs, then its task waiting for an answer — said only where its conversation says nothing
  * of its own, since that is where the task asks; then every release offered to them. Another's
- * Mate waits on its owner, not here. Beside it, what runs for the viewer and what they got today,
- * counted from `dayStart` (the start of the viewer's day, in epoch milliseconds).
+ * Mate waits on its owner, not here — but a task it holds that the viewer put on the Board waits
+ * on them (`viewer`, their Zerops user id). What the viewer set aside (`snoozes`) is left out while
+ * its revision is still the one set aside. Beside it, what runs for the viewer and what they got
+ * today, counted from `dayStart` (the start of the viewer's day, in epoch milliseconds).
  */
 export function needsYou(input: {
   readonly mates: ReadonlyArray<NeedsYouMate>;
   readonly order: ReadonlyArray<string>;
   readonly releases: ReadonlyArray<WaitingRelease>;
   readonly dayStart: number;
+  readonly viewer?: string | undefined;
+  readonly snoozes?: ReadonlyArray<NeedsYouSnooze> | undefined;
 }): { readonly items: ReadonlyArray<WaitingItem>; readonly counts: NeedsYouCounts } {
   const place = (projectId: string) => {
     const at = input.order.indexOf(projectId);
@@ -377,7 +451,13 @@ export function needsYou(input: {
     if (wait !== undefined) items.push({ kind: wait.kind, key: `m:${mate.projectId}`, mate: wait });
     items.push(...crewWaits(mate));
     const task = mate.task;
-    if (mate.mine && wait === undefined && task?.waiting === true)
+    // Its owner hears the task's question, and so does the person who put it on the Board
+    // whoever's Mate holds it — where its conversation says nothing of its own.
+    const asks =
+      task?.waiting === true &&
+      wait === undefined &&
+      (mate.mine || (input.viewer !== undefined && task.putBy === input.viewer));
+    if (asks)
       items.push({
         kind: "task",
         key: `t:${mate.projectId}:${task.id}`,
@@ -390,6 +470,7 @@ export function needsYou(input: {
           taskId: task.id,
           title: task.title,
           url: task.url,
+          ...(task.askedAt === undefined ? {} : { askedAt: task.askedAt }),
         },
       });
     if (!mate.mine) continue;
@@ -404,7 +485,12 @@ export function needsYou(input: {
   }
   for (const release of input.releases)
     items.push({ kind: "release", key: `r:${release.groupId}`, release });
-  return { items, counts: { running, doneToday } };
+  const aside = new Map((input.snoozes ?? []).map((snooze) => [snooze.item, snooze.revision]));
+  const shown = items.filter((item) => {
+    const snooze = snoozeOf(item);
+    return snooze === null || aside.get(snooze.item) !== snooze.revision;
+  });
+  return { items: shown, counts: { running, doneToday } };
 }
 
 /** What waits, in its leading words: the menu's line, a card's and a page's say these first. */
