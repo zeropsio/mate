@@ -160,17 +160,12 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
     ? undefined
     : activeProject?.repositoryIdentity?.rootPath;
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
-  const leases = useThreadLeases(
-    activeThread?.environmentId ?? null,
-    activeThread?.id ?? null,
-    activeThread?.lease ?? null,
-  );
+  const leases = useThreadLeases(activeThread?.environmentId ?? null, activeThread?.lease ?? null);
   const { reads } = useDiffRepositories(
     activeThread?.environmentId ?? null,
     activeCwd ?? null,
     activeThread?.crew ?? null,
     leases,
-    activeThread?.id ?? null,
   );
   const diffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),

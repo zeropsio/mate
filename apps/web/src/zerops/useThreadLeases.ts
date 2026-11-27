@@ -7,14 +7,13 @@
  */
 import type { CheckoutLease } from "@t3tools/client-runtime/zerops";
 import { threadLeasesOf } from "@t3tools/client-runtime/zerops/serviceMap";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useMemo } from "react";
 
 import { useZeropsMateCopies } from "./useZeropsFeeds";
 
 export function useThreadLeases(
   environmentId: EnvironmentId | null,
-  _threadId: ThreadId | null,
   /** The lease the thread is bound to; `null` for none. */
   lease: CheckoutLease | null,
 ): ReadonlyArray<CheckoutLease> {

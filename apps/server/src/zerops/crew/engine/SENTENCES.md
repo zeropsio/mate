@@ -1,4 +1,4 @@
-next: CD75
+next: CD79
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -74,7 +74,7 @@ next: CD75
 - CD72 — A wake the crew no longer holds is refused as not armed, so the scheduler drops it
 - CD73 — A press the crew refuses comes back from the engine with the crew's own reason
 - CD74 — The crew takes in a conversation's range in one step, the events it reads folded and its cursor moved past the rest; breaks: the crew misses a run's end the observer skipped, or its record grows by an event per commit
-- CD+1 — A lease released in zcp's status file disappears from every conversation's Mate feed and unbinds its checkout without a tool call
-- CD+2 — A conversation that never called zcp sees the Mate's leases
-- CD+3 — A classic dev service's branch and dev server appear together on its Mate's copy feed
-- CD+4 — A tool result reads the current copy file before binding, so a late acquire cannot bind a released lease
+- CD75 — A lease released in zcp's status file disappears from every conversation's Mate feed and unbinds its checkout without a tool call
+- CD76 — A conversation that never called zcp sees the Mate's leases
+- CD77 — A classic dev service's branch and dev server appear together on its Mate's copy feed
+- CD78 — A tool result reads the current copy file before binding, so a late acquire cannot bind a released lease

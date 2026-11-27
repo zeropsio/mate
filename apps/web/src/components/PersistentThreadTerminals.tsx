@@ -235,14 +235,9 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
   // Terminals already open stay on screen while the checkouts are read: they keep their folders.
   const leases = useThreadLeases(
     visible ? threadRef.environmentId : null,
-    threadRef.threadId,
     serverThread?.lease ?? null,
   );
-  const repositories = useMateRepositories(
-    visible ? threadRef.environmentId : null,
-    leases,
-    threadRef.threadId,
-  );
+  const repositories = useMateRepositories(visible ? threadRef.environmentId : null, leases);
   const hasOpenTerminals = drawerTerminalSessions.length > 0;
   const leaseAlias = serverThread?.lease?.alias ?? null;
   const cwd = useMemo(
@@ -527,14 +522,9 @@ export const PersistentThreadTerminalPanel = memo(function PersistentThreadTermi
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden panel reads none.
   const leases = useThreadLeases(
     visible ? threadRef.environmentId : null,
-    threadRef.threadId,
     serverThread?.lease ?? null,
   );
-  const repositories = useMateRepositories(
-    visible ? threadRef.environmentId : null,
-    leases,
-    threadRef.threadId,
-  );
+  const repositories = useMateRepositories(visible ? threadRef.environmentId : null, leases);
   const cwd = useMemo(
     () =>
       project

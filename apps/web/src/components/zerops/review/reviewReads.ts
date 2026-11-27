@@ -51,7 +51,7 @@ export function useMatePreviews(
   const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
   const classic = classicCopyRead(repository, copies?.copies);
   const classicServers = classic.devServers;
-  const classicBranch = classic?.branch;
+  const classicBranch = classic.branch;
   return useMemo(
     () =>
       tryItTargets({

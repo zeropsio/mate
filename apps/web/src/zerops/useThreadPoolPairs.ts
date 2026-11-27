@@ -7,15 +7,12 @@
  */
 import { poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useMemo } from "react";
 
 import { useZeropsMateCopies } from "./useZeropsFeeds";
 
-export function useThreadPoolPairs(
-  environmentId: EnvironmentId | null,
-  _threadId: ThreadId | null,
-): ReadonlyArray<PoolPair> {
+export function useThreadPoolPairs(environmentId: EnvironmentId | null): ReadonlyArray<PoolPair> {
   const lifecycle = useZeropsMateCopies(environmentId);
   const key = JSON.stringify(poolPairsOf(lifecycle));
   return useMemo(() => JSON.parse(key) as ReadonlyArray<PoolPair>, [key]);

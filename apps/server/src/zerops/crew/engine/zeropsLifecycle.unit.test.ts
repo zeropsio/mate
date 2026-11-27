@@ -870,7 +870,7 @@ const fileLease = {
 
 // witness: apps/server/src/zerops/ZeropsLifecycle.ts | if (status.leases !== null) { → if (status.leases !== null && status.devServices !== null) {
 it.effect(
-  "CD+1: A lease released in zcp's status file disappears from every conversation's Mate feed and unbinds its checkout without a tool call",
+  "CD75: A lease released in zcp's status file disappears from every conversation's Mate feed and unbinds its checkout without a tool call",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -925,7 +925,7 @@ it.effect(
 );
 
 // witness: apps/server/src/zerops/ZeropsLifecycle.ts | const latest = yield* Ref.get(shared); → const { leases: _leases, ...latest } = yield* Ref.get(shared);
-it.effect("CD+2: A conversation that never called zcp sees the Mate's leases", () =>
+it.effect("CD76: A conversation that never called zcp sees the Mate's leases", () =>
   withLifecycle((lifecycle) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -941,7 +941,7 @@ it.effect("CD+2: A conversation that never called zcp sees the Mate's leases", (
 
 // witness: apps/server/src/zerops/ZeropsLifecycle.ts | ...(status.devServices === null ? {} : { devServices: status.devServices }), → ...{},
 it.effect(
-  "CD+3: A classic dev service's branch and dev server appear together on its Mate's copy feed",
+  "CD77: A classic dev service's branch and dev server appear together on its Mate's copy feed",
   () =>
     withLifecycle((lifecycle) =>
       Effect.gen(function* () {
@@ -961,7 +961,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsLifecycle.ts | yield* applyCopies(yield* options.readCopies); → yield* Effect.void;
 it.effect(
-  "CD+4: A tool result reads the current copy file before binding, so a late acquire cannot bind a released lease",
+  "CD78: A tool result reads the current copy file before binding, so a late acquire cannot bind a released lease",
   () =>
     Effect.gen(function* () {
       const file = yield* Ref.make<ZeropsCopyStatus>({ leases: [], devServices: null });
