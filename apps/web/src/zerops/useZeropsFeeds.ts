@@ -26,6 +26,7 @@ import type {
   ThreadId,
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
+  ZeropsMateCopies,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
@@ -102,6 +103,13 @@ export function useZeropsLifecycle(
       ? EMPTY_ATOM
       : zeropsFeeds.lifecycle({ environmentId, input: { threadId } }),
   );
+}
+
+/** Copy facts are scoped to the Mate, independently of any conversation. */
+export function useZeropsMateCopies(
+  environmentId: EnvironmentId | null,
+): Known<ZeropsMateCopies> | undefined {
+  return useAtomValue(environmentId === null ? EMPTY_ATOM : zeropsFeeds.copies(environmentId));
 }
 
 export function useZeropsAgentAuth(

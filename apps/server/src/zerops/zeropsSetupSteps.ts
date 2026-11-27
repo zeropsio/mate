@@ -18,6 +18,7 @@ import {
   StandUpRowKind,
   StandUpRowState,
   ZcpErrorClass,
+  ZeropsCopyStatus,
   type StandUpRow,
   type StandUpVerdict,
   type ZeropsAgentAuth,
@@ -25,6 +26,8 @@ import {
   type ZeropsUserId,
 } from "@t3tools/contracts";
 import * as Hash from "effect/Hash";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import { turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
@@ -140,6 +143,8 @@ export interface ZcpProcess {
 
 /** `ZCP_STATUS_FILE`, version 1, as far as this build reads it. */
 export interface ZcpStatus {
+  /** The copy sets zcp has read, independent of any conversation. */
+  readonly copies?: ZeropsCopyStatus | undefined;
   readonly runtimes:
     | {
         /** A state this build does not know reads as `undefined`. */
@@ -257,6 +262,8 @@ const readProcess = (value: unknown): ZcpProcess | undefined => {
   return { pid, start: text(row?.["start"]) };
 };
 
+const decodeCopyStatus = Schema.decodeUnknownOption(ZeropsCopyStatus);
+
 /**
  * zcp's status file, tolerantly: unknown fields are ignored, and a file of
  * another version is not read at all — a field a reader may ignore arrives
@@ -268,6 +275,7 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
   const runtimes = record(file["runtimes"]);
   const standup = record(file["standup"]);
   return {
+    copies: Option.getOrUndefined(decodeCopyStatus(file["copies"])),
     runtimes:
       runtimes === undefined
         ? undefined

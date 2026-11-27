@@ -6,6 +6,7 @@ import type {
   TerminalSummary,
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
+  ZeropsMateCopies,
 } from "@t3tools/contracts";
 import { WS_METHODS } from "@t3tools/contracts";
 import type { EnvironmentRpcStreamValue } from "../../rpc/client.ts";
@@ -19,6 +20,7 @@ export interface MateFeedValues {
   >;
   readonly mateClientSession: import("@t3tools/contracts").AuthSessionState;
   readonly mateLifecycle: ZeropsLifecycle;
+  readonly mateCopies: ZeropsMateCopies;
   readonly mateAgentAuth: ZeropsAgentAuthSnapshot;
   /** zcp's stand-up verdict as the Mate reads it (`subscribeZeropsStandUpVerdict`). */
   readonly mateStandUpVerdict: StandUpVerdictReading;
@@ -68,6 +70,7 @@ export const MATE_FEED_FAMILIES = {
   mateResourceTelemetry: spec("mateResourceTelemetry", "realtime"),
   mateClientSession: spec("mateClientSession", "realtime"),
   mateLifecycle: spec("mateLifecycle", "realtime"),
+  mateCopies: spec("mateCopies", "realtime"),
   mateAgentAuth: spec("mateAgentAuth", "realtime"),
   mateStandUpVerdict: spec("mateStandUpVerdict", "realtime"),
   mateCrew: spec("mateCrew", "realtime"),

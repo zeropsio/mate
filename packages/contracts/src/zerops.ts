@@ -363,6 +363,58 @@ export const ZeropsStateEnvelope = Schema.Struct({
 });
 export type ZeropsStateEnvelope = typeof ZeropsStateEnvelope.Type;
 
+/** The conversation's part of an envelope. Container and working-copy facts belong to the Mate. */
+export const ZeropsConversationEnvelope = Schema.Struct({
+  phase: Schema.String,
+  environment: Schema.String,
+  idleScenario: Schema.optional(Schema.String),
+  exportStatus: Schema.optional(Schema.String),
+  selfService: Schema.optional(ZeropsEnvelopeSelfService),
+  project: ZeropsEnvelopeProject,
+  workSession: Schema.optional(ZeropsWorkSession),
+  bootstrap: Schema.optional(ZeropsBootstrapSession),
+  generated: IsoDateTime,
+});
+export type ZeropsConversationEnvelope = typeof ZeropsConversationEnvelope.Type;
+
+/** A classic dev half as zcp's status file last read its working copy. */
+export const ZeropsClassicCopy = Schema.Struct({
+  hostname: Schema.String,
+  branch: Schema.optional(Schema.NullOr(Schema.String)),
+  branchReadAt: Schema.optional(Schema.String),
+  devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+  devServersReadAt: Schema.optional(Schema.String),
+});
+export type ZeropsClassicCopy = typeof ZeropsClassicCopy.Type;
+
+/** zcp's Mate-wide copy section: null is unread, an empty list is a read of none. */
+export const ZeropsCopyStatus = Schema.Struct({
+  leases: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        alias: LeaseAlias,
+        pool: Schema.String,
+        containerHostname: Schema.String,
+        branch: Schema.String,
+        repo: Schema.optional(Schema.String),
+        acquiredAt: Schema.String,
+        devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+        devServersReadAt: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
+  devServices: Schema.NullOr(Schema.Array(ZeropsClassicCopy)),
+});
+export type ZeropsCopyStatus = typeof ZeropsCopyStatus.Type;
+
+/** One Mate's working copies and the service facts carried by any of its envelopes. */
+export const ZeropsMateCopies = Schema.Struct({
+  leases: Schema.optional(Schema.Array(ZeropsLease)),
+  devServices: Schema.optional(Schema.Array(ZeropsClassicCopy)),
+  services: Schema.optional(Schema.Array(ZeropsServiceSnapshot)),
+});
+export type ZeropsMateCopies = typeof ZeropsMateCopies.Type;
+
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
@@ -398,7 +450,7 @@ export const ZEROPS_RECENT_TOOLS_LIMIT = 8;
 export const ZeropsLifecycle = Schema.Struct({
   threadId: ThreadId,
   /** Absent until this thread's agent has run a tool that carries an envelope. */
-  envelope: Schema.optional(ZeropsStateEnvelope),
+  envelope: Schema.optional(ZeropsConversationEnvelope),
   recentTools: Schema.Array(ZeropsRecentTool),
   /** Absent when nothing has been recorded for this thread yet. */
   updatedAt: Schema.optional(Schema.DateTimeUtc),

@@ -57,6 +57,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsLoginAdd
   | typeof WS_METHODS.zeropsLoginRemove
   | typeof WS_METHODS.subscribeZeropsLifecycle
+  | typeof WS_METHODS.subscribeZeropsMateCopies
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsHealth
   | typeof WS_METHODS.subscribeZeropsStandUpVerdict
@@ -473,6 +474,12 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>
       Stream.unwrap(
         Effect.map(zeropsLifecycle.subscribe(input.threadId), ({ latest, changes }) =>
+          Stream.concat(Stream.make(latest), changes),
+        ),
+      ),
+    [WS_METHODS.subscribeZeropsMateCopies]: () =>
+      Stream.unwrap(
+        Effect.map(zeropsLifecycle.subscribeCopies, ({ latest, changes }) =>
           Stream.concat(Stream.make(latest), changes),
         ),
       ),

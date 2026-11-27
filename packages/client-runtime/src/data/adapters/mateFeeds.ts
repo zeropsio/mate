@@ -262,6 +262,9 @@ export function makeMateFeedWire(
                         threadId: key.input?.threadId as ThreadId,
                       });
                       break;
+                    case "mateCopies":
+                      values = client[WS_METHODS.subscribeZeropsMateCopies]({});
+                      break;
                     case "mateAgentAuth":
                       values = client[WS_METHODS.subscribeZeropsAgentAuth]({});
                       break;

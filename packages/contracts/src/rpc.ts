@@ -194,6 +194,7 @@ import {
   ZeropsGitRemoteProbeInput,
   ZeropsGitRemoteProbeResult,
   ZeropsLifecycle,
+  ZeropsMateCopies,
   ZeropsLifecycleGetInput,
   StandUpVerdictReading,
   ZeropsMateUpdateError,
@@ -398,6 +399,7 @@ export const WS_METHODS = {
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
   subscribeZeropsLifecycle: "subscribeZeropsLifecycle",
+  subscribeZeropsMateCopies: "subscribeZeropsMateCopies",
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
   subscribeZeropsHealth: "subscribeZeropsHealth",
   subscribeZeropsStandUpVerdict: "subscribeZeropsStandUpVerdict",
@@ -955,6 +957,13 @@ const WsSubscribeZeropsLifecycleRpc = Rpc.make(WS_METHODS.subscribeZeropsLifecyc
   stream: true,
 });
 
+const WsSubscribeZeropsMateCopiesRpc = Rpc.make(WS_METHODS.subscribeZeropsMateCopies, {
+  payload: Schema.Struct({}),
+  success: ZeropsMateCopies,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsSubscribeZeropsAgentAuthRpc = Rpc.make(WS_METHODS.subscribeZeropsAgentAuth, {
   payload: Schema.Struct({}),
   success: ZeropsAgentAuthSnapshot,
@@ -1434,6 +1443,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsLifecycleGetRpc,
   WsZeropsStandUpRetryRpc,
   WsSubscribeZeropsLifecycleRpc,
+  WsSubscribeZeropsMateCopiesRpc,
   WsSubscribeZeropsAgentAuthRpc,
   WsSubscribeZeropsHealthRpc,
   WsSubscribeZeropsStandUpVerdictRpc,

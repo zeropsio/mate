@@ -265,6 +265,19 @@ const ZeropsHqLinkLive = Layer.unwrap(
  * is read again with the next call that reads them. A lease that changed hands has its checkout's
  * git status forgotten and read again: the same alias may be another branch's container now.
  */
+const ZeropsSetupLive = ZeropsSetupModule.layer.pipe(
+  Layer.provide(
+    ZeropsSetupModule.liveReadsLayer.pipe(
+      Layer.provide(ZeropsHqLinkLive),
+      Layer.provide(ZeropsAgentAuthLive),
+      Layer.provide(providerInstancesLayer),
+      Layer.provide(ZeropsProjectSignersModule.layer),
+    ),
+  ),
+  Layer.provide(ZeropsTurnAdmissionLive),
+  Layer.provide(MateEngineLive),
+);
+
 const ZeropsLifecycleLive = Layer.unwrap(
   Effect.gen(function* () {
     const engine = yield* MateEngine;
@@ -307,7 +320,11 @@ const ZeropsLifecycleLive = Layer.unwrap(
           ),
     });
   }),
-).pipe(Layer.provide(ZeropsThreadLifecycle.layer), Layer.provide(MateEngineLive));
+).pipe(
+  Layer.provide(ZeropsThreadLifecycle.layer),
+  Layer.provide(MateEngineLive),
+  Layer.provide(ZeropsSetupLive),
+);
 
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycleLive,
@@ -355,20 +372,7 @@ const liveLayer = Layer.mergeAll(
   // …and a running stand-up's progress, relayed from zcp's status file to its run card.
   ZeropsStandUpRelayModule.layer.pipe(
     Layer.provide(MateEngineLive),
-    Layer.provideMerge(
-      ZeropsSetupModule.layer.pipe(
-        Layer.provide(
-          ZeropsSetupModule.liveReadsLayer.pipe(
-            Layer.provide(ZeropsHqLinkLive),
-            Layer.provide(ZeropsAgentAuthLive),
-            Layer.provide(providerInstancesLayer),
-            Layer.provide(ZeropsProjectSignersModule.layer),
-          ),
-        ),
-        Layer.provide(ZeropsTurnAdmissionLive),
-        Layer.provide(MateEngineLive),
-      ),
-    ),
+    Layer.provideMerge(ZeropsSetupLive),
   ),
   ZeropsHqLinkLive,
   // The same instance the link reads (memoized by reference), for the Mate's own clients.

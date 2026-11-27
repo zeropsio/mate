@@ -59,7 +59,7 @@ import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
 
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
-import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
+import { useZeropsMateCopies } from "../../zerops/useZeropsFeeds";
 import { useGitRemoteReads } from "../../zerops/useZeropsGitRemoteProbe";
 import { useZeropsGroupRecipe } from "../../zerops/useZeropsGroupRecipe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
@@ -239,7 +239,7 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
     useThreadShell(props.threadRef)?.lease ?? null,
   );
   const poolPairs = useThreadPoolPairs(leases.length === 0 ? environmentId : null, threadId);
-  const lifecycle = useZeropsLifecycle(leases.length === 0 ? environmentId : null, threadId);
+  const lifecycle = useZeropsMateCopies(leases.length === 0 ? environmentId : null);
   // The Mate tier on `main` says which dev services share a pair's code (one repository per pair).
   const recipe = useZeropsGroupRecipe({ appId: props.appId, tier: "mate", enabled: true });
   const tierYaml = recipe.tier?.yaml;

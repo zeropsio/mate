@@ -42,7 +42,7 @@ import {
   sameZeropsLeaseGroup,
   ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS,
   type ZeropsLease,
-  type ZeropsLifecycle,
+  type ZeropsMateCopies,
 } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { leaseMayBeOf, repoOfUrl } from "@t3tools/shared/hqChanges";
@@ -757,10 +757,10 @@ export const CODE_IN_POOL_LINE =
  */
 export function gitEmptyLine(
   services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname">>,
-  lifecycle: Known<ZeropsLifecycle> | undefined,
+  lifecycle: Known<ZeropsMateCopies> | undefined,
 ): string {
   if (lifecycle?.state !== "known") return NO_REPOSITORY_LINE;
-  const snapshots = lifecycle.value.envelope?.services ?? [];
+  const snapshots = lifecycle.value.services ?? [];
   const held = new Set(services.map((service) => service.hostname));
   const pools = [
     ...poolPairsIn(snapshots).map(({ pool }) => pool),

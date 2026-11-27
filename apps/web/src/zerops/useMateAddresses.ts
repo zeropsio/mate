@@ -28,7 +28,7 @@ import {
 } from "@t3tools/client-runtime/zerops/mateAddresses";
 import { useLeaseChats } from "./useLeaseChats";
 import { useProjectsServiceValues } from "./ZeropsAccountData";
-import { useEnvironmentProjectRef, useZeropsLifecycle, useZeropsTopology } from "./useZeropsFeeds";
+import { useEnvironmentProjectRef, useZeropsMateCopies, useZeropsTopology } from "./useZeropsFeeds";
 
 const NO_ADDRESSES: ReadonlyArray<MateAddress> = [];
 
@@ -40,10 +40,10 @@ export interface MateAddressesRead {
 
 export function useMateAddresses(
   environmentId: EnvironmentId | null,
-  threadId: ThreadId | null,
+  _threadId: ThreadId | null,
 ): MateAddressesRead {
   const topology = useZeropsTopology(environmentId);
-  const lifecycle = useZeropsLifecycle(environmentId, threadId);
+  const lifecycle = useZeropsMateCopies(environmentId);
   // Each workspace by the chat it is for, as Sites and the Zerops panel name it. This hook never
   // mounts on a change's review (`/change/…`), so reading every chat's binding holds no review back.
   const leaseChats = useLeaseChats(environmentId);

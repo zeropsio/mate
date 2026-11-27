@@ -5,7 +5,7 @@
  * own decoded plan, not the envelope. See
  * `mate-session-model-2026-09-05-designs/C-client-domain.md` §1.6.
  */
-import type { ZeropsAttemptInfo, ZeropsStateEnvelope } from "@t3tools/contracts";
+import type { ZeropsAttemptInfo, ZeropsConversationEnvelope } from "@t3tools/contracts";
 
 import type { ZeropsOperation, ZeropsSessionView, ZeropsWorkAttempt } from "./types.ts";
 
@@ -55,7 +55,7 @@ function latestBootstrapOperation(
 }
 
 export function composeSession(
-  envelope: ZeropsStateEnvelope | undefined,
+  envelope: ZeropsConversationEnvelope | undefined,
   operations: ReadonlyArray<ZeropsOperation>,
 ): ZeropsSessionView {
   const bootstrapOperation = latestBootstrapOperation(operations);
@@ -98,7 +98,6 @@ export function composeSession(
 
   return {
     phase: envelope.phase,
-    ...(envelope.phase === "idle" ? { serviceCount: envelope.services.length } : {}),
     ...(envelope.phase === "idle" && envelope.idleScenario !== undefined
       ? { idleScenario: envelope.idleScenario }
       : {}),
