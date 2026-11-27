@@ -294,6 +294,8 @@ export interface RunRecord {
   readonly leadWakes: number;
   /** The crew-run card whose press started it; absent for any other run. */
   readonly ask?: string;
+  /** The conversation that card stands in: the run reports to it once when it ends. */
+  readonly from?: { readonly conversationId: ConversationId };
 }
 
 /** A wake the lead was given, by its key; the lead's next run serves it. */

@@ -410,6 +410,7 @@ const toRun = (state: CrewState, nowMs: number): CrewRun | null => {
     startedBy: run.startedBy,
     startedAt: iso(run.startedAt),
     ...(run.ask === undefined ? {} : { ask: run.ask }),
+    ...(run.from === undefined ? {} : { from: run.from }),
     elapsedMs: runElapsedMs(run, nowMs),
     countingFrom: run.since === null ? null : iso(nowMs),
     spentUsd: run.spentUsd,

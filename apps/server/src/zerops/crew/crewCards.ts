@@ -18,6 +18,9 @@
  * - the **carried** card a new conversation's first turn on an open task
  *   starts from, so every stint begins with a card for its seam line.
  *
+ * The **run report** is no card: the one message a run started from a crew-run card sends that
+ * card's conversation once the run ends (`crewRunReport`).
+ *
  * A stint's seam line — why its conversation is new — is `stintReasonWords`;
  * the chat shows it verbatim above the stint's first card. The seam lines no
  * card carries — a landing, a save that reaches the conversation later, a
@@ -232,3 +235,24 @@ export const closedSeamWords = (number: number): string =>
 export const carriedCard = (
   task: CardTask & { readonly reason: string; readonly text: string },
 ): string => card(task, "continues", [task.reason, "", task.text.trim()]);
+
+const quoted = (titles: ReadonlyArray<string>): string =>
+  titles.map((title) => `“${title}”`).join(", ");
+
+/**
+ * The run report: which of the run's tasks landed and which did not, by title, and that the
+ * landed work waits to ship from the conversation it is told to. Never the crew's log.
+ */
+export const crewRunReport = (run: {
+  readonly ended: "finished" | "stopped";
+  readonly landed: ReadonlyArray<string>;
+  readonly unlanded: ReadonlyArray<string>;
+}): string =>
+  [
+    run.ended === "finished" ? "The crew's run finished." : "The crew's run was stopped.",
+    run.landed.length === 0 ? "Nothing landed." : `Landed: ${quoted(run.landed)}.`,
+    ...(run.unlanded.length === 0 ? [] : [`Did not land: ${quoted(run.unlanded)}.`]),
+    ...(run.landed.length === 0
+      ? []
+      : ["The landed work is in your tree and waits to ship from this conversation."]),
+  ].join(" ");

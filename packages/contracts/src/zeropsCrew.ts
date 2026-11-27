@@ -394,6 +394,10 @@ export type CrewRunOptions = typeof CrewRunOptions.Type;
 export const CrewRunReason = Schema.Literals(["person", "budget", "time", "usage", "refused"]);
 export type CrewRunReason = typeof CrewRunReason.Type;
 
+/** Where a run came from: the engine conversation whose crew-run card started it. */
+export const CrewRunFrom = Schema.Struct({ conversationId: TrimmedNonEmptyString });
+export type CrewRunFrom = typeof CrewRunFrom.Type;
+
 /** The crew's latest run in any state; the run dialog takes its defaults from it. */
 export const CrewRun = Schema.Struct({
   id: CrewRunId,
@@ -406,6 +410,8 @@ export const CrewRun = Schema.Struct({
   startedAt: IsoDateTime,
   /** The crew-run card whose press started it; absent for any other run. */
   ask: Schema.optionalKey(TrimmedNonEmptyString),
+  /** The conversation the run reports to when it ends; absent for a run started elsewhere. */
+  from: Schema.optionalKey(CrewRunFrom),
   /**
    * The time the crew has worked in the run — running with a crew turn
    * running — which its time limit counts; paused time and time the crew sat
@@ -693,6 +699,11 @@ export const CrewCommand = Schema.TaggedUnion({
     ...CrewRunOptions.fields,
     /** The crew-run card (a `crew-run` fence's key) whose press starts it; absent for any other start. */
     ask: Schema.optionalKey(TrimmedNonEmptyString),
+    /**
+     * The conversation the press came from (the card's): once the run finishes or stops, the crew
+     * tells it once which tasks landed. Absent for any other start; an older server ignores it.
+     */
+    from: Schema.optionalKey(CrewRunFrom),
   },
   pause: runRef,
   /**

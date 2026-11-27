@@ -4,11 +4,14 @@
  * @module crew/engine/decide.run
  */
 import {
+  ConversationId,
   type CrewCommand,
+  type CrewRunFrom,
   type CrewRunOptions,
   type CrewRunReason,
   type RunId,
 } from "@t3tools/contracts";
+import { crewRunReport } from "../crewCards.ts";
 import { runTransition } from "../crewMachines.ts";
 import { answerCard, questionCard, reviewCard, type SentCard } from "./cards.ts";
 import {
@@ -320,7 +323,12 @@ const lanesReady = (state: CrewState): boolean =>
 export const runFrom = (run: RunRecord | null) =>
   run === null || run.state === "stopped" || run.state === "finished" ? "none" : run.state;
 
-export const startRun = (b: Builder, options: CrewRunOptions, ask?: string): void => {
+export const startRun = (
+  b: Builder,
+  options: CrewRunOptions,
+  ask?: string,
+  from?: CrewRunFrom,
+): void => {
   const moved = runTransition(runFrom(b.state.run), {
     type: "start",
     admitted: true,
@@ -343,6 +351,9 @@ export const startRun = (b: Builder, options: CrewRunOptions, ask?: string): voi
       since: null,
       leadWakes: 0,
       ...(ask === undefined ? {} : { ask }),
+      ...(from === undefined
+        ? {}
+        : { from: { conversationId: ConversationId.make(from.conversationId) } }),
     },
   });
   rotateForBudget(b);
@@ -387,6 +398,7 @@ export const stopRun = (b: Builder, runId: string): void => {
   });
   b.cancel("run-time", run.id, "the run stopped");
   interruptCrew(b);
+  reportRun(b, run, "stopped");
 };
 
 export const finishRun = (b: Builder, run: RunRecord): void => {
@@ -397,4 +409,45 @@ export const finishRun = (b: Builder, run: RunRecord): void => {
     set: { state: "finished", keptMs: runElapsedMs(run, b.now), since: null },
   });
   b.cancel("run-time", run.id, "the run finished");
+  reportRun(b, run, "finished");
+};
+
+/**
+ * A run a crew-run card started tells the card's conversation once, as it ends, which of its
+ * tasks landed: as the person who started it, by command, as the crew reaches any conversation.
+ * The ending happens once per run, and the delivery's receipt holds it to one across a restart.
+ * A run's tasks are those made in it and those it landed; reviews and discarded tasks are not.
+ * Never to a conversation of the crew's own: the crew tracks every turn it sends a crewmate.
+ */
+const reportRun = (b: Builder, run: RunRecord, ended: "finished" | "stopped"): void => {
+  const to = run.from?.conversationId;
+  if (
+    to === undefined ||
+    to === b.state.ownerId ||
+    membersInOrder(b.state).some((member) => member.conversationId === to)
+  ) {
+    return;
+  }
+  const tasks = tasksInOrder(b.state).filter(
+    (task) =>
+      task.reviews === undefined &&
+      task.state !== "discarded" &&
+      (task.runId === run.id || (task.landedAt !== null && task.landedAt >= run.startedAt)),
+  );
+  const text = crewRunReport({
+    ended,
+    landed: tasks.filter((task) => task.state === "landed").map((task) => task.title),
+    unlanded: tasks.filter((task) => task.state !== "landed").map((task) => task.title),
+  });
+  const principal = crewAs(run.startedBy);
+  b.effect(
+    {
+      kind: "crew.deliver",
+      conversationId: to,
+      handle: null,
+      command: { _tag: "Send", text, card: null, principal },
+      principal,
+    },
+    to,
+  );
 };

@@ -93,6 +93,7 @@ export const pressed = (
           leadMayStart: press.leadMayStart,
         },
         press.ask,
+        press.from,
       );
     case "pause": {
       const run = requireRun(b, press.runId);
