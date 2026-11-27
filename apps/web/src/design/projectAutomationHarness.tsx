@@ -272,13 +272,14 @@ const faceOf = (projectId: string): BoardFace | undefined =>
   OWN_MATES[projectId] ?? POOL_FACES.get(projectId);
 /** Whose each Mate is, for Take: Mara's two, Rhea's one, and the pool. */
 const MATES: ReadonlyArray<BoardMate> = [
-  { projectId: "p-lark", ownerUserId: ME, automated: false },
-  { projectId: "p-quill", ownerUserId: ME, automated: false },
-  { projectId: "p-moss", ownerUserId: RHEA, automated: false },
+  { projectId: "p-lark", ownerUserId: ME, automated: false, takesBoard: true },
+  { projectId: "p-quill", ownerUserId: ME, automated: false, takesBoard: true },
+  { projectId: "p-moss", ownerUserId: RHEA, automated: false, takesBoard: true },
   ...[SOL, PIM, WREN, BO].map((mate) => ({
     projectId: mate.projectId,
     ownerUserId: undefined,
     automated: true,
+    takesBoard: true,
   })),
 ];
 const facts = (roleCode: string): PermissionFacts => ({

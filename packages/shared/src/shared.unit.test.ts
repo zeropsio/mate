@@ -675,9 +675,9 @@ it("SH+1: A task still on the Board is offered Stop by an owner or admin, by the
 // witness: packages/shared/src/zeropsPermissions.ts | !mate.automated && → (mate.automated || true) &&
 it("SH+2: Take is offered on a queued task only to a person with a Mate of their own in the application, never for an automated Mate or another person's, and never on a task already taken or at work; breaks: a person's Take spends a colleague's Mate or the pool's", () => {
   const mates = [
-    { projectId: "mate-ana", ownerUserId: "ana", automated: false },
-    { projectId: "mate-ben", ownerUserId: "ben", automated: false },
-    { projectId: "pool-1", ownerUserId: "cyril", automated: true },
+    { projectId: "mate-ana", ownerUserId: "ana", automated: false, takesBoard: true },
+    { projectId: "mate-ben", ownerUserId: "ben", automated: false, takesBoard: true },
+    { projectId: "pool-1", ownerUserId: "cyril", automated: true, takesBoard: true },
   ];
   const queued: BoardTask = { stored: "queued", putBy: null, taker: null };
   const answer = (facts: PermissionFacts, task: BoardTask, mateProjectId?: string) => {

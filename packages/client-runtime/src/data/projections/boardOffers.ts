@@ -2,12 +2,13 @@
  * What the person may do on an application's Board, by the verb rules
  * (`@t3tools/shared/zeropsPermissions`) over their own live read of Zerops, HQ's tasks of the
  * application and its Mates (whose each is, and which are automated): where a Put on board may come
- * from, which of their own Mates a Take may open in, and each task's Take, Release, Done, Stop and
- * Answer. Surfaces draw these answers and never decide one; HQ decides again at the press.
+ * from — only a Mate whose server takes the Board — which of their own Mates a Take may open in,
+ * and each task's Take, Release, Done, Stop and Answer. Surfaces draw these answers and never decide one; HQ decides again at the press.
  * `undefined` until Zerops is read: nothing is offered or refused on a guess.
  *
  * @module data/projections/boardOffers
  */
+import { MATE_BOARD_PROTOCOL } from "@t3tools/contracts";
 import { boardTaskOf } from "@t3tools/shared/hqIntake";
 import {
   answerTaskPermission,
@@ -21,7 +22,7 @@ import {
 
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
 import { settingId } from "../families/hqTaskSources.ts";
-import type { Projection } from "../store.ts";
+import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { decided, livePermissionFacts } from "./permissionFacts.ts";
 
@@ -41,6 +42,16 @@ export interface BoardOffers {
   readonly ownMates: ReadonlyArray<string>;
   /** Each task HQ answered, by its id; `undefined` while the Board is not read. */
   readonly tasks: Readonly<Record<string, BoardTaskOffer>> | undefined;
+}
+
+/**
+ * Whether a Mate's server takes the Board (`identity.board.protocol` its overview advertises, as HQ
+ * relays it): it draws a board ask's card and keeps a taken task's conversation. Not known yet, no.
+ */
+function takesBoard(read: ProjectionReads, projectId: string): boolean {
+  const mate = read.fact("hqMate", projectId);
+  if (mate.kind !== "known") return false;
+  return (mate.value.overview?.identity?.board?.protocol ?? 0) >= MATE_BOARD_PROTOCOL;
 }
 
 /** A queued task nobody put: whether a Mate is one a Take may open in at all. */
@@ -71,14 +82,17 @@ export const boardOffers: Projection<
               projectId,
               ownerUserId: placement.person?.ownerUserId ?? undefined,
               automated: placement.mate.automated === true,
+              takesBoard: takesBoard(read, projectId),
             },
           ],
     );
     const tasks = read.fact("hqAppTasks", settingId({ orgId, appId }));
     const known = tasks.kind === "known";
     return decided(livePermissionFacts(read, orgId), projectIds, (facts) => ({
+      // Its agent proposes the work and its card puts it: only a Mate whose server draws that card.
       putFrom: projectIds.filter(
-        (projectId) => putTaskPermission(facts, projectIds, projectId).allow,
+        (projectId) =>
+          takesBoard(read, projectId) && putTaskPermission(facts, projectIds, projectId).allow,
       ),
       ownMates: mates
         .filter((mate) => takeTaskPermission(facts, QUEUED, [mate], mate.projectId).allow)

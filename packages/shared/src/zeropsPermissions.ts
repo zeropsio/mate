@@ -365,11 +365,17 @@ export interface BoardTask {
     | null;
 }
 
-/** One of the application's Mates, as a Take reads it: whom HQ names its owner, and whether it is automated. */
+/**
+ * One of the application's Mates, as a Take reads it: whom HQ names its owner, whether it is
+ * automated, and whether its server takes a task from the Board (`identity.board`, the
+ * `MATE_BOARD_PROTOCOL` its overview advertises): an older one ignores the task it is sent, so it
+ * would never be linked to its conversation or end.
+ */
 export interface BoardMate {
   readonly projectId: string;
   readonly ownerUserId: string | undefined;
   readonly automated: boolean;
+  readonly takesBoard: boolean;
 }
 
 /** A task still on the Board: queued, handed out, at work, waiting on a person, or taken. */
@@ -405,8 +411,8 @@ export function putTaskPermission(
 
 /**
  * Taking a queued task (`take_task`) for one of the person's own Mates in the application — one HQ
- * names them owner of, never an automated one; `mateProjectId` names the Mate, absent: any of
- * theirs (whether the Board offers Take at all).
+ * names them owner of, never an automated one, and only one whose server takes a Board task;
+ * `mateProjectId` names the Mate, absent: any of theirs (whether the Board offers Take at all).
  */
 export function takeTaskPermission(
   facts: PermissionFacts,
@@ -419,6 +425,7 @@ export function takeTaskPermission(
   const own = mates.some(
     (mate) =>
       !mate.automated &&
+      mate.takesBoard &&
       member.userId !== undefined &&
       mate.ownerUserId === member.userId &&
       (mateProjectId === undefined || mate.projectId === mateProjectId),
