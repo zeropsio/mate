@@ -450,7 +450,7 @@ function LineHeader({ current }: { readonly current: Seat | null }) {
     open: seat.handle === current?.handle,
     known: true,
     threadId: threadIdOf(seat.handle),
-    role: crewmateRoleWords(FEN.name, seat.kind === "lead"),
+    role: crewmateRoleWords(FEN.name, seat.kind),
     job:
       seat.kind === "lead" ? null : crewJobSentence(firstLine(seat.job), seat.displayName) || null,
     status: null,

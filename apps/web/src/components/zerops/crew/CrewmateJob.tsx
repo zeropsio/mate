@@ -23,7 +23,7 @@ import {
   crewBuildsLine,
   crewLockWords,
   crewMoreSummary,
-  crewOneOfWord,
+  crewRoleWord,
   crewPoolOptionWord,
   crewRemoveLine,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -242,7 +242,7 @@ function JobForm({
               : draft.displayName}
           </span>
           <span className="text-line leading-4.5 text-muted-foreground">
-            {crewOneOfWord(mateName, lead)}
+            {crewRoleWord(mateName, lead ? "lead" : draft.readOnly ? "reader" : "writer")}
           </span>
         </span>
       </div>
