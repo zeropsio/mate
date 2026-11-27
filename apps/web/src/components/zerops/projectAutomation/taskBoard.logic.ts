@@ -1,6 +1,8 @@
 /**
- * An application's Board, in words: its tasks in five lanes — Queued (by place), In progress (a
- * pool Mate on it, or a person's own Mate since they took it), Waiting for you (it asks a person),
+ * An application's Board, in words: its tasks in five lanes — Queued (by place, then the tasks that
+ * wait for others, saying for which), In progress (a
+ * pool Mate on it, or a person's own Mate since they took it), Waiting for you (it asks a person, or
+ * a task it needs ended without its work),
  * Up for review (its change waits), Done — each row saying where the task came from, who has it,
  * its state in the one vocabulary every surface says it in (`taskStatus`), how long a live task
  * worked and what it cost (from HQ's navigation, which says each report), and when an ended one
@@ -98,6 +100,16 @@ export interface BoardOrigin {
   } | null;
 }
 
+/** One task a row's task needs, as its row says it. */
+export interface BoardNeed {
+  readonly taskId: string;
+  /** Its title as HQ names it, else as the Board's read holds it; `null` where neither does. */
+  readonly title: string | null;
+  readonly state: "waiting" | "met" | "broken";
+  /** How a broken one ended, in a word ("failed", "stopped", "closed"); `null` otherwise. */
+  readonly ended: string | null;
+}
+
 export interface BoardRow {
   readonly id: string;
   readonly lane: Lane;
@@ -122,7 +134,10 @@ export interface BoardRow {
     readonly href: string;
     readonly external: boolean;
   } | null;
-  /** Why it failed or stopped, said under its title. */
+  /**
+   * Said under its title: why it failed or stopped; what it waits for, or which need broke and
+   * what the person does about it; how many tasks wait for it.
+   */
   readonly detail: string | null;
   /** What its Mate asks, while it waits on a person's answer; `null`: it asks nothing. */
   readonly question: string | null;
@@ -131,6 +146,12 @@ export interface BoardRow {
    * task put from a conversation is answered on its card in that chat, never here.
    */
   readonly answeredHere: boolean;
+  /** The tasks it needs, each with where that need stands; none for most. */
+  readonly needs: ReadonlyArray<BoardNeed>;
+  /** Its needs that broke: what Drop the need offers to drop. */
+  readonly broken: ReadonlyArray<BoardNeed>;
+  /** How many of the Board's tasks wait for this one. */
+  readonly waiters: number;
 }
 
 /** A Mate HQ hands no task while the change of its last one waits for review. */
@@ -364,10 +385,15 @@ export function boardOf(
   const blocked: Array<BlockedMate> = [];
   const live = context.live ?? new Map<string, HqNavigationMateTask>();
   const held = context.held ?? (() => false);
+  const byId = new Map(tasks.map((task) => [task.id, task] as const));
+  const waiters = waitersOf(tasks);
   for (const task of tasks) {
     const now = live.get(task.id);
     const status = liveStatus(task, now);
-    const lane = laneOf(status);
+    const needs = needsOf(task, byId);
+    const broken = status === "held" ? needs.filter((need) => need.state === "broken") : [];
+    // A held task whose need broke waits on a person: drop that need, or stop the task.
+    const lane = broken.length > 0 ? "waiting" : laneOf(status);
     const holder = holderOf(task, context);
     const change = changeLink(task, context.appId ?? "");
     const workedMs = now?.workedMs ?? task.workedMs;
@@ -394,8 +420,18 @@ export function boardOf(
       title: task.title,
       origin: originOf(task, context),
       holder,
-      position: lane === "queued" ? (task.position ?? lanes.queued.length + 1) : null,
-      ...stateOf(status, holder, task, context),
+      position:
+        lane === "queued" && status !== "held" ? (task.position ?? lanes.queued.length + 1) : null,
+      ...(broken.length > 0
+        ? {
+            // Its putter drops the need or stops it (an owner or admin may too).
+            state:
+              task.source?.kind === "conversation"
+                ? `Waits on ${personWords(task.source.putBy, context)}`
+                : "Waits on a person",
+            tone: "attention" as const,
+          }
+        : stateOf(status, holder, task, context)),
       who: whoWords(holderName, time),
       // Nothing spent while queued; a person's own Mate spends their subscription, never the
       // organization's budget.
@@ -405,12 +441,23 @@ export function boardOf(
           : costWords(now?.spentUsd ?? task.spentUsd),
       route: taskRoute(task.link),
       change,
-      detail: task.state === "failed" || task.state === "stopped" ? task.detail : null,
-      question: lane === "waiting" ? task.detail : null,
+      detail: underTitle(
+        task.state === "failed" || task.state === "stopped" ? task.detail : null,
+        status === "held" ? needs : [],
+        broken,
+        waiters.get(task.id) ?? 0,
+      ),
+      // A task whose need broke asks nothing: it waits on its putter to drop the need or stop it.
+      question: lane === "waiting" && broken.length === 0 ? task.detail : null,
       answeredHere: task.source?.kind === "board",
+      needs,
+      broken,
+      waiters: waiters.get(task.id) ?? 0,
     });
   }
-  lanes.queued.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  // A held task stands after every task the queue hands out, in the order HQ answered them.
+  const placeOf = (row: BoardRow) => row.position ?? Number.MAX_SAFE_INTEGER;
+  lanes.queued.sort((a, b) => placeOf(a) - placeOf(b));
   return { lanes, blocked };
 }
 
@@ -428,6 +475,79 @@ export function boardWaitingCount(
     if (lane === "queued" || lane === "waiting") count += 1;
   }
   return count;
+}
+
+/** How a task ended, in the word a broken need says it with; `null` while it has not. */
+function endedWord(task: HqAppTask | undefined): string | null {
+  if (task === undefined) return null;
+  switch (task.state) {
+    case "failed":
+      return "failed";
+    case "stopped":
+      return "stopped";
+    case "closed":
+      return "closed unmerged";
+    default:
+      return null;
+  }
+}
+
+/** A task's needs in the Board's words: each task it needs by title, as HQ names it or the read holds it. */
+function needsOf(task: HqAppTask, byId: ReadonlyMap<string, HqAppTask>): ReadonlyArray<BoardNeed> {
+  return (task.needs ?? []).map((need) => {
+    const needed = byId.get(need.taskId);
+    return {
+      taskId: need.taskId,
+      title: need.title ?? needed?.title ?? null,
+      state: need.state,
+      ended: need.state === "broken" ? endedWord(needed) : null,
+    };
+  });
+}
+
+/** How many tasks wait for each task, by its id: every need of theirs on it not met yet. */
+function waitersOf(tasks: ReadonlyArray<HqAppTask>): ReadonlyMap<string, number> {
+  const count = new Map<string, number>();
+  for (const task of tasks)
+    for (const need of task.needs ?? [])
+      if (need.state === "waiting") count.set(need.taskId, (count.get(need.taskId) ?? 0) + 1);
+  return count;
+}
+
+/** “Set up the database”, or “a task that ended” where the read no longer holds it. */
+const quoted = (need: BoardNeed) => (need.title === null ? "a task that ended" : `“${need.title}”`);
+
+/** “A”, “A and B”, “A, B and C”. */
+function listed(words: ReadonlyArray<string>): string {
+  if (words.length <= 1) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words.at(-1) ?? ""}`;
+}
+
+/**
+ * The line under a row's title: why it failed or stopped; for a held task, which need broke and
+ * how, else what it still waits for and how many of its needs are done; and how many tasks wait
+ * for it. `null`: nothing to say.
+ */
+export function underTitle(
+  why: string | null,
+  needs: ReadonlyArray<BoardNeed>,
+  broken: ReadonlyArray<BoardNeed>,
+  waiters: number,
+): string | null {
+  const waiting = needs.filter((need) => need.state === "waiting");
+  const met = needs.filter((need) => need.state === "met").length;
+  const needsLine =
+    broken.length > 0
+      ? `Needed ${listed(broken.map((need) => `${quoted(need)} (${need.ended ?? "ended"})`))}`
+      : waiting.length > 0
+        ? `Waits for ${listed(waiting.map(quoted))}${met > 0 ? ` · ${String(met)} done` : ""}`
+        : null;
+  const waitersLine =
+    waiters === 0
+      ? null
+      : `${String(waiters)} ${waiters === 1 ? "task waits" : "tasks wait"} for this`;
+  const parts = [why, needsLine, waitersLine].filter((part) => part !== null);
+  return parts.length === 0 ? null : parts.join(" · ");
 }
 
 /** How many rows each lane will hold while the Board reads; a lane that will hold none, none. */
@@ -459,6 +579,7 @@ export function predictedBoard(
 /** What a write to a task under way says in its row. */
 const UNDER_WAY: Readonly<Partial<Record<TaskSourceWrite["kind"], string>>> = {
   "task-stop": "Stopping…",
+  "task-need-drop": "Dropping the need…",
   "task-take": "Taking it…",
   "task-release": "Releasing…",
   "task-done": "Marking it done…",

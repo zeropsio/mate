@@ -87,3 +87,52 @@ it("MN129: A task a person took stands In progress under their name and their Ma
     },
   ]);
 });
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | const lane = broken.length > 0 ? "waiting" : laneOf(status); → const lane = laneOf(status);
+it("MN+1: A task that waits for others stands in Queued after the tasks the queue hands out, saying what it waits for; one whose need broke stands in Waiting for you on the person who put it; one whose needs were met is queued like any other; and a task others wait for says how many; breaks: a task stuck on a failed need sits quietly in the queue forever, or a held task looks next in line", () => {
+  const plan = { ...put, putBy: "u-mara" };
+  const { lanes } = boardOf(
+    [
+      task({ id: "a", state: "working", title: "Model cards", source: plan }),
+      task({ id: "s", state: "stopped", title: "Store balances" }),
+      task({
+        id: "b",
+        state: "held",
+        title: "Sell cards",
+        source: plan,
+        needs: [{ taskId: "a", state: "waiting" }],
+      }),
+      task({
+        id: "c",
+        state: "held",
+        title: "Redeem cards",
+        source: plan,
+        needs: [
+          { taskId: "a", state: "waiting" },
+          { taskId: "s", state: "broken" },
+        ],
+      }),
+      task({
+        id: "d",
+        state: "queued",
+        position: 1,
+        title: "Filter",
+        needs: [{ taskId: "x", state: "met" }],
+      }),
+    ],
+    NOW,
+    { appId: "shop", viewerId: "u-mara" },
+  );
+  const ids = (rows: typeof lanes.queued) => rows.map((row) => row.id);
+  expect({
+    queued: ids(lanes.queued),
+    waiting: lanes.waiting.map((row) => [row.id, row.state, row.broken.map((need) => need.taskId)]),
+    held: lanes.queued.find((row) => row.id === "b")?.needs.map((need) => need.title),
+    waiters: lanes.progress.map((row) => [row.id, row.waiters]),
+  }).toEqual({
+    queued: ["d", "b"],
+    waiting: [["c", "Waits on you", ["s"]]],
+    held: ["Model cards"],
+    waiters: [["a", 2]],
+  });
+});

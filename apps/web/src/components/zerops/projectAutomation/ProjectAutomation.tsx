@@ -307,10 +307,36 @@ interface Predicted extends PredictedBoard {
 }
 
 /**
- * How Done last landed, per application, while this page lives: navigation names only each Mate's
- * latest task, so the next read's placeholders take Done's size from the last answer.
+ * How Done and the held tasks last landed, per application, while this page lives: navigation
+ * names only each Mate's latest task and counts no held one, so the next read's placeholders take
+ * their sizes from the last answer.
  */
-const landed = new Map<string, { readonly done: number; readonly doneMore: boolean }>();
+const landed = new Map<
+  string,
+  {
+    readonly done: number;
+    readonly doneMore: boolean;
+    /**
+     * Its tasks that wait for others (Queued) and whose need broke (Waiting for you): HQ's
+     * navigation counts neither, so the next read's placeholders take them from the last answer.
+     */
+    readonly held: number;
+    readonly broken: number;
+  }
+>();
+
+/** The placeholders while the Board reads: navigation's counts, with what the last answer held. */
+function predictedFor(groupId: string, predicted: Predicted): Predicted {
+  const last = landed.get(groupId);
+  if (last === undefined) return predicted;
+  return {
+    ...predicted,
+    queued: predicted.queued + last.held,
+    waiting: predicted.waiting + last.broken,
+    done: last.done,
+    doneMore: last.doneMore,
+  };
+}
 
 /**
  * The application's Board: HQ's tasks of it, read while the section is drawn (and again by the
@@ -357,6 +383,8 @@ function useTaskBoard(
     landed.set(groupId, {
       done: Math.min(made.lanes.done.length, RECENT_SHOWN),
       doneMore: made.lanes.done.length > RECENT_SHOWN,
+      held: made.lanes.queued.filter((row) => row.status === "held").length,
+      broken: made.lanes.waiting.filter((row) => row.broken.length > 0).length,
     });
     return made;
   }, [held, nowMs, groupId, live, versions, viewerId, personName, faces]);
@@ -374,7 +402,7 @@ function useTaskBoard(
           ? { state: "failed", words: couldntRead("its tasks", setting.words) }
           : setting.state === "withheld"
             ? { state: "none" }
-            : { state: "reading", predicted: { ...predicted, ...landed.get(groupId) } },
+            : { state: "reading", predicted: predictedFor(groupId, predicted) },
     spend: limits.read.setting.state === "known" ? spendLine(limits.read.setting.held) : null,
     onReadAgain: tasks.again,
     onOpen: (route) => {
@@ -422,6 +450,9 @@ function useTaskBoard(
             answerOf: (taskId) => boardAnswerState(stops.stops[taskId]),
             onAnswer: (taskId, text) => {
               writes?.answer(taskId, text);
+            },
+            onDropNeed: (taskId, neededId) => {
+              void writes?.dropNeed(taskId, neededId);
             },
           },
   };
@@ -715,6 +746,8 @@ export interface BoardVerbs {
   readonly answerOf: (taskId: string) => BoardAnswerState;
   /** Its putter's answer, for a task answered in its row (`BoardRow.answeredHere`). */
   readonly onAnswer: (taskId: string, text: string) => void;
+  /** Drops one of a held task's needs that broke (`dropNeed`). */
+  readonly onDropNeed: (taskId: string, neededId: string) => void;
 }
 
 /**
@@ -1075,6 +1108,64 @@ function TakePress({
 }
 
 /**
+ * **Drop the need**: a held task's one need that broke, dropped at once; where several broke, a
+ * choice of which, each by the task it names.
+ */
+function DropNeedPress({
+  verbs,
+  taskId,
+  title,
+  broken,
+}: {
+  readonly verbs: BoardVerbs;
+  readonly taskId: string;
+  readonly title: string;
+  readonly broken: BoardRow["broken"];
+}) {
+  const [only] = broken;
+  if (broken.length === 1 && only !== undefined)
+    return (
+      <Button
+        aria-label={`Drop what “${title}” waits for`}
+        onClick={() => {
+          verbs.onDropNeed(taskId, only.taskId);
+        }}
+        size="xs"
+        variant="secondary"
+      >
+        Drop the need
+      </Button>
+    );
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <Button aria-label={`Drop what “${title}” waits for…`} size="xs" variant="secondary" />
+        }
+      >
+        Drop the need
+        <ChevronDownIcon aria-hidden="true" />
+      </MenuTrigger>
+      <MenuPopup align="end" width="sm">
+        <MenuGroup>
+          <MenuGroupLabel>Stop waiting for</MenuGroupLabel>
+          {broken.map((need) => (
+            <MenuItem
+              key={need.taskId}
+              onClick={() => {
+                verbs.onDropNeed(taskId, need.taskId);
+              }}
+            >
+              {need.title ?? "A task that ended"}
+            </MenuItem>
+          ))}
+        </MenuGroup>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/**
  * A task's verbs beyond the seat's one press — Done where Review takes the seat, Release, and Stop
  * asked in the row — in a menu that stands while the row is pointed at or focused (always where
  * nothing hovers, and while it is open).
@@ -1137,7 +1228,10 @@ function MoreVerbs({
   );
 }
 
-/** A row's title and, under it, its one line: why it failed, who stopped it, HQ's refusal. */
+/**
+ * A row's title and, under it, its one line: why it failed, who stopped it, HQ's refusal, what it
+ * waits for and what waits for it.
+ */
 function RowText({
   title,
   why,
@@ -1151,14 +1245,15 @@ function RowText({
     <span className={TEXT}>
       <CutText className={TITLE} text={title} />
       {why == null ? null : (
-        <span
-          className={cn(
-            "truncate text-caption leading-4",
-            failed ? "text-status-failed-text" : "text-muted-foreground",
-          )}
-          role={failed ? "alert" : undefined}
-        >
-          {why}
+        // What it waits for can run past the column: cut, it is said whole under the pointer.
+        <span className="grid min-w-0" role={failed ? "alert" : undefined}>
+          <CutText
+            className={cn(
+              "truncate text-caption leading-4",
+              failed ? "text-status-failed-text" : "text-muted-foreground",
+            )}
+            text={why}
+          />
         </span>
       )}
     </span>
@@ -1195,7 +1290,8 @@ function useSlidingRows() {
 
 /** The question a row's Stop asks: who stops, and what of it is lost. */
 function stopQuestion(row: BoardRow, holder: string | null): string {
-  if (row.lane === "queued") return "Stop this task? Nobody has taken it yet.";
+  if (row.lane === "queued" || row.status === "held")
+    return "Stop this task? Nobody has taken it yet.";
   if (row.holder?.kind === "person") return "Stop this task? It leaves the Board.";
   return `Stop this task? ${holder ?? "Its Mate"} stops where it got to.`;
 }
@@ -1260,6 +1356,8 @@ function BoardRowView({
   const stop = offer?.stop === true && !stopping;
   const review = row.lane === "review" ? row.change : null;
   const stranded = verbs?.strandedOf(row.id) === true;
+  // A need that broke: the reader drops it here (or stops the task), where the rule offers it.
+  const drop = verbs !== undefined && offer?.dropNeed === true && row.broken.length > 0;
   const holderName =
     row.holder?.kind === "pool" ? (face?.name ?? row.holder.name) : (row.holder?.mate ?? null);
   // A task put on the Board itself that asks its putter, the reader: answered here, in its row.
@@ -1274,15 +1372,17 @@ function BoardRowView({
     ? null
     : stranded
       ? "open"
-      : take
-        ? "take"
-        : review !== null
-          ? "review"
-          : done
-            ? "done"
-            : answersHere || (asks && row.route !== null)
-              ? "answer"
-              : null;
+      : drop
+        ? "drop"
+        : take
+          ? "take"
+          : review !== null
+            ? "review"
+            : done
+              ? "done"
+              : answersHere || (asks && row.route !== null)
+                ? "answer"
+                : null;
   // Done stands in the menu where Review or a stranded Take's Open takes the seat; a task that asks
   // keeps its Stop in its chat.
   const doneInMenu = done && (primary === "review" || primary === "open");
@@ -1386,6 +1486,8 @@ function BoardRowView({
             >
               Open its conversation
             </Button>
+          ) : primary === "drop" ? (
+            <DropNeedPress broken={row.broken} taskId={row.id} title={row.title} verbs={verbs} />
           ) : primary === "take" ? (
             <TakePress into={takeInto} taskId={row.id} title={row.title} verbs={verbs} />
           ) : primary === "done" ? (

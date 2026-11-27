@@ -85,13 +85,14 @@ export const boardAskFromKey = (key: string): BoardAskActivityPayload | null =>
 export const ON_THE_BOARD = "On the board";
 
 /**
- * Where a task put from this conversation stands, in a word or two after the done line: Queued, In
- * progress, Taken, Asks you, Up for review, then how it ended.
+ * Where a task put from this conversation stands, in a word or two after the done line: Waits for
+ * other tasks, Queued, In progress, Taken, Asks you (or Waits on you, a need of it broken), Up for
+ * review, then how it ended.
  */
 export function boardTaskStateWords(row: BoardRow): string {
   switch (row.lane) {
     case "queued":
-      return TASK_STATUS_WORDS.queued;
+      return TASK_STATUS_WORDS[row.status === "held" ? "held" : "queued"];
     case "progress":
       return row.holder?.kind === "person" ? TASK_STATUS_WORDS.taken : "In progress";
     case "waiting":

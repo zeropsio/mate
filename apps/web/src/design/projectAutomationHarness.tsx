@@ -309,6 +309,7 @@ const VERBS: BoardVerbs = {
   onDone: nothing,
   answerOf: () => ({ kind: "idle" }),
   onAnswer: nothing,
+  onDropNeed: nothing,
 };
 function board(
   tasks: ReadonlyArray<HqAppTask>,
@@ -486,6 +487,71 @@ const BOARD_LIVE = new Map([
   ["53", { id: "53", title: FERTILISER.title, url: null, waiting: true as const }],
 ]);
 
+/**
+ * A plan Mara put from Lark's chat, in the order it goes: gift cards modelled first (at work), then
+ * sold and emailed (each held on what comes before); beside it a task whose need broke (the card
+ * balances it needed were stopped) and one whose need was met (queued since its need merged).
+ */
+const CARDS = task({
+  id: "60",
+  title: "Model gift cards in the database",
+  state: "working",
+  mate: by(SOL),
+  startedAt: ago(25),
+  spentUsd: 0.31,
+  workedMs: 9 * 60_000,
+  ...putFrom(ME, "p-lark", "Model gift cards in the database"),
+  taker: { kind: "pool", mateProjectId: SOL.projectId },
+});
+const SELL = task({
+  id: "61",
+  title: "Sell gift cards at checkout",
+  state: "held",
+  createdAt: ago(30),
+  link: null,
+  ...putFrom(ME, "p-lark", "Sell gift cards at checkout"),
+  taker: null,
+  needs: [{ taskId: CARDS.id, state: "waiting" }],
+});
+const EMAIL = task({
+  id: "62",
+  title: "Email each gift card to its recipient",
+  state: "held",
+  createdAt: ago(30),
+  link: null,
+  ...putFrom(ME, "p-lark", "Email each gift card to its recipient"),
+  taker: null,
+  needs: [
+    { taskId: CARDS.id, state: "waiting" },
+    { taskId: SELL.id, state: "waiting" },
+  ],
+});
+const BALANCES = ended("58", "Store each card's balance", BO, "stopped", 2 * HOUR, 0.27, {});
+const REDEEM = task({
+  id: "63",
+  title: "Redeem a gift card at checkout",
+  state: "held",
+  createdAt: ago(3 * HOUR),
+  link: null,
+  ...putFrom(ME, "p-quill", "Redeem a gift card at checkout"),
+  taker: null,
+  needs: [{ taskId: BALANCES.id, state: "broken" }],
+});
+const TAGS = ended("57", "Tag plants by light they need", WREN, "merged", HOUR, 0.4, pr(57));
+const FILTER = task({
+  id: "64",
+  title: "Filter plants by light",
+  state: "queued",
+  position: 1,
+  createdAt: ago(2 * HOUR),
+  link: null,
+  ...putFrom(RHEA, "p-moss", "Filter plants by light"),
+  taker: null,
+  needs: [{ taskId: TAGS.id, state: "met" }],
+});
+/** The Board with needs: held, broken and ready, the tasks they wait on among them. */
+const NEEDS_TASKS: ReadonlyArray<HqAppTask> = [FILTER, SELL, EMAIL, CARDS, REDEEM, TAGS, BALANCES];
+
 const SCHEDULE = {
   id: "s1",
   name: "Weekly dependency update",
@@ -604,6 +670,21 @@ const STATES: ReadonlyArray<{
     ),
   },
   {
+    id: "board-needs",
+    title:
+      "Needs: a plan's tasks held on the one at work, one whose need broke, one queued once its need merged",
+    view: (
+      <Automation
+        admin={ADMIN}
+        board={board(NEEDS_TASKS, "$9.12 of $50", { live: new Map() })}
+        onOpenMate={nothing}
+        pool={[on(SOL, CARDS.title), PIM, BO]}
+        sources={SOURCES(1)}
+        workingOf={working(SOL)}
+      />
+    ),
+  },
+  {
     id: "board-answer",
     title: "A direct put waiting on you: its question and your answer in its row",
     view: (
@@ -614,6 +695,32 @@ const STATES: ReadonlyArray<{
         pool={[on(SOL, PICKUP.title, true), PIM]}
         sources={SOURCES(0)}
         workingOf={working()}
+      />
+    ),
+  },
+  {
+    id: "board-needs-member",
+    title:
+      "Needs as a member reads them who put none of them: no Drop the need, no Take on a held task",
+    view: (
+      <Automation
+        board={board(
+          NEEDS_TASKS.map((each) =>
+            each.source?.kind === "conversation"
+              ? { ...each, source: { ...each.source, putBy: RHEA } }
+              : each,
+          ),
+          "$9.12 of $50",
+          {
+            live: new Map(),
+            role: "BASIC_USER",
+            mates: MATES.filter((mate) => mate.projectId !== "p-quill"),
+          },
+        )}
+        onOpenMate={nothing}
+        pool={[on(SOL, CARDS.title), PIM, BO]}
+        sources={{ rows: SOURCES(1).rows.slice(0, 1), reading: false, withheld: true }}
+        workingOf={working(SOL)}
       />
     ),
   },
