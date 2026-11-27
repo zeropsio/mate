@@ -1,7 +1,8 @@
 import type { CrewRun } from "@t3tools/contracts";
+import { CREW_REPORT_OPENER } from "@t3tools/shared/userAsk";
 import { expect, it } from "vite-plus/test";
 
-import { crewRunAskState, crewRunTell } from "./crewRunAsk.logic";
+import { crewReportOf, crewRunAskState, crewRunTell } from "./crewRunAsk.logic";
 
 const runOf = (state: CrewRun["state"], ask?: string) =>
   ({ state, ...(ask === undefined ? {} : { ask }) }) as CrewRun;
@@ -51,4 +52,14 @@ it("AK5: A crew run card's Start tells the crew's lead to plan the new goal once
     { kind: "failed", words: "Fen's crew has no lead to plan it." },
     { kind: "waiting" },
   ]);
+});
+
+// witness: apps/web/src/components/ask/crewRunAsk.logic.ts | return text.trimStart().slice(CREW_REPORT_OPENER.length).trim(); → return text.trimStart().trim();
+it("AK+1: The crew's report on a run a card started reads as the crew's words alone, its opener left out, and a person's message, one that only mentions the opener included, is no report; breaks: the report shows as the person's own message, or with the crew's bookkeeping in front of its words", () => {
+  const words = "The crew's run finished. Landed: “Sign-in form”.";
+  expect([
+    crewReportOf(`${CREW_REPORT_OPENER}\n${words}`),
+    crewReportOf(words),
+    crewReportOf(`Look at the ${CREW_REPORT_OPENER} above.`),
+  ]).toEqual([words, null, null]);
 });

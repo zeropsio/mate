@@ -48,6 +48,7 @@ import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import { isQuestionToolCall } from "~/zerops/runSteps/toolCalls";
 import type { ConversationSpeaker } from "./ConversationRows";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
+import { crewReportOf } from "../ask/crewRunAsk.logic";
 import {
   activityCounts,
   checksStrip,
@@ -440,6 +441,8 @@ export type ConversationEvent =
   | { readonly type: "command"; readonly command: SlashCommand; readonly done: boolean }
   /** The server resumed the thread itself after a usage limit reset. */
   | { readonly type: "resumed" }
+  /** The crew's report on a run this conversation's crew run card started: the crew's words. */
+  | { readonly type: "crew-report"; readonly text: string }
   /** A card the usage limit cut waited for the reset from `from`, and went on in it at `to`. */
   | { readonly type: "waited"; readonly from: string; readonly to: string }
   /**
@@ -1175,7 +1178,7 @@ function isMateProse(row: MessagesTimelineRow): boolean {
 
 /**
  * What stands where the person's message would, opening a run nobody typed:
- * a command, a resume, the task handed to a crewmate, what woke the Mate
+ * a command, a resume, the task handed to a crewmate, the crew's report, what woke the Mate
  * (`woke:` — background work no run owns is a line of its own, not an opener).
  */
 function opensRun(row: MessagesTimelineRow): boolean {
@@ -1185,7 +1188,10 @@ function opensRun(row: MessagesTimelineRow): boolean {
     row.kind === "task-message" ||
     row.kind === "mate-message" ||
     row.kind === "task-ask" ||
-    (row.kind === "event" && (row.event.type === "command" || row.event.type === "resumed"))
+    (row.kind === "event" &&
+      (row.event.type === "command" ||
+        row.event.type === "resumed" ||
+        row.event.type === "crew-report"))
   );
 }
 
@@ -2898,6 +2904,15 @@ export function deriveMessagesTimelineRows(input: {
         id: entry.id,
         createdAt: entry.createdAt,
         event: { type: "resumed" },
+      };
+    }
+    const report = crewReportOf(entry.message.text);
+    if (report !== null) {
+      return {
+        kind: "event",
+        id: entry.id,
+        createdAt: entry.createdAt,
+        event: { type: "crew-report", text: report },
       };
     }
     const command = readSlashCommand(entry.message.text);

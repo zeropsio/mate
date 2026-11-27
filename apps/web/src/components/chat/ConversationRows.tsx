@@ -26,6 +26,7 @@ import {
   PauseIcon,
   SendIcon,
   TerminalIcon,
+  UsersIcon,
   XIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -305,6 +306,39 @@ function EventShell({
 }
 
 /**
+ * The crew's report on a run this conversation started, in the crew's words: an event line as
+ * the others, its mark the crew's, its words whole and wrapped, since they name every task.
+ */
+function CrewReportLine({
+  text,
+  at,
+  timestampFormat,
+}: {
+  readonly text: string;
+  readonly at: string;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  return (
+    <Text
+      className="flex min-h-7 min-w-0 items-start py-1"
+      render={<div />}
+      variant="remark"
+      data-conversation-event="crew-report"
+    >
+      <LineMark className="h-lh items-center">
+        <UsersIcon className="size-3.5" />
+      </LineMark>
+      <Tooltip>
+        <TooltipTrigger render={<span className="min-w-0 text-pretty" />}>
+          <span className="text-foreground/80">The crew</span> · {text}
+        </TooltipTrigger>
+        <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
+      </Tooltip>
+    </Text>
+  );
+}
+
+/**
  * How a production release ended, said into the conversation between two rules as a day's seam
  * is: nobody here did it, and the Mate's next words follow from it. One line at one height, so it
  * moves nothing as it arrives.
@@ -489,6 +523,8 @@ export function EventLine({
           {waitedWords(event.from, event.to, timestampFormat)}
         </EventShell>
       );
+    case "crew-report":
+      return <CrewReportLine at={at} text={event.text} timestampFormat={timestampFormat} />;
   }
 }
 

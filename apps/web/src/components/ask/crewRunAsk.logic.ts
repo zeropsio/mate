@@ -2,9 +2,11 @@
  * Work a Mate gives the crew it has, as a `crew-run` fence: a goal, written as a crew ask's
  * (`crewAsk.logic.ts`), that its card's press saves as the crew's brief and starts the crew on.
  * The crew's latest run names the card whose press started it (`CrewRun.ask`), so the card reads
- * what became of its press from the crew, never from the press.
+ * what became of its press from the crew, never from the press. Once that run ends, the crew's
+ * report arrives in the card's conversation (`crewReportOf`).
  */
 import type { CrewCommand, CrewRun, CrewStatus } from "@t3tools/contracts";
+import { CREW_REPORT_OPENER, isCrewReport } from "@t3tools/shared/userAsk";
 
 import { crewGoalTitleOf } from "../zerops/crew/CrewGoal.logic";
 import { type AskState, askKeyOf } from "./ask.logic";
@@ -111,4 +113,14 @@ export function crewRunAskState(
     return { kind: "failed", words: `${name}'s crew has no lead to plan it.` };
   }
   return { kind: "waiting" };
+}
+
+/**
+ * The crew's report on a run the card started, as the conversation draws it: the crew's words
+ * without their opener, or `null` for a message that is no report. The report is sent as a user
+ * message (`CREW_REPORT_OPENER`), so without this it would read as the person's.
+ */
+export function crewReportOf(text: string): string | null {
+  if (!isCrewReport(text)) return null;
+  return text.trimStart().slice(CREW_REPORT_OPENER.length).trim();
 }

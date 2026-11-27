@@ -19,7 +19,7 @@
  *   starts from, so every stint begins with a card for its seam line.
  *
  * The **run report** is no card: the one message a run started from a crew-run card sends that
- * card's conversation once the run ends (`crewRunReport`).
+ * card's conversation once the run ends, under `CREW_REPORT_OPENER` (`crewRunReport`).
  *
  * A stint's seam line — why its conversation is new — is `stintReasonWords`;
  * the chat shows it verbatim above the stint's first card. The seam lines no
@@ -31,7 +31,7 @@
  * @module crewCards
  */
 import type { CrewApplyChoice, CrewTaskSource } from "@t3tools/contracts";
-import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
+import { CREW_CARD_OPENER, CREW_REPORT_OPENER } from "@t3tools/shared/userAsk";
 
 import type { TaskCard } from "./crewTaskData.ts";
 import type { PromptVersions } from "./crewVersions.ts";
@@ -241,18 +241,20 @@ const quoted = (titles: ReadonlyArray<string>): string =>
 
 /**
  * The run report: which of the run's tasks landed and which did not, by title, and that the
- * landed work waits to ship from the conversation it is told to. Never the crew's log.
+ * landed work waits to ship from the conversation it is told to. Never the crew's log. Its first
+ * line is `CREW_REPORT_OPENER`, so a client draws it as the crew's, never as the person's; the
+ * agent reads the paragraph under it.
  */
 export const crewRunReport = (run: {
   readonly ended: "finished" | "stopped";
   readonly landed: ReadonlyArray<string>;
   readonly unlanded: ReadonlyArray<string>;
 }): string =>
-  [
+  `${CREW_REPORT_OPENER}\n${[
     run.ended === "finished" ? "The crew's run finished." : "The crew's run was stopped.",
     run.landed.length === 0 ? "Nothing landed." : `Landed: ${quoted(run.landed)}.`,
     ...(run.unlanded.length === 0 ? [] : [`Did not land: ${quoted(run.unlanded)}.`]),
     ...(run.landed.length === 0
       ? []
       : ["The landed work is in your tree and waits to ship from this conversation."]),
-  ].join(" ");
+  ].join(" ")}`;

@@ -52,6 +52,7 @@ import {
   CREW_CARD_OPENER,
   IMAGE_ONLY_BOOTSTRAP_PROMPT,
   isCrewCard,
+  isCrewReport,
   isSlashCommand,
   isUsageLimitResumePrompt,
 } from "@t3tools/shared/userAsk";
@@ -2647,7 +2648,11 @@ function turnClaims(turn: ConversationTurn): TurnClaims {
     views,
     files,
     task: crewTaskOf(turn)?.number ?? null,
-    answers: opener !== null && !isResumePrompt(opener.message.text) && !isCommandMessage(opener),
+    answers:
+      opener !== null &&
+      !isResumePrompt(opener.message.text) &&
+      !isCrewReport(opener.message.text) &&
+      !isCommandMessage(opener),
   };
   claimsByTurn.set(turn, claims);
   return claims;

@@ -93,6 +93,8 @@ function recordEventWords(
         words: `You ran /${event.command.name}`,
         detail: event.command.args || null,
       };
+    case "crew-report":
+      return { words: "The crew", detail: event.text };
     case "woke": {
       const what =
         event.title === null
