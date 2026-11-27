@@ -1,4 +1,4 @@
-next: AP20
+next: AP22
 
 - AP1 — A provider's stderr excerpt shown on an error replaces the home directory with `~` and hides pairing links, bearer, basic and x-api-key credentials and secret keys, hyphenated project, service and Anthropic keys included
 - AP2 — Cursor starts with `--force` only under full access and with `--auto-review` only under auto; supervised and auto-accept-edits start it with neither
@@ -18,6 +18,6 @@ next: AP20
 - AP16 — Antigravity starts with its own approve-everything flag only under full access; supervised, auto-accept-edits and auto start without it, so the person is asked
 - AP17 — An Antigravity session restores the conversation's saved model over the cold-resume default, and a model the account does not offer is refused, never replaced by a fallback
 - AP18 — An Antigravity prompt that cannot carry an attachment (a missing upload, an image over its own size limit or past the message's native budget) is refused whole, never sent without it
-- AP+1 — A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off
-- AP+2 — Antigravity started with a temporary folder of its own has it as its TMPDIR over the server's, the rest of its environment unchanged
+- AP20 — A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off
+- AP21 — Antigravity started with a temporary folder of its own has it as its TMPDIR over the server's, the rest of its environment unchanged
 - AP19 — A call whose permission ask was answered with one of the ask's own reject options ends declined, though its agent then reports it completed or failed; an allow, a cancelled ask and an option the ask never offered leave the call as its agent reports it

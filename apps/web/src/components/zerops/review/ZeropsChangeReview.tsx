@@ -648,8 +648,6 @@ function ChangeReviewData({
     pull.repositoryUrl,
     pull.state !== "closed" && !pull.merged,
     pull.branch,
-    pull.headSha,
-    pull.reviewBuild,
   );
   // Reviewed together: a queued change that settled elsewhere leaves, by the open changes the flow
   // holds; a change done here moves the queue on, after a beat that says so.
@@ -966,7 +964,7 @@ export interface ChangeReviewViewProps {
    * (`ZeropsProjectFlow.outside`); read only while it has no production here.
    */
   readonly productionOutside?: boolean | undefined;
-  /** The change’s workspace and Review build addresses. */
+  /** The change's workspace and its app's routed addresses. */
   readonly previews?: ReviewTryTargets["previews"] | undefined;
   readonly previewState?: ReviewTryTargets["previewState"] | undefined;
   readonly reviewBuilds?: ReviewTryTargets["builds"] | undefined;

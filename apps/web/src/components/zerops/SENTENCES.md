@@ -107,7 +107,7 @@ next: MN118
 - MN106 — The name block says exactly one state: nothing typed, not the same yet, matching but held by what else is missing, or matching; breaks: the block reads Matches while Delete is closed, or the hold is said twice.
 - MN108 — the live warning says only that it goes offline at once for good; breaks: the warning promises backups for services without them
 - MN109 — End on a Mate's row names the project for a project's deletion, and the Mate for its own deletion or restart; breaks: a person ends the whole project deletion thinking only the Mate's ends.
-- MN113 — A task's row reads its own change's Review build and the given-up decision even without a pull request, and an overdue take becomes unavailable by the reader's clock; breaks: a failed build reads up for review or never reaches its task row
+- MN113 — A task's row carries its change's handoff to a person even without a pull request; breaks: work that needs a person looks ready for review
 - MN114 — Sites lists a pool part's stage address but never its leased workspaces; breaks: a person keeps a pool address that ends when the lease does.
 - MN115 — A Mate's row whose latest ask is another Mate's message leads it with that Mate's name alone, never with the person as its asker, while the person's own ask is still led by them; breaks: the row reads "You: <Mate>: …" as if the person had written another Mate's words
 - MN116 — A delivered check notice names which checks failed and that the Mate is fixing them, whether the change has a title or only a number; breaks: a Review build failure looks like a GitHub failure

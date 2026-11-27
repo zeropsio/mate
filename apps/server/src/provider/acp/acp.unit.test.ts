@@ -206,7 +206,7 @@ it("AP2: Cursor starts with `--force` only under full access and with `--auto-re
 
 // witness: apps/server/src/provider/acp/CursorAcpSupport.ts | deny: [...beside.flat(), `${root}/.*`].flatMap((path) => [ → deny: [...beside.flat()].flatMap((path) => [
 it.effect(
-  "AP+1: A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off",
+  "AP20: A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off",
   () =>
     Effect.gen(function* () {
       const entries: Readonly<Record<string, ReadonlyArray<string>>> = {

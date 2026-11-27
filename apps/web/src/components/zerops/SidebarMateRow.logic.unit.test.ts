@@ -120,57 +120,17 @@ it("MN74: A Mate's row menu keeps the Continue and End HQ offers on its waiting 
   ).toEqual(offered);
 });
 
-// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | ...(task.reviewBuild === undefined ? {} : { reviewBuild: task.reviewBuild }), → ...(task.reviewBuild === undefined ? { reviewBuild: task.reviewBuild } : {}),
-it("MN113: A task's row reads its own change's Review build and the given-up decision even without a pull request, and an overdue take becomes unavailable by the reader's clock; breaks: a failed build reads up for review or never reaches its task row", () => {
-  const at = "2026-11-26T20:00:00Z";
-  const until = "2026-11-26T20:30:00Z";
-  const head = "a".repeat(40);
-  const rows = [
-    [{ state: "awaiting", head, at, until }, Date.parse(until), undefined, "Awaiting Review build"],
-    [
-      { state: "awaiting", head, at, until },
-      Date.parse(until) + 1,
-      undefined,
-      "up for review · Review build unavailable (no result arrived)",
-    ],
-    [
-      { state: "failing", head, at },
-      Date.parse(until),
-      { reason: "tries" },
-      "Review build failed · over to you",
-    ],
-    [
-      { state: "passing", head, at },
-      Date.parse(until),
-      undefined,
-      "up for review · Review build passed",
-    ],
-  ] as const;
-  for (const [reviewBuild, now, checksGivenUp, expected] of rows) {
-    const automated = mateAutomation({
-      automated: true,
-      task: { title: "Fix checkout", done: true, reviewBuild, checksGivenUp },
-    });
-    expect(automated).toBeDefined();
-    expect(mateAutomatedLine(automated!, "idle", { now }).text).toBe(`Fix checkout · ${expected}`);
-  }
-  const both = mateAutomation(
-    {
-      automated: true,
-      task: {
-        title: "Fix checkout",
-        done: true,
-        reviewBuild: { state: "passing", head, at },
-        checksGivenUp: { reason: "tries" },
-        pullRequest: { number: 7, state: "open", checks: "failing" },
-      },
-    },
-    undefined,
-    2,
-  );
-  expect(mateAutomatedLine(both!, "idle", { now: Date.parse(until) }).text).toBe(
-    "Fix checkout · PR #7 checks failing · Review build passed · over to you",
-  );
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | ...(task.checksGivenUp == null ? {} : { checksGivenUp: task.checksGivenUp }), → ...(task.checksGivenUp == null ? { checksGivenUp: task.checksGivenUp } : {}),
+it("MN113: A task's row carries its change's handoff to a person even without a pull request; breaks: work that needs a person looks ready for review", () => {
+  const automated = mateAutomation({
+    automated: true,
+    task: { title: "Fix checkout", done: true, checksGivenUp: { reason: "tries" } },
+  });
+  expect(automated).toBeDefined();
+  expect(mateAutomatedLine(automated!, "idle")).toMatchObject({
+    on: true,
+    text: "Fix checkout · over to you",
+  });
 });
 
 // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | const by = view.askedByMate === true ? undefined : input.asker; → const by = input.asker;

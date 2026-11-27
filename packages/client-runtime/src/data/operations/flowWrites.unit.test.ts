@@ -246,7 +246,7 @@ function gitProduction(preflight: ReadonlyArray<HqGitReleasePreflight>) {
 
 // witness: packages/client-runtime/src/zerops/changeAct.ts | return merge?.state === "merged" ? MERGED : undefined; → return MERGED;
 it.effect(
-  "OP+1: An accepted Add is acknowledged as adding, and Stop adding finishes when HQ reopens that change; breaks: an active build is reported as a closed change or a stop acts on another change.",
+  "OP65: An accepted Add is acknowledged as adding, and Stop adding finishes when HQ reopens that change; breaks: an active build is reported as a closed change or a stop acts on another change.",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

@@ -63,7 +63,7 @@ it("ZV143: A release's contents count each change once however many services tak
 });
 
 // witness: packages/client-runtime/src/zerops/projectFlow.ts | ...(change.reviewBuild !== undefined ? { reviewBuild: change.reviewBuild } : {}), → ...(change.reviewBuild === undefined ? { reviewBuild: change.reviewBuild } : {}),
-it("ZV196: A change read from navigation alone carries its Review build and given-up decision into its row; breaks: a failed build without a GitHub pull request reads ready", () => {
+it("ZV196: A change read from navigation alone carries its addition result and given-up decision into its row; breaks: a failed addition without a GitHub pull request reads as running", () => {
   const build = { head: "a".repeat(40), at: "2026-11-26T20:00:00Z", state: "failing" } as const;
   const result = flowAppChanges({
     appId: "app",
@@ -75,7 +75,7 @@ it("ZV196: A change read from navigation alone carries its Review build and give
         number: 7,
         mateProjectId: "mate",
         title: "Add invoices",
-        state: "open",
+        state: "adding",
         hasHead: true,
         updatedAt: "2026-11-26T20:00:00Z",
         mergeability: "clean",
@@ -87,20 +87,16 @@ it("ZV196: A change read from navigation alone carries its Review build and give
   });
   expect(result.pullRequests[0]?.reviewBuild).toEqual(build);
   expect(result.pullRequests[0]?.checksGivenUp).toEqual({ reason: "tries" });
-  expect(changeState(result.pullRequests[0]!, Date.parse("2026-11-26T20:10:00Z"))?.word).toBe(
-    "Review build failed · over to you",
-  );
-  const both = {
-    ...result.pullRequests[0]!,
-    pullRequest: { state: "open", checks: "failing" },
-  };
-  expect(changeState(both, Date.parse("2026-11-26T20:10:00Z"))?.word).toBe(
-    "Review build failed · over to you · GitHub's checks failed",
-  );
+  expect(
+    changeState(
+      { ...result.pullRequests[0]!, checksGivenUp: undefined },
+      Date.parse("2026-11-26T20:10:00Z"),
+    )?.tone,
+  ).toBe("attention");
 });
 
 // witness: packages/client-runtime/src/zerops/projectFlow.ts | .filter((change) => isActiveChange(change.state) && change.head !== null) → .filter((change) => change.state === "open" && change.head !== null)
-it("ZV+1: A draft stays visible and says it is being added while HQ builds or merges it; breaks: the change vanishes or reads ready to add again.", () => {
+it("ZV206: A draft stays visible and says it is being added while HQ builds or merges it; breaks: the change vanishes or reads ready to add again.", () => {
   const head = "a".repeat(40);
   const base = {
     repo: "web",

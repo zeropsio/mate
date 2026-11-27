@@ -299,7 +299,6 @@ export function OverviewCardMate({
   const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
   const asks = activity !== undefined && asksPerson(activity.kind);
   const second = mateRowSecond({
-    now: nowMs,
     view,
     askLine,
     deletion,

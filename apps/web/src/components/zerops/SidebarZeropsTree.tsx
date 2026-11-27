@@ -3732,7 +3732,6 @@ function useMateRowState<T extends RosterCandidate>({
   const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
   // The one line under the name (round 5, `mateRowSecond`).
   const second = mateRowSecond({
-    now: nowMs,
     view,
     askLine,
     deletion,

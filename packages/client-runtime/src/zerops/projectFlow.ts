@@ -45,7 +45,7 @@ import {
   ARRIVING_ON_GITHUB,
   GITHUB_CHECKS_FAILED,
   githubChecksFailed,
-  reviewBuildVerdict,
+  addingVerdict,
   waitsForGithub,
 } from "./reviewVerdict.ts";
 import { productionProjectOf, type EnvironmentPlace } from "./groupRows.ts";
@@ -761,12 +761,8 @@ export function changeState(
   },
   now?: number,
 ): ChangeState | undefined {
-  if (pull.state === "adding" && pull.checksGivenUp != null)
-    return { word: "Could not add to your app", tone: "attention" };
-  if (pull.state === "adding" && pull.reviewBuild?.state === "failing")
-    return { word: "Not added yet", tone: "attention" };
-  if (pull.state === "adding" || pull.state === "merging")
-    return { word: "Adding to your app", tone: "busy" };
+  const addition = addingVerdict(pull, now);
+  if (addition !== undefined) return { word: addition.title, tone: addition.tone };
   // GitHub merged its pull request; HQ's main takes the merge next. Nothing is left to do with it.
   if (pull.pullRequest?.state === "merged") return { word: "Merged on GitHub", tone: "off" };
   // Nobody carries it on until a person closes it or hands it to another Mate.
@@ -782,23 +778,17 @@ export function changeState(
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
   if (waitsForGithub(pull)) return { word: ARRIVING_ON_GITHUB, tone: "busy" };
-  const build = reviewBuildVerdict(pull.reviewBuild, now, pull.checksGivenUp);
-  if (build?.state === "awaiting" || build?.state === "failing")
-    return {
-      word: `${build.word}${githubChecksFailed(pull) ? ` · ${GITHUB_CHECKS_FAILED}` : ""}`,
-      tone: build.state === "awaiting" && !githubChecksFailed(pull) ? "busy" : "attention",
-    };
   // GitHub's checks failed on its latest push: its review says so in the same amber
   // (`changeMergeVerdict`'s `github-checks-failed`), and no row reads "Ready to merge" over it.
   if (githubChecksFailed(pull))
     return {
-      word: `${GITHUB_CHECKS_FAILED}${pull.checksGivenUp != null && build === undefined ? " · over to you" : ""}${build === undefined ? "" : ` · ${build.word}`}`,
+      word: GITHUB_CHECKS_FAILED,
       tone: "attention",
     };
   // Behind `main` and still merging cleanly reads as ready, as its review does: `main` moves every
   // few minutes, and a row asking for it to catch up only ever fell behind again.
   return {
-    word: build === undefined ? READY_TO_MERGE : `${READY_TO_MERGE} · ${build.word}`,
+    word: READY_TO_MERGE,
     tone: "off",
   };
 }

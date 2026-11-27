@@ -160,40 +160,8 @@ it("RV5: A change waiting on its press promises its merge only to the stages who
   }
 });
 
-// witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | return verdict.state !== "ready" || more || verdict.showWhy === true; → return verdict.state !== "ready" || more;
-it("RV11: A ready, current change says its Review build result once, and stays quiet without one; breaks: a passing build is hidden under Ready to merge.", () => {
-  const head = "a".repeat(40);
-  const pull: ChangeReviewInput["pull"] = {
-    number: 7,
-    headSha: head,
-    kind: "code",
-    baseBranch: "main",
-    mergeability: "mergeable",
-    merged: false,
-    mergedAt: undefined,
-    state: "open",
-    behind: false,
-    ready: true,
-  };
-  const shown = (reviewBuild: ChangeReviewInput["pull"]["reviewBuild"]) => {
-    const { verdict } = changeMergeVerdict({
-      pull: { ...pull, ...(reviewBuild === undefined ? {} : { reviewBuild }) },
-      mateName: "Nova",
-    });
-    expect(verdict.title).toBe("Ready to merge");
-    return whySaid(verdict, false) ? verdict.why : undefined;
-  };
-  expect(shown({ state: "passing", head, at: "2026-11-26T20:00:00Z" })).toBe(
-    "No conflicts with main · Review build passed",
-  );
-  expect(shown({ state: "unavailable", head, at: "2026-11-26T20:00:00Z" })).toBe(
-    "No conflicts with main · Review build unavailable",
-  );
-  expect(shown(undefined)).toBeUndefined();
-});
-
-// witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | (verdict.state === "github-checks-failed" && verdict.showWhy !== true) → verdict.state === "github-checks-failed"
-it("RV12: A GitHub failure handed to a person shows its given-up reason in the review; breaks: the reason reaches the verdict but the review hides it.", () => {
+// witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | verdict.why === "" || → verdict.why !== "" ||
+it("RV12: An addition handed to a person shows its given-up reason in the review; breaks: the reason reaches the verdict but the review hides it.", () => {
   const pull: ChangeReviewInput["pull"] = {
     number: 7,
     kind: "code",
