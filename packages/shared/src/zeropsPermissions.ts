@@ -49,6 +49,14 @@ const REASONS = [
   "recipe_changes_files",
   "no_production",
   "not_releaser",
+  "no_own_mate",
+  "task_not_queued",
+  "task_not_taken",
+  "task_not_live",
+  "not_task_taker",
+  "not_task_putter",
+  "not_task_stopper",
+  "not_pool_held",
 ] as const;
 
 export type Reason = (typeof REASONS)[number];
@@ -340,4 +348,120 @@ export function detachPermission(
   if (writer(member) && !isMateKind(held)) return ALLOW;
   if (!projectAdmin) return refuse("not_project_admin");
   return isMateKind(held) ? ALLOW : refuse("not_structure_writer");
+}
+
+/**
+ * A task of an application's Board, as its verbs read it: where it stands as HQ stores it
+ * (`stored` — a taken task whose every change closed unmerged is still `taken`, though HQ shows it
+ * `closed`: the verbs decide on what it is, the Board draws what HQ shows), who put it there (a
+ * conversation's putter, by Zerops user id; `null` for every other source) and who has it.
+ */
+export interface BoardTask {
+  readonly stored: string;
+  readonly putBy: string | null;
+  readonly taker:
+    | { readonly kind: "pool"; readonly mateProjectId: string }
+    | { readonly kind: "person"; readonly userId: string; readonly mateProjectId: string }
+    | null;
+}
+
+/** One of the application's Mates, as a Take reads it: whom HQ names its owner, and whether it is automated. */
+export interface BoardMate {
+  readonly projectId: string;
+  readonly ownerUserId: string | undefined;
+  readonly automated: boolean;
+}
+
+/** A task still on the Board: queued, handed out, at work, waiting on a person, or taken. */
+const LIVE_TASK: ReadonlySet<string> = new Set([
+  "queued",
+  "assigned",
+  "working",
+  "waiting",
+  "taken",
+]);
+
+const takes = (member: Member, task: BoardTask) =>
+  task.taker?.kind === "person" &&
+  member.userId !== undefined &&
+  task.taker.userId === member.userId;
+
+const puts = (member: Member, task: BoardTask) =>
+  task.putBy !== null && member.userId !== undefined && task.putBy === member.userId;
+
+/**
+ * Putting work on an application's Board (`put_task`) from a conversation of one of its Mates:
+ * whoever sees the application, from a Mate in it.
+ */
+export function putTaskPermission(
+  facts: PermissionFacts,
+  projectIds: ReadonlyArray<string>,
+  mateProjectId: string,
+): Decision {
+  const seen = appPermission(facts, "read_app", projectIds);
+  if (!seen.allow) return seen;
+  return projectIds.includes(mateProjectId) ? ALLOW : refuse("mate_not_in_app");
+}
+
+/**
+ * Taking a queued task (`take_task`) for one of the person's own Mates in the application — one HQ
+ * names them owner of, never an automated one; `mateProjectId` names the Mate, absent: any of
+ * theirs (whether the Board offers Take at all).
+ */
+export function takeTaskPermission(
+  facts: PermissionFacts,
+  task: BoardTask,
+  mates: ReadonlyArray<BoardMate>,
+  mateProjectId?: string,
+): Decision {
+  const member = activeMember(facts.member);
+  if (member === undefined) return refuse("not_active_member");
+  const own = mates.some(
+    (mate) =>
+      !mate.automated &&
+      member.userId !== undefined &&
+      mate.ownerUserId === member.userId &&
+      (mateProjectId === undefined || mate.projectId === mateProjectId),
+  );
+  if (!own) return refuse("no_own_mate");
+  return task.stored === "queued" ? ALLOW : refuse("task_not_queued");
+}
+
+/** Giving a taken task back to the queue (`release_task`): its taker, or an owner or admin. */
+export function releaseTaskPermission(facts: PermissionFacts, task: BoardTask): Decision {
+  const member = activeMember(facts.member);
+  if (member === undefined) return refuse("not_active_member");
+  if (!takes(member, task) && !writer(member)) return refuse("not_task_taker");
+  return task.stored === "taken" ? ALLOW : refuse("task_not_taken");
+}
+
+/** Marking a taken task done (`done_task`): its taker alone. */
+export function doneTaskPermission(facts: PermissionFacts, task: BoardTask): Decision {
+  const member = activeMember(facts.member);
+  if (member === undefined) return refuse("not_active_member");
+  if (!takes(member, task)) return refuse("not_task_taker");
+  return task.stored === "taken" ? ALLOW : refuse("task_not_taken");
+}
+
+/** Stopping a task still on the Board (`stop_task`): an owner or admin, its putter, or its taker. */
+export function stopTaskPermission(facts: PermissionFacts, task: BoardTask): Decision {
+  const member = activeMember(facts.member);
+  if (member === undefined) return refuse("not_active_member");
+  if (!writer(member) && !puts(member, task) && !takes(member, task))
+    return refuse("not_task_stopper");
+  return LIVE_TASK.has(task.stored) ? ALLOW : refuse("task_not_live");
+}
+
+/**
+ * Answering or steering a task put from a conversation (`answer_task`) while a pool Mate holds it:
+ * its putter alone. A person's taken task is their own conversation, answered there.
+ */
+export function answerTaskPermission(facts: PermissionFacts, task: BoardTask): Decision {
+  const member = activeMember(facts.member);
+  if (member === undefined) return refuse("not_active_member");
+  if (!puts(member, task)) return refuse("not_task_putter");
+  return task.taker?.kind === "pool" &&
+    (task.stored === "assigned" || task.stored === "working" || task.stored === "waiting")
+    ? ALLOW
+    : refuse("not_pool_held");
 }

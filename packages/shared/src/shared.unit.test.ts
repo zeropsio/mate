@@ -38,7 +38,10 @@ import {
   mateRecordPermission,
   operateMatePermission,
   releasePermission,
+  stopTaskPermission,
   structurePermission,
+  takeTaskPermission,
+  type BoardTask,
   type Decision,
   type PermissionFacts,
 } from "./zeropsPermissions.ts";
@@ -617,4 +620,85 @@ it("SH15: A crewmate its crew home gives no tint wears the first of the crew's t
     ["builds", "sky"],
     ["reviews", "olive"],
   ]);
+});
+
+/** A member active in the organization with `roleCode`, as Zerops user `userId`. */
+const boardMember = (userId: string, roleCode: string): PermissionFacts => ({
+  member: { userId, roleCode, status: "ACTIVE" },
+  project: () => undefined,
+});
+
+// witness: packages/shared/src/zeropsPermissions.ts | if (!writer(member) && !puts(member, task) && !takes(member, task)) → if (!writer(member) && !takes(member, task))
+it("SH+1: A task still on the Board is offered Stop by an owner or admin, by the person who put it and by the person who took it, and by no other member, and no task off the Board is; breaks: a putter cannot stop their own task, or any member stops another's", () => {
+  const task = (state: string): BoardTask => ({
+    stored: state,
+    putBy: "ana",
+    taker: { kind: "person", userId: "ben", mateProjectId: "mate-ben" },
+  });
+  const who = [
+    ["owner", boardMember("olga", "OWNER")],
+    ["admin", boardMember("adam", "ADMIN")],
+    ["putter", boardMember("ana", "BASIC_USER")],
+    ["taker", boardMember("ben", "BASIC_USER")],
+    ["colleague", boardMember("cyril", "BASIC_USER")],
+  ] as const;
+  const answers = (state: string) =>
+    who.map(([name, facts]) => {
+      const decision = stopTaskPermission(facts, task(state));
+      return [name, decision.allow ? "allow" : decision.reason];
+    });
+  expect({ taken: answers("taken"), queued: answers("queued"), done: answers("done") }).toEqual({
+    taken: [
+      ["owner", "allow"],
+      ["admin", "allow"],
+      ["putter", "allow"],
+      ["taker", "allow"],
+      ["colleague", "not_task_stopper"],
+    ],
+    queued: [
+      ["owner", "allow"],
+      ["admin", "allow"],
+      ["putter", "allow"],
+      ["taker", "allow"],
+      ["colleague", "not_task_stopper"],
+    ],
+    done: [
+      ["owner", "task_not_live"],
+      ["admin", "task_not_live"],
+      ["putter", "task_not_live"],
+      ["taker", "task_not_live"],
+      ["colleague", "not_task_stopper"],
+    ],
+  });
+});
+
+// witness: packages/shared/src/zeropsPermissions.ts | !mate.automated && → (mate.automated || true) &&
+it("SH+2: Take is offered on a queued task only to a person with a Mate of their own in the application, never for an automated Mate or another person's, and never on a task already taken or at work; breaks: a person's Take spends a colleague's Mate or the pool's", () => {
+  const mates = [
+    { projectId: "mate-ana", ownerUserId: "ana", automated: false },
+    { projectId: "mate-ben", ownerUserId: "ben", automated: false },
+    { projectId: "pool-1", ownerUserId: "cyril", automated: true },
+  ];
+  const queued: BoardTask = { stored: "queued", putBy: null, taker: null };
+  const answer = (facts: PermissionFacts, task: BoardTask, mateProjectId?: string) => {
+    const decision = takeTaskPermission(facts, task, mates, mateProjectId);
+    return decision.allow ? "allow" : decision.reason;
+  };
+  expect({
+    anaAny: answer(boardMember("ana", "BASIC_USER"), queued),
+    anaOwn: answer(boardMember("ana", "BASIC_USER"), queued, "mate-ana"),
+    anaBens: answer(boardMember("ana", "BASIC_USER"), queued, "mate-ben"),
+    cyrilPool: answer(boardMember("cyril", "OWNER"), queued),
+    dan: answer(boardMember("dan", "ADMIN"), queued),
+    anaTaken: answer(boardMember("ana", "BASIC_USER"), { ...queued, stored: "taken" }),
+    anaWorking: answer(boardMember("ana", "BASIC_USER"), { ...queued, stored: "working" }),
+  }).toEqual({
+    anaAny: "allow",
+    anaOwn: "allow",
+    anaBens: "no_own_mate",
+    cyrilPool: "no_own_mate",
+    dan: "no_own_mate",
+    anaTaken: "task_not_queued",
+    anaWorking: "task_not_queued",
+  });
 });

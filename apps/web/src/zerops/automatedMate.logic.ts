@@ -161,7 +161,7 @@ function isTaskOf(
   if (taskId !== null) return task.id === taskId;
   if (source.kind === "github-issue")
     return task.repo === source.repo && task.number === source.number;
-  const url = source.kind === "schedule" ? null : source.url;
+  const url = source.kind === "schedule" || source.kind === "conversation" ? null : source.url;
   return url !== null && task.url !== null ? url === task.url : task.title === source.title;
 }
 

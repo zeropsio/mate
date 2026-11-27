@@ -80,6 +80,20 @@ export const ScheduleSource = Schema.Struct({
 });
 export type ScheduleSource = typeof ScheduleSource.Type;
 
+/**
+ * A person's **Put on board** in one of their conversations: who put it (their Zerops user id), the
+ * Mate and conversation it came from, and the title they saw; the brief they saw is the task's
+ * body. The way back to that conversation opens only for people with access to that Mate.
+ */
+export const ConversationSource = Schema.Struct({
+  kind: Schema.Literal("conversation"),
+  putBy: TrimmedNonEmptyString,
+  mateProjectId: TrimmedNonEmptyString,
+  conversationId: TrimmedNonEmptyString,
+  title: SourceTitle,
+});
+export type ConversationSource = typeof ConversationSource.Type;
+
 /** Where a task came from, as its card draws it. */
 export const MateTaskSource = Schema.Union([
   GithubIssueSource,
@@ -87,6 +101,7 @@ export const MateTaskSource = Schema.Union([
   DiscordThreadSource,
   WebhookSource,
   ScheduleSource,
+  ConversationSource,
 ]);
 export type MateTaskSource = typeof MateTaskSource.Type;
 
@@ -197,7 +212,8 @@ export type MateTaskMessage = typeof MateTaskMessage.Type;
 
 /**
  * Where a task came from, in people's words: "acme/tea-shop#12", "#support on Slack", "#dev on
- * Discord", "the Sentry webhook", "the Weekly upkeep schedule".
+ * Discord", "the Sentry webhook", "the Weekly upkeep schedule", "a conversation in Mate" (who put
+ * it and whose Mate it was are names the reader's client knows, never the source).
  */
 export function mateTaskSourceLabel(source: MateTaskSource): string {
   switch (source.kind) {
@@ -211,10 +227,15 @@ export function mateTaskSourceLabel(source: MateTaskSource): string {
       return `the ${source.name} webhook`;
     case "schedule":
       return `the ${source.name} schedule`;
+    case "conversation":
+      return "a conversation in Mate";
   }
 }
 
-/** The way out to where a task came from, and the words on it; none for a schedule's. */
+/**
+ * The way out to where a task came from, and the words on it; none for a schedule's, nor for a
+ * conversation's: its way back is a route in Mate, open only to people with access to its Mate.
+ */
 export function mateTaskSourceLink(
   source: MateTaskSource,
 ): { readonly url: string; readonly words: string } | null {
@@ -228,13 +249,17 @@ export function mateTaskSourceLink(
     case "webhook":
       return source.url === null ? null : { url: source.url, words: "Open" };
     case "schedule":
+    case "conversation":
       return null;
   }
 }
 
-/** Who asked, where the source knows: an issue's author, a message's sender. */
+/**
+ * Who asked, where the source knows: an issue's author, a message's sender. A conversation's names
+ * its putter by Zerops user id (`putBy`), which the reader's client names.
+ */
 export function mateTaskSourceAuthor(source: MateTaskSource): string | null {
-  return source.kind === "schedule" ? null : source.author;
+  return source.kind === "schedule" || source.kind === "conversation" ? null : source.author;
 }
 
 /**

@@ -306,6 +306,23 @@ export const HqNavigationMateTask = Schema.Struct({
   workedMs: Schema.optionalKey(Schema.Number),
 });
 export type HqNavigationMateTask = typeof HqNavigationMateTask.Type;
+
+/**
+ * A task a person took for their own Mate (`taken`), as that Mate's row carries it: a Take, a
+ * Release, a Done, a Stop and a linked change's merge each move it, so the Board and the
+ * conversation's row read again on navigation, never on a timer.
+ */
+export const HqNavigationTakenTask = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  /** When it was taken (ISO). */
+  takenAt: Schema.String,
+  /** The changes linked to it so far, by repository and number. */
+  changes: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ repo: Schema.String, number: Schema.Int })),
+  ),
+});
+export type HqNavigationTakenTask = typeof HqNavigationTakenTask.Type;
 export const HqNavigationMate = Schema.Struct({
   face: Schema.String,
   madeBy: Schema.NullOr(Schema.String),
@@ -322,6 +339,8 @@ export const HqNavigationMate = Schema.Struct({
   keyRefused: Schema.optionalKey(Schema.Literal(true)),
   /** The task an automated Mate is on, or none: what its row names while it works. */
   task: Schema.optionalKey(Schema.NullOr(HqNavigationMateTask)),
+  /** The tasks its person took for it and has not finished (`HqNavigationTakenTask`); absent: none. */
+  taken: Schema.optionalKey(Schema.Array(HqNavigationTakenTask)),
   /**
    * When its birth began (its birth's `startedAt`), else when HQ recorded it; UTC at millisecond
    * precision. Its row's one clock: it does not move at the hello.

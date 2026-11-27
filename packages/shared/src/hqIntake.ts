@@ -15,7 +15,9 @@
  */
 import * as Schema from "effect/Schema";
 
-import { TrimmedNonEmptyString } from "@t3tools/contracts";
+import { MateTaskSource, TrimmedNonEmptyString } from "@t3tools/contracts";
+
+import type { BoardTask } from "./zeropsPermissions.ts";
 
 /** The label HQ takes issues by when none is chosen. */
 export const DEFAULT_INTAKE_LABEL = "mate";
@@ -246,7 +248,21 @@ export const HqTaskLimitsRequest = Schema.Struct({
 });
 export type HqTaskLimitsRequest = typeof HqTaskLimitsRequest.Type;
 
-/** One task of an application, as its Automation board lists it. */
+/**
+ * Who has a task: the automated pool (HQ handed it to `mateProjectId`), or a person who pressed
+ * Take for one of their own Mates (`userId`, their Zerops user id).
+ */
+export const HqTaskTaker = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("pool"), mateProjectId: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("person"),
+    userId: Schema.String,
+    mateProjectId: Schema.String,
+  }),
+]);
+export type HqTaskTaker = typeof HqTaskTaker.Type;
+
+/** One task of an application, as its Board lists it. */
 export const HqAppTask = Schema.Struct({
   id: Schema.String,
   /** Where it came from, linked (`MateTaskSource`'s words and address). */
@@ -259,6 +275,7 @@ export const HqAppTask = Schema.Struct({
    */
   state: Schema.Literals([
     "queued",
+    "taken",
     "assigned",
     "working",
     "waiting",
@@ -294,6 +311,20 @@ export const HqAppTask = Schema.Struct({
   pullRequest: Schema.NullOr(Schema.Struct({ number: Schema.Int, url: Schema.String })),
   /** Where to follow it in Mate (its own conversation, or its Mate's page). */
   link: Schema.NullOr(Schema.String),
+  /**
+   * The Board's fields, answered only to a read that opts in (`HQ_BOARD_READ`); an HQ that answers
+   * without them names none of a task's sources, takers or linked changes, and no `taken` state.
+   * Where it came from (a person's Put on board is `conversation`).
+   */
+  source: Schema.optionalKey(MateTaskSource),
+  /** Who has it; `null`: nobody (queued, or ended). */
+  taker: Schema.optionalKey(Schema.NullOr(HqTaskTaker)),
+  /** When a person took it, while `taken` (ISO). */
+  takenAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The changes linked to it, a taken task's by its Mate (`POST /api/mate/tasks/:taskId/change`). */
+  changes: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ repo: Schema.String, number: Schema.Int })),
+  ),
 });
 export type HqAppTask = typeof HqAppTask.Type;
 
@@ -302,3 +333,104 @@ export const HqAppTasksView = Schema.Struct({
   tasks: Schema.Array(HqAppTask),
 });
 export type HqAppTasksView = typeof HqAppTasksView.Type;
+
+/**
+ * A Board task as the task verbs read it (`zeropsPermissions.ts`): where it stands as HQ stores it,
+ * its putter, its taker. HQ shows a task a person took `closed` once every change linked to it
+ * closed unmerged, while it keeps it `taken` (it is still that person's, to release, finish or
+ * stop); its `takenAt`, kept while taken, says so.
+ */
+export const boardTaskOf = (task: HqAppTask): BoardTask => ({
+  stored:
+    task.state === "closed" && task.taker?.kind === "person" && task.takenAt != null
+      ? "taken"
+      : task.state,
+  putBy: task.source?.kind === "conversation" ? task.source.putBy : null,
+  taker: task.taker ?? null,
+});
+
+/** The longest title and brief a person puts on the Board (`HqPutTaskRequest`). */
+export const BOARD_TITLE_MAX = 120;
+export const BOARD_BRIEF_MAX = 8_000;
+/** The longest answer or steer its putter sends a task (`HqTaskMessageRequest`). */
+export const BOARD_MESSAGE_MAX = 8_000;
+
+/**
+ * `POST /api/apps/:appId/tasks` (a signed-in person): a person's **Put on board** from one of their
+ * conversations — the title and the brief they saw, and the Mate and conversation it came from,
+ * which must be in the application. HQ answers `201` {@link HqTaskAnswer}, the task queued at once.
+ */
+export const HqPutTaskRequest = Schema.Struct({
+  title: TrimmedNonEmptyString.check(Schema.isMaxLength(BOARD_TITLE_MAX)),
+  brief: TrimmedNonEmptyString.check(Schema.isMaxLength(BOARD_BRIEF_MAX)),
+  from: Schema.Struct({
+    mateProjectId: TrimmedNonEmptyString,
+    conversationId: TrimmedNonEmptyString,
+  }),
+});
+export type HqPutTaskRequest = typeof HqPutTaskRequest.Type;
+
+/**
+ * `POST /api/apps/:appId/tasks/:taskId/take` `{mateProjectId}`: a queued task taken for one of the
+ * person's own Mates in the application; `taken`, its taker that person and Mate.
+ */
+export const HqTakeTaskRequest = Schema.Struct({ mateProjectId: TrimmedNonEmptyString });
+export type HqTakeTaskRequest = typeof HqTakeTaskRequest.Type;
+
+/**
+ * The task as it stands after a person's write to it: `POST …/tasks` (`201`), `…/take`,
+ * `…/release` (`taken` → `queued`) and `…/done` (`taken` → `done`), each `200`.
+ */
+export const HqTaskAnswer = Schema.Struct({ task: HqAppTask });
+export type HqTaskAnswer = typeof HqTaskAnswer.Type;
+
+/**
+ * `POST /api/apps/:appId/tasks/:taskId/messages` `{text}` → `204`: its putter answers or steers a
+ * conversation's task a pool Mate holds; it reaches that Mate as a `task-message` (`reply`).
+ */
+export const HqTaskMessageRequest = Schema.Struct({
+  text: TrimmedNonEmptyString.check(Schema.isMaxLength(BOARD_MESSAGE_MAX)),
+});
+export type HqTaskMessageRequest = typeof HqTaskMessageRequest.Type;
+
+/**
+ * `POST /api/mate/tasks/:taskId/change` `{repo, number}` → `204` (the Mate's project key): this
+ * Mate's own open change linked to a task its person took on this Mate. A taken task ends `done`
+ * when a linked change merges.
+ */
+export const HqTaskChangeRequest = Schema.Struct({
+  repo: TrimmedNonEmptyString,
+  number: Schema.Int.check(Schema.isGreaterThan(0)),
+});
+export type HqTaskChangeRequest = typeof HqTaskChangeRequest.Type;
+
+/**
+ * One thing a person set aside until it changes, theirs on every device (HQ keeps it per person):
+ * `item` a key the client builds (`task:<id>`, `change:<appId>/<repo>#<n>`, `ask:<…>`), `revision`
+ * the item's own revision when it was snoozed. The client hides the item while its revision is
+ * still that one.
+ *
+ * - `GET /api/me/snoozes` → {@link HqSnoozesView};
+ * - `PUT /api/me/snoozes` {@link HqSnoozeRequest} → `204`;
+ * - `DELETE /api/me/snoozes?item=…` → `204`.
+ */
+export const HqSnooze = Schema.Struct({
+  item: Schema.String,
+  revision: Schema.String,
+  /** When it was snoozed (ISO). */
+  at: Schema.String,
+});
+export type HqSnooze = typeof HqSnooze.Type;
+
+export const HqSnoozesView = Schema.Struct({ snoozes: Schema.Array(HqSnooze) });
+export type HqSnoozesView = typeof HqSnoozesView.Type;
+
+/** The longest item key and revision HQ keeps for a snooze. */
+export const SNOOZE_ITEM_MAX = 300;
+export const SNOOZE_REVISION_MAX = 200;
+
+export const HqSnoozeRequest = Schema.Struct({
+  item: TrimmedNonEmptyString.check(Schema.isMaxLength(SNOOZE_ITEM_MAX)),
+  revision: TrimmedNonEmptyString.check(Schema.isMaxLength(SNOOZE_REVISION_MAX)),
+});
+export type HqSnoozeRequest = typeof HqSnoozeRequest.Type;

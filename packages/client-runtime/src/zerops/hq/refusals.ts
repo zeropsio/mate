@@ -68,6 +68,15 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
     "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
   no_production: "This project has no production yet.",
   not_releaser: "You need more than Read access to production to release.",
+  no_own_mate: "Only a person with a Mate of their own in this project takes its tasks.",
+  task_not_queued: "This task is no longer waiting in the queue.",
+  task_not_taken: "Nobody has this task taken now.",
+  task_not_live: "This task is over.",
+  not_task_taker: "Only the person who took this task does this.",
+  not_task_putter: "Only the person who put this task on the Board answers it.",
+  not_task_stopper:
+    "Only the person who put this task on the Board, the person who took it, or an owner or admin stops it.",
+  not_pool_held: "No automated Mate is on this task now.",
 };
 
 /**
