@@ -30,7 +30,9 @@ export const rotateSession = (
   command: Extract<Command, { _tag: "RotateSession" }>,
 ) => {
   if (b.state.archived) throw new Rejected("archived");
-  rotate(b, command.reason, command.fresh, command.seed);
+  const principal = b.envelope.principal;
+  const by = principal.kind === "person" ? ({ kind: "person", principal } as const) : undefined;
+  rotate(b, command.reason, command.fresh, command.seed, by);
 };
 
 /**

@@ -1166,6 +1166,13 @@ export function crewSeamWords(
 }
 
 /**
+ * *Start fresh*'s line, naming who pressed it: `"you"` for the person looking, a colleague by
+ * name, `null` when the record or the member list does not say.
+ */
+export const crewClearedWord = (who: "you" | string | null): string =>
+  `${who === null ? "Its conversation was cleared" : `${who === "you" ? "You" : who} cleared its conversation`} — it keeps its job and its work`;
+
+/**
  * Why a crewmate's one conversation started a new session, as the line in it says (engine
  * `session-rotated`, `CREW_SESSION_REASONS`): the conversation goes on, so the line says what
  * changed and what it keeps — never a link to another.
@@ -1173,7 +1180,7 @@ export function crewSeamWords(
 export function crewSessionWord(reason: string | undefined): string {
   switch (reason) {
     case "cleared":
-      return "You cleared its conversation — it keeps its job and its work";
+      return crewClearedWord(null);
     case "context":
       return "It started afresh: its conversation grew too long — it carries on from memory";
     case "job":

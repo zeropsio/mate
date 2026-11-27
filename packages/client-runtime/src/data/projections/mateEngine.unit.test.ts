@@ -297,3 +297,28 @@ it("PJ104: An engine conversation its V1 shell already lists stays one thread, w
     [["thread-ada", "Ada (V1)", "approval-required", "approval-required"]],
   ]);
 });
+
+// witness: packages/client-runtime/src/data/projections/mateEngine.ts | ...(marker.reason === "cleared" && → ...(marker.reason !== "cleared" &&
+it("PJ+1: A crewmate's conversation names the person who cleared it on that line, and no one on a new session the crew opened by itself; breaks: a colleague's Start fresh, or the crew's own, reads as the person looking having cleared it", () => {
+  const rotated = (ordinal: number, reason: string): Item =>
+    ({
+      id: `thread-ada/b/${ordinal}`,
+      conversationId: "thread-ada",
+      runId: null,
+      seq: ordinal,
+      rev: ordinal,
+      at: ordinal,
+      by: { kind: "person", principal: { kind: "person", subject: "user-ada" } },
+      kind: "marker",
+      marker: { kind: "session-rotated", reason },
+    }) as Item;
+  const state = held({
+    runs: [engineRun("thread-ada", 1)],
+    items: [personItem(run1, 1, "Build it"), rotated(10, "cleared"), rotated(11, "context")],
+  });
+  expect(
+    thread(state)
+      ?.activities.filter((activity) => activity.kind === "crew.seam")
+      .map((activity) => (activity.payload as { readonly by?: string }).by ?? null),
+  ).toEqual(["user-ada", null]);
+});

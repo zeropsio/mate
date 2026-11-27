@@ -519,7 +519,12 @@ export const CrewSeam = Schema.Union([
   }),
   Schema.Struct({ seam: Schema.Literal("closed"), taskId: CrewTaskId, number: PositiveInt }),
   Schema.Struct({ seam: Schema.Literal("saved"), apply: CrewApplyChoice }),
-  Schema.Struct({ seam: Schema.Literal("stint"), previousThreadId: Schema.NullOr(ThreadId) }),
+  Schema.Struct({
+    seam: Schema.Literal("stint"),
+    previousThreadId: Schema.NullOr(ThreadId),
+    /** The person who opened it (*Start fresh*), by their recorded subject; absent: the crew. */
+    by: Schema.optionalKey(Schema.String),
+  }),
   Schema.Struct({
     seam: Schema.Literal("swept"),
     branch: TrimmedNonEmptyString,

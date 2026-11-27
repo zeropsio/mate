@@ -134,6 +134,19 @@ export function usePersonNames(
 }
 
 /**
+ * Who a record names by the subject the engine recorded them under, as the person looking reads
+ * it: `"you"` for themselves, a colleague as the member list of the organization the mounted
+ * account shows — its Mates' own — calls them, `null` for somebody it does not hold. It follows
+ * that one person's name only, never the rest of the navigation.
+ */
+export function useRecordedPerson(subject: string): "you" | string | null {
+  const userId = recordedPersonId(subject);
+  const viewerId = useZeropsSessionOptional()?.user?.id;
+  const called = useAtomValue(hqPeopleAtom, (people) => people?.[userId]?.called);
+  return userId === viewerId ? "you" : (called ?? null);
+}
+
+/**
  * A Mate's owner (`HqMateOwner`), as a face in the corner of the Mate's own draws them: their name
  * and its initials, and the platform's picture of them.
  */

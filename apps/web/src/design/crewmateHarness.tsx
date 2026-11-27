@@ -32,6 +32,7 @@ import { crewAccess, type CrewLock } from "@t3tools/client-runtime/zerops/crew/c
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
+  crewClearedWord,
   crewJobSentence,
   crewMessagePlaceholder,
   crewmateRoleWords,
@@ -425,7 +426,7 @@ const STATES: ReadonlyArray<HarnessState> = [
       {
         id: "seam-stint",
         seam: { seam: "stint", previousThreadId: ThreadId.make("thread-crew-server-0") },
-        words: "You cleared its conversation",
+        words: crewClearedWord(null),
       },
     ],
   }),

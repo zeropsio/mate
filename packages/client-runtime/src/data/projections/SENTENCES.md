@@ -146,3 +146,4 @@ next: PJ162
 - PJ159 — A Chief cleanup reads each deletion phase and failure in one row and offers End exactly as HQ does; breaks: a refused cleanup hides its project, a proof refusal claims it was kept, or a person loses or gains End
 - PJ160 — An application's cleanup and ordinary birth both decode for every cleanup phase and failure step, while an unknown phase stays unreadable; breaks: one cleanup hides every birth of the application
 - PJ161 — A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart
+- PJ+1 — A crewmate's conversation names the person who cleared it on that line, and no one on a new session the crew opened by itself; breaks: a colleague's Start fresh, or the crew's own, reads as the person looking having cleared it

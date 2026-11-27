@@ -818,3 +818,22 @@ it("CD+1: Continue on a card turn a restart could not carry on sends the card ag
   });
   expect(w.turns("reviewer")).toEqual(["task", "continue", "continue"]);
 });
+
+// witness: apps/server/src/zerops/crew/engine/decide.advance.ts | rotateSession(b, member, member.rotateWhenFree.reason, member.rotateWhenFree.as); → rotateSession(b, member, member.rotateWhenFree.reason, { kind: "engine" });
+it("CD+3: Start fresh pressed while its crewmate is busy clears its conversation once it is free, as the person who pressed it; breaks: the line in its conversation names nobody, or the crew, as the one who cleared it", () => {
+  const w = new CrewWorld();
+  w.apply(home(writer("backend")));
+  newTask(w, "backend", "First");
+  w.start("backend");
+  w.tool("backend", { tool: "report", input: { status: "done", summary: "Done." } });
+  w.end("backend");
+  w.checkpoint("backend");
+  w.press({ _tag: "startFresh", handle: "backend" }, OTHER);
+  const owed = w.controls("backend").filter((tag) => tag === "RotateSession").length;
+  w.mergeAndCheck("backend");
+  const rotation = w.effects.find(
+    (effect) =>
+      effect.payload.kind === "crew.deliver" && effect.payload.command._tag === "RotateSession",
+  )?.payload;
+  expect([owed, rotation?.kind === "crew.deliver" ? rotation.principal : null]).toEqual([0, OTHER]);
+});

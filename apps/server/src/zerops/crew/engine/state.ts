@@ -133,8 +133,14 @@ export interface MemberRecord {
   readonly session: SessionRecord;
   /** How the save that left its prompt pending applies. */
   readonly apply: CrewApplyChoice | null;
-  /** A rotation owed between turns: a press or a save that found its turn running. */
-  readonly rotateWhenFree: RotationReason | "budget" | null;
+  /**
+   * A rotation owed between turns: a press or a save that found it busy, and whom it acts for (the
+   * person who pressed or saved, or the run's starter), as it would have at once.
+   */
+  readonly rotateWhenFree: {
+    readonly reason: RotationReason | "budget";
+    readonly as: Principal;
+  } | null;
   /** The run its conversation runs now. */
   readonly active: ActiveRun | null;
   /** Why the run its task stood on ended, and when; `null` while one runs. */

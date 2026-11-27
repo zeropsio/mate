@@ -401,7 +401,7 @@ export const saveHome = (
       rotateSession(b, member, rotation, as);
       continue;
     }
-    b.emit({ _tag: "CrewmateUpdated", handle, set: { rotateWhenFree: rotation } });
+    b.emit({ _tag: "CrewmateUpdated", handle, set: { rotateWhenFree: { reason: rotation, as } } });
     if (choice === "now" && member.active !== null) {
       deliver(
         b,

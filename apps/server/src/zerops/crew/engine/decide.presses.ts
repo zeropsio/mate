@@ -239,7 +239,7 @@ export const pressed = (
         b.emit({
           _tag: "CrewmateUpdated",
           handle: member.handle,
-          set: { rotateWhenFree: "start-fresh" },
+          set: { rotateWhenFree: { reason: "start-fresh", as } },
         });
       }
       return;
