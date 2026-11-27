@@ -202,6 +202,12 @@ const report = (b: Builder, member: MemberRecord, input: CrewReportInput): void 
   }
 };
 
+/** The task a proposed task reviews; none for `"none"`, a reader's task that reviews no task. */
+const reviewsOf = (task: CrewProposedTask): string | undefined =>
+  task.reviews === undefined || task.reviews.trim().toLowerCase() === "none"
+    ? undefined
+    : task.reviews;
+
 /** `crew_propose`: the plan onto the board, proposed for the person's Start or queued in a run. */
 const propose = (b: Builder, plan: ReadonlyArray<CrewProposedTask>): void => {
   const board = tasksInOrder(b.state);
@@ -211,24 +217,30 @@ const propose = (b: Builder, plan: ReadonlyArray<CrewProposedTask>): void => {
     const known = (ref: string) =>
       plan.some((other) => other.title === ref) ||
       board.some((row) => `#${row.number}` === ref.trim());
-    const unknown = [
-      ...(task.dependsOn ?? []),
-      ...(task.reviews === undefined ? [] : [task.reviews]),
-    ].filter((ref) => !known(ref));
+    const reviews = reviewsOf(task);
+    const unknown = [...(task.dependsOn ?? []), ...(reviews === undefined ? [] : [reviews])].filter(
+      (ref) => !known(ref),
+    );
     const reviewed =
-      task.reviews === undefined || !known(task.reviews)
+      reviews === undefined || !known(reviews)
         ? undefined
-        : (plan.find((other) => other.title === task.reviews)?.owner ??
-          board.find((row) => `#${row.number}` === task.reviews!.trim())!.owner);
+        : (plan.find((other) => other.title === reviews)?.owner ??
+          board.find((row) => `#${row.number}` === reviews.trim())!.owner);
     return [
       ...(owner === undefined ? [`${task.title}: there is no crewmate @${task.owner}`] : []),
       ...(owner?.kind === "lead" ? [`${task.title}: the lead takes no tasks`] : []),
       ...unknown.map((ref) => `${task.title}: no task "${ref}" in the plan or on the board`),
-      ...(task.reviews !== undefined && owner !== undefined && owner.kind !== "reader"
+      // Only a review names the writer whose app its reader opens: the lead says whether it is one.
+      ...(owner?.kind === "reader" && task.reviews === undefined
+        ? [
+            `${task.title}: a reader's task names what it reviews: the writer's task in reviews (#N, or a title in this plan), or reviews "none"`,
+          ]
+        : []),
+      ...(reviews !== undefined && owner !== undefined && owner.kind !== "reader"
         ? [`${task.title}: only a reader's task reviews another`]
         : []),
       ...(reviewed !== undefined && b.state.members[reviewed.replace(/^@/u, "")]?.kind !== "writer"
-        ? [`${task.title}: "${task.reviews}" is not a writer's task`]
+        ? [`${task.title}: "${reviews}" is not a writer's task`]
         : []),
       ...(titles.indexOf(task.title) === index
         ? []
@@ -264,8 +276,9 @@ const propose = (b: Builder, plan: ReadonlyArray<CrewProposedTask>): void => {
       created.get(ref)?.id ?? board.find((other) => `#${other.number}` === ref.trim())!.id;
     const dependsOn = (task.dependsOn ?? []).map(idOf);
     if (dependsOn.length > 0) b.emit({ _tag: "TaskUpdated", taskId: row.id, set: { dependsOn } });
-    if (task.reviews !== undefined) {
-      b.emit({ _tag: "TaskUpdated", taskId: row.id, set: { reviews: idOf(task.reviews) } });
+    const reviews = reviewsOf(task);
+    if (reviews !== undefined) {
+      b.emit({ _tag: "TaskUpdated", taskId: row.id, set: { reviews: idOf(reviews) } });
     }
   }
   const listed = [...created.values()]

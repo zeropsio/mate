@@ -53,7 +53,7 @@ next: CM63
 - CM51 — A crewmate whose stint is not live runs under the deny-all profile: read-only, no tools, and every call refused, ToolSearch and Read too
 - CM52 — A crewmate is read-only unless it is a writer
 - CM53 — A crewmate's gate, tools and session events judge each call by the crewmate as it is then: a claim taken mid-session lets its verify run, and a stint retired mid-session runs nothing more and reaches no session event
-- CM54 — A crewmate's tools follow its kind: a writer's Show on dev, a reader's review, the lead's propose, review and finish, and crew_memory only while the crew keeps memory
+- CM54 — A crewmate's tools follow its kind: a writer's Show on dev, a reader's open app and review, the lead's open app, propose, review and finish, and crew_memory only while the crew keeps memory
 - CM55 — A crew tool called from a thread that is no longer a crewmate's, or from a retired stint, reaches nothing in the crew
 - CM56 — crew_report hands the report to the crew as the crewmate that called it
 - CM57 — A write that would leave the crew home unparsable, such as a crewmate on a taken handle or one with no job, is refused with its reason and writes nothing

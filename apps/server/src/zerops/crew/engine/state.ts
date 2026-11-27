@@ -512,9 +512,13 @@ const REVIEW_UNDER_WAY: ReadonlySet<CrewTaskState> = new Set([
 export const reviewsOf = (state: CrewState, task: TaskRecord): ReadonlyArray<TaskRecord> =>
   tasksInOrder(state).filter((other) => other.reviews === task.id);
 
+/** A writer runs its own app on a crew port, which `crew_open_app` opens on its service. */
+export const opensApp = (member: MemberRecord): boolean =>
+  member.kind === "writer" && member.host !== null && member.crewPort !== null;
+
 /**
- * Where a writer's own app answers inside the project: its service and crew port. A copy on a
- * pool's lease has no address the crew knows.
+ * Where a writer's own app answers inside the project, for a browser: its service and crew port. A
+ * copy on a pool's lease has no address the crew knows.
  */
 export const appAddressOf = (member: MemberRecord): string | null =>
   member.host === null || member.pool !== null || member.crewPort === null
@@ -540,6 +544,34 @@ export const tasksOf = (state: CrewState, handle: string): ReadonlyArray<TaskRec
 
 export const openTaskOf = (state: CrewState, handle: string): TaskRecord | undefined =>
   tasksOf(state, handle).find((task) => isOpenTask(task.state));
+
+/**
+ * The writer's app `crew_open_app` opens for `opener`, on the writer's service and crew port: a
+ * reader's only the writer's whose task its own task reviews, the lead's any writer's.
+ */
+export const appToOpen = (
+  state: CrewState,
+  opener: { readonly handle: string; readonly kind: CrewMemberKind },
+  handle: string,
+): { readonly host: string; readonly port: number } | { readonly refusal: string } => {
+  if (opener.kind === "reader") {
+    const own = openTaskOf(state, opener.handle);
+    const reviewed = own === undefined ? undefined : reviewedWorkOf(state, own);
+    if (reviewed === undefined)
+      return { refusal: "Your task reviews no task, so it opens no app." };
+    if (reviewed.owner.handle !== handle) {
+      return {
+        refusal: `You open only @${reviewed.owner.handle}'s app: your task reviews #${reviewed.task.number}.`,
+      };
+    }
+  }
+  const target = state.members[handle];
+  if (target?.kind !== "writer") return { refusal: `@${handle} is no writer on the crew.` };
+  if (target.host === null || target.crewPort === null) {
+    return { refusal: `@${handle}'s copy has no crew port, so its app has nowhere to answer.` };
+  }
+  return { host: target.host, port: target.crewPort };
+};
 
 export const membersInOrder = (state: CrewState): ReadonlyArray<MemberRecord> =>
   state.order.flatMap((handle) => {

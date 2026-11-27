@@ -3,6 +3,7 @@ import { expect, it } from "vite-plus/test";
 
 import { AGENT_STOPPED_ITSELF } from "../../../engine/MateEngine.ts";
 import { NEVER_RESUMED } from "./decide.step.ts";
+import { appToOpen } from "./state.ts";
 import {
   CrewWorld,
   OPTIONS,
@@ -742,4 +743,61 @@ it("CD83: A crewmate's turn whose session could not resume its agent's own threa
   w.quiet();
   lost();
   expect([w.task(1).state, w.task(1).wait?.reason]).toEqual(["parked", NEVER_RESUMED]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.tools.ts | ...(owner?.kind === "reader" && task.reviews === undefined → ...(owner?.kind === "lead" && task.reviews === undefined
+it('CD+2: A reader\'s task the lead plans names what it reviews: one that names nothing is refused and nothing is planned, and one that says "none" is planned reviewing no task; breaks: a review left untied to the work, whose reader opens no app and holds no verdict', () => {
+  const w = new CrewWorld();
+  w.apply(home(lead(), writer("backend"), reader("reviewer")));
+  w.press({ _tag: "start", ...LEAD_LANDS }, OTHER);
+  w.quiet();
+  newTask(w, "backend", "First");
+  const plan = (reviews?: string) =>
+    w.tool("lead", {
+      tool: "propose",
+      plan: [
+        {
+          owner: "reviewer",
+          title: `Read ${reviews ?? "it"}`,
+          brief: "Check it.",
+          ...(reviews === undefined ? {} : { reviews }),
+        },
+      ],
+    });
+  plan();
+  const refused = [w.reply()?.isError, Object.keys(w.state.tasks).length];
+  plan("none");
+  const planned = Object.values(w.state.tasks).find((task) => task.owner === "reviewer");
+  expect([...refused, w.reply()?.isError, planned?.reviews]).toEqual([true, 1, false, undefined]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/state.ts | if (reviewed.owner.handle !== handle) { → if (reviewed.owner.handle === handle) {
+it("CD+3: A reader opens only the app of the writer whose task its own task reviews, on that writer's service and crew port; another writer's app, and any app before its task reviews one, is refused; breaks: a reviewer opening another crewmate's app, or none at all", () => {
+  const w = new CrewWorld();
+  w.tell({
+    _tag: "Press",
+    press: { _tag: "apply" },
+    door: { refusal: null },
+    home: home(lead(), writer("ada"), writer("bob", { host: "apidev" }), reader("reviewer")),
+    hosts: {
+      appdev: { crewPorts: [3001], integration: null },
+      apidev: { crewPorts: [3001], integration: null },
+    },
+  });
+  w.settleAll("crew.deliver", (command) => command._tag !== "Send");
+  w.settleAll("crew.lane.create", () => true, { _tag: "ready" });
+  w.press({ _tag: "start", ...LEAD_LANDS }, OTHER);
+  w.quiet();
+  newTask(w, "ada", "Menu");
+  w.start("ada");
+  finish(w, "ada");
+  const reviewer = { handle: "reviewer", kind: "reader" } as const;
+  const early = appToOpen(w.state, reviewer, "ada");
+  reviewPlanned(w, "#1");
+  w.run("reviewer");
+  expect([
+    "refusal" in early,
+    appToOpen(w.state, reviewer, "ada"),
+    "refusal" in appToOpen(w.state, reviewer, "bob"),
+  ]).toEqual([true, { host: "appdev", port: 3001 }, true]);
 });
