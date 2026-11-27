@@ -3,12 +3,12 @@
  * (`@t3tools/shared/zeropsPermissions`) over their own live read of Zerops, HQ's tasks of the
  * application and its Mates (whose each is, and which are automated): where a Put on board may come
  * from — only a Mate whose server takes the Board — which of their own Mates a Take may open in,
- * and each task's Take, Release, Done, Stop and Answer. Surfaces draw these answers and never decide one; HQ decides again at the press.
+ * and each task's Take (only into a Mate whose server reads the task's source), Release, Done, Stop
+ * and Answer. Surfaces draw these answers and never decide one; HQ decides again at the press.
  * `undefined` until Zerops is read: nothing is offered or refused on a guess.
  *
  * @module data/projections/boardOffers
  */
-import { MATE_BOARD_PROTOCOL } from "@t3tools/contracts";
 import { boardTaskOf } from "@t3tools/shared/hqIntake";
 import {
   answerTaskPermission,
@@ -45,17 +45,18 @@ export interface BoardOffers {
 }
 
 /**
- * Whether a Mate's server takes the Board (`identity.board.protocol` its overview advertises, as HQ
- * relays it): it draws a board ask's card and keeps a taken task's conversation. Not known yet, no.
+ * The Board protocol a Mate's server reads (`identity.board.protocol` its overview advertises, as
+ * HQ relays it): from 1 it draws a board ask's card and keeps a taken task's conversation, from 2
+ * also one of a task put on the Board directly. Not known yet, none (0).
  */
-function takesBoard(read: ProjectionReads, projectId: string): boolean {
+function boardProtocol(read: ProjectionReads, projectId: string): number {
   const mate = read.fact("hqMate", projectId);
-  if (mate.kind !== "known") return false;
-  return (mate.value.overview?.identity?.board?.protocol ?? 0) >= MATE_BOARD_PROTOCOL;
+  if (mate.kind !== "known") return 0;
+  return mate.value.overview?.identity?.board?.protocol ?? 0;
 }
 
-/** A queued task nobody put: whether a Mate is one a Take may open in at all. */
-const QUEUED = { stored: "queued", putBy: null, taker: null } as const;
+/** A queued task nobody put, of the oldest protocol: whether a Mate is one a Take may open in at all. */
+const QUEUED = { stored: "queued", putBy: null, protocol: 1, taker: null } as const;
 
 export const boardOffers: Projection<
   { readonly orgId: string; readonly appId: string },
@@ -82,7 +83,7 @@ export const boardOffers: Projection<
               projectId,
               ownerUserId: placement.person?.ownerUserId ?? undefined,
               automated: placement.mate.automated === true,
-              takesBoard: takesBoard(read, projectId),
+              boardProtocol: boardProtocol(read, projectId),
             },
           ],
     );
@@ -92,7 +93,8 @@ export const boardOffers: Projection<
       // Its agent proposes the work and its card puts it: only a Mate whose server draws that card.
       putFrom: projectIds.filter(
         (projectId) =>
-          takesBoard(read, projectId) && putTaskPermission(facts, projectIds, projectId).allow,
+          boardProtocol(read, projectId) >= 1 &&
+          putTaskPermission(facts, projectIds, projectId).allow,
       ),
       ownMates: mates
         .filter((mate) => takeTaskPermission(facts, QUEUED, [mate], mate.projectId).allow)

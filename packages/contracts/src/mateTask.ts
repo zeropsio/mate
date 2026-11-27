@@ -94,6 +94,18 @@ export const ConversationSource = Schema.Struct({
 });
 export type ConversationSource = typeof ConversationSource.Type;
 
+/**
+ * A person's **New task** on an application's Board: who put it (their Zerops user id) and the
+ * title they wrote; the brief they wrote is the task's body. No Mate and no conversation stand
+ * behind it, so it has no way back.
+ */
+export const BoardSource = Schema.Struct({
+  kind: Schema.Literal("board"),
+  putBy: TrimmedNonEmptyString,
+  title: SourceTitle,
+});
+export type BoardSource = typeof BoardSource.Type;
+
 /** Where a task came from, as its card draws it. */
 export const MateTaskSource = Schema.Union([
   GithubIssueSource,
@@ -102,15 +114,25 @@ export const MateTaskSource = Schema.Union([
   WebhookSource,
   ScheduleSource,
   ConversationSource,
+  BoardSource,
 ]);
 export type MateTaskSource = typeof MateTaskSource.Type;
 
 /**
- * The protocol a Mate that takes a task put on the Board from a conversation (`ConversationSource`)
- * advertises in its overview (`identity.board`): HQ hands such a task only to an automated Mate
- * that says it.
+ * The Board protocol a Mate advertises in its overview (`identity.board`): 1, it takes a task put
+ * on the Board from a conversation (`ConversationSource`); 2, also one a person put on the Board
+ * directly (`BoardSource`). HQ hands an automated Mate only the sources its protocol reads.
  */
-export const MATE_BOARD_PROTOCOL = 1;
+export const MATE_BOARD_PROTOCOL = 2;
+
+/**
+ * The least Board protocol a Mate reads a task's source at (`MATE_BOARD_PROTOCOL`): 2 for one put
+ * on the Board directly, 1 for every other. A Mate below it cannot take the task, by HQ's hand-out
+ * or a person's Take.
+ */
+export function mateBoardProtocolOf(source: MateTaskSource): number {
+  return source.kind === "board" ? 2 : 1;
+}
 
 /**
  * A task of the Board a person took for one of their own Mates, as its conversation's first message
@@ -227,7 +249,7 @@ export type MateTaskMessage = typeof MateTaskMessage.Type;
 
 /**
  * Where a task came from, in people's words: "acme/tea-shop#12", "#support on Slack", "#dev on
- * Discord", "the Sentry webhook", "the Weekly upkeep schedule", "a conversation" (who put
+ * Discord", "the Sentry webhook", "the Weekly upkeep schedule", "a conversation", "the Board" (who put
  * it and whose Mate it was are names the reader's client knows, never the source).
  */
 export function mateTaskSourceLabel(source: MateTaskSource): string {
@@ -244,12 +266,15 @@ export function mateTaskSourceLabel(source: MateTaskSource): string {
       return `the ${source.name} schedule`;
     case "conversation":
       return "a conversation";
+    case "board":
+      return "the Board";
   }
 }
 
 /**
  * The way out to where a task came from, and the words on it; none for a schedule's, nor for a
- * conversation's: its way back is a route in Mate, open only to people with access to its Mate.
+ * conversation's (its way back is a route in Mate, open only to people with access to its Mate),
+ * nor for one put on the Board directly: it came from nowhere else.
  */
 export function mateTaskSourceLink(
   source: MateTaskSource,
@@ -265,16 +290,20 @@ export function mateTaskSourceLink(
       return source.url === null ? null : { url: source.url, words: "Open" };
     case "schedule":
     case "conversation":
+    case "board":
       return null;
   }
 }
 
 /**
- * Who asked, where the source knows: an issue's author, a message's sender. A conversation's names
- * its putter by Zerops user id (`putBy`), which the reader's client names.
+ * Who asked, where the source knows: an issue's author, a message's sender. A person's put (from a
+ * conversation or on the Board) names its putter by Zerops user id (`putBy`), which the reader's
+ * client names.
  */
 export function mateTaskSourceAuthor(source: MateTaskSource): string | null {
-  return source.kind === "schedule" || source.kind === "conversation" ? null : source.author;
+  return source.kind === "schedule" || source.kind === "conversation" || source.kind === "board"
+    ? null
+    : source.author;
 }
 
 /**

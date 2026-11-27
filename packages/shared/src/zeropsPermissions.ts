@@ -353,12 +353,15 @@ export function detachPermission(
 /**
  * A task of an application's Board, as its verbs read it: where it stands as HQ stores it
  * (`stored` — a taken task whose every change closed unmerged is still `taken`, though HQ shows it
- * `closed`: the verbs decide on what it is, the Board draws what HQ shows), who put it there (a
- * conversation's putter, by Zerops user id; `null` for every other source) and who has it.
+ * `closed`: the verbs decide on what it is, the Board draws what HQ shows), who put it there (the
+ * person who put it, from a conversation or on the Board directly, by Zerops user id; `null` for
+ * every other source), the least Board protocol a Mate reads its source at
+ * (`mateBoardProtocolOf`), and who has it.
  */
 export interface BoardTask {
   readonly stored: string;
   readonly putBy: string | null;
+  readonly protocol: number;
   readonly taker:
     | { readonly kind: "pool"; readonly mateProjectId: string }
     | { readonly kind: "person"; readonly userId: string; readonly mateProjectId: string }
@@ -367,15 +370,15 @@ export interface BoardTask {
 
 /**
  * One of the application's Mates, as a Take reads it: whom HQ names its owner, whether it is
- * automated, and whether its server takes a task from the Board (`identity.board`, the
- * `MATE_BOARD_PROTOCOL` its overview advertises): an older one ignores the task it is sent, so it
- * would never be linked to its conversation or end.
+ * automated, and the Board protocol its server reads (`identity.board`, the `MATE_BOARD_PROTOCOL`
+ * its overview advertises; 0 where it says none): one below a task's ignores the task it is sent,
+ * so it would never be linked to its conversation or end.
  */
 export interface BoardMate {
   readonly projectId: string;
   readonly ownerUserId: string | undefined;
   readonly automated: boolean;
-  readonly takesBoard: boolean;
+  readonly boardProtocol: number;
 }
 
 /** A task still on the Board: queued, handed out, at work, waiting on a person, or taken. */
@@ -411,7 +414,7 @@ export function putTaskPermission(
 
 /**
  * Taking a queued task (`take_task`) for one of the person's own Mates in the application — one HQ
- * names them owner of, never an automated one, and only one whose server takes a Board task;
+ * names them owner of, never an automated one, and only one whose server reads the task's source;
  * `mateProjectId` names the Mate, absent: any of theirs (whether the Board offers Take at all).
  */
 export function takeTaskPermission(
@@ -425,7 +428,7 @@ export function takeTaskPermission(
   const own = mates.some(
     (mate) =>
       !mate.automated &&
-      mate.takesBoard &&
+      mate.boardProtocol >= task.protocol &&
       member.userId !== undefined &&
       mate.ownerUserId === member.userId &&
       (mateProjectId === undefined || mate.projectId === mateProjectId),
@@ -460,8 +463,8 @@ export function stopTaskPermission(facts: PermissionFacts, task: BoardTask): Dec
 }
 
 /**
- * Answering or steering a task put from a conversation (`answer_task`) while a pool Mate holds it:
- * its putter alone. A person's taken task is their own conversation, answered there.
+ * Answering or steering a task a person put (`answer_task`) while a pool Mate holds it: its putter
+ * alone. A person's taken task is their own conversation, answered there.
  */
 export function answerTaskPermission(facts: PermissionFacts, task: BoardTask): Decision {
   const member = activeMember(facts.member);

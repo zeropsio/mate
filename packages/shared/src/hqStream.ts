@@ -281,8 +281,9 @@ export const HqNavigationMateTask = Schema.Struct({
    */
   askedAt: Schema.optionalKey(Schema.String),
   /**
-   * Who put it on the Board, for a task from a conversation (`ConversationSource.putBy`): its
-   * question waits on them. Absent for every other source, and from an HQ without the Board.
+   * Who put it on the Board, for a task a person put, from a conversation or directly
+   * (`ConversationSource.putBy`, `BoardSource.putBy`): its question waits on them. Absent for every
+   * other source, and from an HQ without the Board.
    */
   putBy: Schema.optionalKey(Schema.String),
   /** HQ took a person's stop of it and its Mate has not stopped yet; absent: no stop asked. */

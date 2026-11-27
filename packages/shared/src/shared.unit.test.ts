@@ -29,6 +29,7 @@ import { kindForAwarenessPhase, resolveThreadStatus, toneIdForKind } from "./thr
 import { threadStatusVectors } from "./threadStatus.vectors.ts";
 import {
   addMatePermission,
+  answerTaskPermission,
   appPermission,
   attachPermission,
   changePermission,
@@ -636,6 +637,7 @@ it("SH16: A task still on the Board is offered Stop by an owner or admin, by the
   const task = (state: string): BoardTask => ({
     stored: state,
     putBy: "ana",
+    protocol: 1,
     taker: { kind: "person", userId: "ben", mateProjectId: "mate-ben" },
   });
   const who = [
@@ -678,11 +680,11 @@ it("SH16: A task still on the Board is offered Stop by an owner or admin, by the
 // witness: packages/shared/src/zeropsPermissions.ts | !mate.automated && → (mate.automated || true) &&
 it("SH17: Take is offered on a queued task only to a person with a Mate of their own in the application, never for an automated Mate or another person's, and never on a task already taken or at work; breaks: a person's Take spends a colleague's Mate or the pool's", () => {
   const mates = [
-    { projectId: "mate-ana", ownerUserId: "ana", automated: false, takesBoard: true },
-    { projectId: "mate-ben", ownerUserId: "ben", automated: false, takesBoard: true },
-    { projectId: "pool-1", ownerUserId: "cyril", automated: true, takesBoard: true },
+    { projectId: "mate-ana", ownerUserId: "ana", automated: false, boardProtocol: 2 },
+    { projectId: "mate-ben", ownerUserId: "ben", automated: false, boardProtocol: 2 },
+    { projectId: "pool-1", ownerUserId: "cyril", automated: true, boardProtocol: 2 },
   ];
-  const queued: BoardTask = { stored: "queued", putBy: null, taker: null };
+  const queued: BoardTask = { stored: "queued", putBy: null, protocol: 1, taker: null };
   const answer = (facts: PermissionFacts, task: BoardTask, mateProjectId?: string) => {
     const decision = takeTaskPermission(facts, task, mates, mateProjectId);
     return decision.allow ? "allow" : decision.reason;
@@ -761,4 +763,86 @@ it("SH19: One card's Put on board names the same request on every send, from any
     otherChat: boardPutRequestId({ ...ana, conversationId: "chat-2" }, "request-1") === first,
     uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(first),
   }).toEqual({ again: true, otherCard: false, otherChat: false, uuid: true });
+});
+
+/** A task of the Board as HQ's Board view answers it, `patch` aside. */
+const boardRecord = (patch: Partial<HqAppTask>): HqAppTask => ({
+  id: "t-2",
+  title: "Offer gift wrapping",
+  label: "the Board",
+  url: null,
+  state: "queued",
+  mate: null,
+  requestedBy: null,
+  createdAt: "2026-11-20T10:00:00Z",
+  startedAt: null,
+  endedAt: null,
+  spentUsd: null,
+  workedMs: null,
+  detail: null,
+  change: null,
+  pullRequest: null,
+  link: null,
+  ...patch,
+});
+
+// witness: packages/shared/src/zeropsPermissions.ts | mate.boardProtocol >= task.protocol && → mate.boardProtocol >= 1 &&
+it("SH+1: Take of a task put on the Board directly is offered only into a person's own Mate whose server reads such a task, while a task put from a conversation is offered into any of theirs that takes the Board; breaks: a Take sends a New task to an older Mate that drops it, or every Mate not yet updated loses Take", () => {
+  const mates = [
+    { projectId: "mate-old", ownerUserId: "ana", automated: false, boardProtocol: 1 },
+    { projectId: "mate-new", ownerUserId: "ana", automated: false, boardProtocol: 2 },
+  ];
+  const direct = boardTaskOf(
+    boardRecord({ source: { kind: "board", putBy: "ben", title: "Offer gift wrapping" } }),
+  );
+  const fromChat = boardTaskOf(
+    boardRecord({
+      label: "a conversation",
+      source: {
+        kind: "conversation",
+        putBy: "ben",
+        mateProjectId: "mate-ben",
+        conversationId: "chat-1",
+        title: "Offer gift wrapping",
+      },
+    }),
+  );
+  const ana = boardMember("ana", "BASIC_USER");
+  const answer = (task: BoardTask, mateProjectId: string) => {
+    const decision = takeTaskPermission(ana, task, mates, mateProjectId);
+    return decision.allow ? "allow" : decision.reason;
+  };
+  expect({
+    directOld: answer(direct, "mate-old"),
+    directNew: answer(direct, "mate-new"),
+    chatOld: answer(fromChat, "mate-old"),
+    chatNew: answer(fromChat, "mate-new"),
+  }).toEqual({
+    directOld: "no_own_mate",
+    directNew: "allow",
+    chatOld: "allow",
+    chatNew: "allow",
+  });
+});
+
+// witness: packages/shared/src/hqIntake.ts | task.source?.kind === "conversation" || task.source?.kind === "board" → task.source?.kind === "conversation"
+it("SH+2: The person who put a task on the Board directly may stop it and answer it while a pool Mate holds it, as one who put it from a conversation may; breaks: a New task's putter can neither stop nor answer their own task", () => {
+  const task = boardTaskOf(
+    boardRecord({
+      state: "waiting",
+      source: { kind: "board", putBy: "ana", title: "Offer gift wrapping" },
+      taker: { kind: "pool", mateProjectId: "pool-1" },
+    }),
+  );
+  const verbs = (facts: PermissionFacts) =>
+    [stopTaskPermission(facts, task), answerTaskPermission(facts, task)].map((decision) =>
+      decision.allow ? "allow" : decision.reason,
+    );
+  expect({
+    putter: verbs(boardMember("ana", "BASIC_USER")),
+    colleague: verbs(boardMember("ben", "BASIC_USER")),
+  }).toEqual({
+    putter: ["allow", "allow"],
+    colleague: ["not_task_stopper", "not_task_putter"],
+  });
 });

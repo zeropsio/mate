@@ -1168,7 +1168,7 @@ interface OverviewSources {
   readonly command?: { readonly protocol: number };
   /** That it takes its person's other Mates' messages (`MATE_MESSAGES_PROTOCOL`); none where it cannot. */
   readonly messages?: { readonly protocol: number };
-  /** That it takes a task put on the Board from a conversation (`MATE_BOARD_PROTOCOL`). */
+  /** That it takes a task a person put on the Board (`MATE_BOARD_PROTOCOL`). */
   readonly board?: { readonly protocol: number };
 }
 

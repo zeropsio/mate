@@ -134,8 +134,8 @@ export const OverviewIdentity = Schema.Struct({
    */
   messages: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
   /**
-   * That it takes a task put on the Board from a conversation, by its protocol
-   * (`MATE_BOARD_PROTOCOL`); absent: HQ hands it none.
+   * That it takes a task a person put on the Board, by its protocol (`MATE_BOARD_PROTOCOL`): 1, one
+   * put from a conversation; 2, also one put on the Board directly. Absent: HQ hands it none.
    */
   board: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
 });

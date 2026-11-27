@@ -219,7 +219,8 @@ function messageOf(
         id: MessageId.make(personMessageId(item)),
         role: "user",
         text: item.text,
-        ...(item.task === undefined ? {} : { task: item.task }),
+        // A source kind this build does not know draws as the person's plain message, never none.
+        ...(item.task === undefined || item.task.kind === "unknown" ? {} : { task: item.task }),
         ...(item.taskAsk === undefined ? {} : { taskAsk: item.taskAsk }),
         ...(item.taskMessage === undefined ? {} : { taskMessage: item.taskMessage }),
         ...(item.mateMessage === undefined

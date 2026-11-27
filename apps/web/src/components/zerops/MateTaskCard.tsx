@@ -21,6 +21,7 @@ import {
   HashIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
+  SquareKanbanIcon,
   TimerIcon,
   WebhookIcon,
 } from "lucide-react";
@@ -75,7 +76,10 @@ const NOT_KNOWN: TaskSession = {
   pullRequest: null,
 };
 
-/** Where a task came from, as a mark: GitHub's, a Slack channel's, a Discord thread, a webhook, a schedule. */
+/**
+ * Where a task came from, as a mark: GitHub's, a Slack channel's, a Discord thread, a webhook, a
+ * schedule, a conversation, the Board itself.
+ */
 function SourceMark({ source }: { readonly source: MateTaskSource }) {
   const className = "size-3.5 shrink-0";
   switch (source.kind) {
@@ -91,6 +95,8 @@ function SourceMark({ source }: { readonly source: MateTaskSource }) {
       return <CalendarClockIcon aria-hidden="true" className={className} />;
     case "conversation":
       return <MessageSquareIcon aria-hidden="true" className={className} />;
+    case "board":
+      return <SquareKanbanIcon aria-hidden="true" className={className} />;
   }
 }
 
@@ -291,19 +297,21 @@ export function MateTaskCard({
 }
 
 /**
- * Where a task put on the Board from a chat came from, in the reader's words: who put it and whose
- * chat it was, with the way back to that chat where the reader's list holds its Mate. `undefined`
- * for every other source, which names itself.
+ * Where a task a person put on the Board came from, in the reader's words: who put it, and for one
+ * put from a chat whose chat it was, with the way back to that chat where the reader's list holds
+ * its Mate; a New task put on the Board itself has none. `undefined` for every other source, which
+ * names itself.
  */
 function usePutOrigin(task: MateTaskSource): TaskCardOrigin | undefined {
   const session = useZeropsSessionOptional();
   const personName = useHqPersonNames(session?.activeOrganization?.id);
   const { listing } = useZeropsCandidates();
   const openConversation = useOpenTaskConversation();
-  if (task.kind !== "conversation") return undefined;
-  const mate = heldCandidates(listing).rows.find(
-    (row) => row.project.id === task.mateProjectId,
-  )?.project;
+  if (task.kind !== "conversation" && task.kind !== "board") return undefined;
+  const mate =
+    task.kind === "board"
+      ? undefined
+      : heldCandidates(listing).rows.find((row) => row.project.id === task.mateProjectId)?.project;
   const origin = putOrigin(task, {
     viewerId: session?.user?.id,
     personName,

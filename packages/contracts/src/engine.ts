@@ -523,6 +523,20 @@ export const ConversationWorkingOn = forwardCompatibleUnion({
 });
 export type ConversationWorkingOn = typeof ConversationWorkingOn.Type;
 
+/**
+ * Where a person item's task came from (`MateTaskSource`) as it is read back: a source kind a
+ * later engine or HQ adds reads as `unknown` (its kind kept as `type`), never a refusal, so a new
+ * kind never makes the message unreadable to an older client, which draws it as a plain message.
+ */
+export const ItemTaskSource = forwardCompatibleUnion({
+  key: "kind",
+  known: MateTaskSource.members.map((member) => member.fields.kind.literal),
+  members: [MateTaskSource],
+  fallback: unknownKind,
+  toFallback: toUnknownKind,
+});
+export type ItemTaskSource = typeof ItemTaskSource.Type;
+
 const itemBodyFields = {
   person: {
     text: Schema.String,
@@ -543,7 +557,7 @@ const itemBodyFields = {
      * Sent for a task from outside (`MateTask`) on an automated Mate: the issue it brings, drawn as
      * a card. Its words are the brief the agent got, never the person's; absent: not a task's.
      */
-    task: Schema.optionalKey(MateTaskSource),
+    task: Schema.optionalKey(ItemTaskSource),
     /**
      * With `task`: the asker's own words, as they wrote them where they asked, drawn as theirs
      * above the conversation's first run. Absent: the ask had no text, or its Mate predates it.

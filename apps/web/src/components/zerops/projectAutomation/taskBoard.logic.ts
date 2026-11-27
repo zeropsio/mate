@@ -18,7 +18,7 @@ import {
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import type { TaskSourceWrite, TaskWriteAction } from "@t3tools/client-runtime/data";
-import type { ConversationSource } from "@t3tools/contracts";
+import type { BoardSource, ConversationSource } from "@t3tools/contracts";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
 import {
@@ -233,18 +233,23 @@ function personWords(userId: string, context: BoardContext): string {
 /**
  * Where a task came from, in the reader's words: an issue, a channel, a schedule as its source
  * names it, linked out where it has an address; a person's Put on board by who put it, linked back
- * to the chat it came from (whose, said in full) only where the reader's list holds that Mate.
+ * to the chat it came from (whose, said in full) only where the reader's list holds that Mate, and
+ * a New task put on the Board itself by who put it, with no way back: it came from nowhere else.
  */
 export function originOf(task: HqAppTask, context: BoardContext): BoardOrigin {
   const source = task.source;
-  if (source?.kind !== "conversation")
+  if (source?.kind !== "conversation" && source?.kind !== "board")
     return { words: task.label, full: task.label, url: task.url, conversation: null };
   return putOrigin(source, context);
 }
 
 /** A person's Put on board, as every surface says where the task came from (`originOf`). */
-export function putOrigin(source: ConversationSource, context: BoardContext): BoardOrigin {
+export function putOrigin(
+  source: ConversationSource | BoardSource,
+  context: BoardContext,
+): BoardOrigin {
   const words = `Put on board by ${personWords(source.putBy, context)}`;
+  if (source.kind === "board") return { words, full: words, url: null, conversation: null };
   const mate = (context.mateName ?? nobody)(source.mateProjectId);
   return {
     words,
@@ -290,7 +295,7 @@ const takenWords = (holder: BoardHolder | null): string =>
 
 /**
  * What a row says in its state column, where its lane does not already: a pool task's start or
- * stop, who took it; whom a conversation's task asks; how an ended task ended. A working pool task
+ * stop, who took it; whom a person's put asks; how an ended task ended. A working pool task
  * says nothing (its face does), nor a queued, waiting or up-for-review one beyond its lane.
  */
 function stateOf(
@@ -308,7 +313,7 @@ function stateOf(
     case "waiting":
       return {
         state:
-          task.source?.kind === "conversation"
+          task.source?.kind === "conversation" || task.source?.kind === "board"
             ? `Asks ${personWords(task.source.putBy, context)}`
             : "Asks you",
         tone: "attention",

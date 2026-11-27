@@ -240,3 +240,42 @@ it("CT6: A usage identity with an unpaired surrogate is refused, so HQ is never 
   expect(decoded(decode("turn-😀"))).toBe("turn-😀");
   expect(decoded(decode("turn-\uD800".toWellFormed()))).toBe("turn-�");
 });
+
+// witness: packages/contracts/src/engine.ts | task: Schema.optionalKey(ItemTaskSource), → task: Schema.optionalKey(MateTaskSource),
+it("CT+1: A person's message carrying a task whose source kind a newer build added is read with that task as unknown, while a known source with a broken payload drops the message alone; breaks: an older tab drops a task's whole message, the person's words with it", () => {
+  const decode = Schema.decodeUnknownExit(EngineConversationFrame);
+  const person = (n: number, task: unknown) => ({
+    id: itemId(run, n),
+    conversationId: "mate",
+    runId: run,
+    seq: n,
+    rev: n,
+    at: 1,
+    by: { kind: "person", principal: { kind: "person", subject: "u-mara" } },
+    kind: "person",
+    text: "Print care labels for every pot",
+    attachments: [],
+    sendId: `send-${String(n)}`,
+    delivery: { state: "delivered", at: 1 },
+    task,
+  });
+  const frame = decoded(
+    decode({
+      type: "changes",
+      epoch: 3,
+      from: 0,
+      to: 9,
+      runs: [],
+      items: [
+        person(1, { kind: "jira-issue", key: "SHOP-4", title: "Print care labels" }),
+        person(2, { kind: "board", putBy: 7, title: "Print care labels" }),
+      ],
+      requests: [],
+    }),
+  );
+  expect(frame).toMatchObject({
+    type: "changes",
+    items: [{ seq: 1, kind: "person", task: { kind: "unknown", type: "jira-issue" } }],
+  });
+  expect((frame as { items: ReadonlyArray<unknown> }).items).toHaveLength(1);
+});

@@ -15,7 +15,7 @@
  */
 import * as Schema from "effect/Schema";
 
-import { MateTaskSource, TrimmedNonEmptyString } from "@t3tools/contracts";
+import { MateTaskSource, mateBoardProtocolOf, TrimmedNonEmptyString } from "@t3tools/contracts";
 
 import type { BoardTask } from "./zeropsPermissions.ts";
 
@@ -314,7 +314,8 @@ export const HqAppTask = Schema.Struct({
   /**
    * The Board's fields, answered only to a read that opts in (`HQ_BOARD_READ`); an HQ that answers
    * without them names none of a task's sources, takers or linked changes, and no `taken` state.
-   * Where it came from (a person's Put on board is `conversation`).
+   * Where it came from (a person's Put on board is `conversation`; their New task on the Board
+   * itself, `board`).
    */
   source: Schema.optionalKey(MateTaskSource),
   /**
@@ -350,7 +351,11 @@ export const boardTaskOf = (task: HqAppTask): BoardTask => ({
     task.state === "closed" && task.taker?.kind === "person" && task.takenAt != null
       ? "taken"
       : task.state,
-  putBy: task.source?.kind === "conversation" ? task.source.putBy : null,
+  putBy:
+    task.source?.kind === "conversation" || task.source?.kind === "board"
+      ? task.source.putBy
+      : null,
+  protocol: task.source === undefined ? 1 : mateBoardProtocolOf(task.source),
   taker: task.taker ?? null,
 });
 
