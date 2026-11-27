@@ -1496,9 +1496,11 @@ const readSnoozes = decoded(HqSnoozesView, "what you set aside");
 /**
  * The Board's opt-in on a read of an application's tasks: an HQ that knows the Board answers its
  * fields (`HqAppTask.source`, `taker`, `takenAt`, `changes`, the `taken` state) only to a read that
- * asks for them, so older clients keep decoding; this client always asks.
+ * asks for them, and the tasks put on the Board directly (source `board`) only to one that also
+ * asks for those, so older clients keep decoding; this client always asks for both, each its own
+ * `with` (an older HQ reads the first alone).
  */
-export const HQ_BOARD_READ = "with=board";
+export const HQ_BOARD_READ = "with=board&with=board-source";
 const readTaskLimits = decoded(HqTaskLimitsView, "the limits per task");
 const readCreatedBirth = decoded(
   Schema.Struct({ ...HqRecordedBirth.fields, appId: Schema.String }),
