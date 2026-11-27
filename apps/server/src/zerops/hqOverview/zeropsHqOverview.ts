@@ -236,6 +236,15 @@ function mateKindOf(thread: OrchestrationThreadShell): MateThreadKind {
   return kind === "done" || kind === "woke" ? "idle" : kind;
 }
 
+/**
+ * A crewmate's chat's kind on its face: a failed turn rests there, since the crew says what it means
+ * for its task — a row of its own, with its press — and is no question for the person to answer.
+ */
+function crewmateKindOf(thread: OrchestrationThreadShell): MateThreadKind {
+  const kind = mateKindOf(thread);
+  return kind === "failed" ? "idle" : kind;
+}
+
 function digestOf(thread: OrchestrationThreadShell): ThreadDigest {
   return {
     id: thread.id,
@@ -398,7 +407,7 @@ function crewOf(
         tint: mate.tint,
         lead: mate.kind === "lead",
         threadId: mate.currentThreadId,
-        threadKind: thread === undefined ? null : mateKindOf(thread),
+        threadKind: thread === undefined ? null : crewmateKindOf(thread),
         loginKey: loginKeyOf(mate.login),
       };
     }),

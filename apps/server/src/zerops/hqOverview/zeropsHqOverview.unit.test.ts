@@ -934,3 +934,13 @@ it("HO37: A failed stand-up names to HQ each service zcp failed with where it fa
   expect(sensitive?.failed[0]?.cause).toBe("build •••••• refused");
   expect(sensitive?.failed[1]?.cause).toBe(`${"w".repeat(MATE_LINK_TEXT_MAX - 1)}…`);
 });
+
+// witness: apps/server/src/zerops/hqOverview/zeropsHqOverview.ts | return kind === "failed" ? "idle" : kind; → return kind;
+it("HO+1: A crewmate whose chat's last turn failed rests on its face in the crew digest, its failure left to the crew's own row; breaks: Needs you asks the person to answer a crewmate that asked nothing, with an Answer that opens nothing, long after its task was dropped", () => {
+  const leadsChat = shell("crew-lead-1", {
+    session: { ...RUNNING.session, status: "error", lastError: "boom" },
+    crew: { crew: "Shop", crewmate: "lead", stint: 1 },
+  });
+  const crew = overviewOf([shell("main"), leadsChat], CREW).crew;
+  expect(crew.status === "applied" ? crew.crewmates[0]?.threadKind : undefined).toBe("idle");
+});
