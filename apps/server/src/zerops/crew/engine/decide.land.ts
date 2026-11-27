@@ -134,7 +134,11 @@ export const mergeIn = (b: Builder, task: TaskRecord): void => {
   const member = b.member(task.owner);
   if (member.kind !== "writer") {
     const clean = step(b, task, { type: "merge-clean" });
-    if (clean !== undefined) checkPassed(b, clean);
+    // A person's message to a reader asked for its answer, which its chat already holds: nothing of
+    // it lands, so it closes once the reader is free, as if its person had pressed Land.
+    const asked = member.kind === "reader" && task.source === "message";
+    if (clean !== undefined)
+      checkPassed(b, clean, asked ? { landAs: dispatchPrincipal(b.state, task) } : {});
     return;
   }
   const pending = Object.values(b.state.effects).some(
