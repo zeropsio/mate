@@ -30,7 +30,7 @@ export interface TaskSessionInput {
   readonly record: HqAppTask | undefined;
   /** The person may stop it: an Owner or Admin, its putter or its taker (`stopTaskPermission`). */
   readonly canStop: boolean;
-  /** Where this account's stop of it stands (`appTaskWrites`); absent: none asked. */
+  /** Where this account's latest write to it stands (`appTaskWrites`); absent: none made. */
   readonly stop?: TaskWriteAction | undefined;
 }
 
@@ -134,7 +134,8 @@ export function taskSession(input: TaskSessionInput): TaskSession {
   const status = live ?? (record === undefined ? undefined : recordStatus(record));
   if (status === undefined) return UNKNOWN;
   // A stop sent and not yet shown in what HQ says: it is stopping from the press on.
-  const pressed = input.stop?.kind === "working" && isLiveStatus(status);
+  const pressed =
+    input.stop?.kind === "working" && input.stop.verb === "task-stop" && isLiveStatus(status);
   const shown: TaskStatus = pressed ? "stopping" : status;
   const taskId = input.taskId ?? mine?.id ?? record?.id ?? null;
   const recordPr = record?.pullRequest ?? null;
@@ -144,7 +145,8 @@ export function taskSession(input: TaskSessionInput): TaskSession {
     stoppable: input.canStop && taskId !== null && isStoppableStatus(shown),
     workedMs: mine?.workedMs ?? record?.workedMs ?? null,
     spentUsd: mine?.spentUsd ?? record?.spentUsd ?? null,
-    change: record?.change ?? null,
+    // A taken task's change is the latest its taker's Mate linked to it.
+    change: record?.change ?? record?.changes?.at(-1) ?? null,
     pullRequest:
       mine?.pullRequest ??
       (recordPr === null

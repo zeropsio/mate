@@ -16,7 +16,7 @@ import { toastManager } from "~/lib/toasts";
 import { hqPlacementsAtom } from "../state/zerops";
 import { recordOf, sessionTaskId, taskSession, type TaskSession } from "./taskSession.logic";
 import { useBoardOffers } from "./useBoardTasks";
-import { useAppTaskSource, useAppTaskStops } from "./useTaskSourceSettings";
+import { useAppTaskSource, useAppTaskStops, useBoardTaskWrites } from "./useTaskSourceSettings";
 import { useProjectMateActivity } from "./useZeropsAgentActivity";
 import { useKnownMate } from "./useZeropsMates";
 
@@ -26,6 +26,10 @@ interface TaskSessionView {
   readonly appId: string | null;
   /** Stops the task, once confirmed; `null` while it cannot be stopped from here. */
   readonly stop: (() => void) | null;
+  /** A taken task's Done, for its taker; `null` where it is not offered. */
+  readonly done: (() => void) | null;
+  /** A taken task given back to the queue, by its taker or an owner or admin; `null`: not offered. */
+  readonly release: (() => void) | null;
 }
 
 export function useTaskSession(
@@ -68,9 +72,21 @@ export function useTaskSession(
     if (stop?.kind === "failed" || stop?.kind === "unresolved")
       toastManager.add({ type: "error", title: stop.words });
   }, [stop]);
+  const offer = taskId === null ? undefined : offers?.tasks[taskId];
+  const writes = useBoardTaskWrites(appId);
+  // A taken task's chat offers Done and Release; its Stop stays on the Board.
+  const taken = offer?.done === true || offer?.release === true;
   return {
     session,
     appId,
-    stop: session.stoppable && taskId !== null ? () => stops.stop(taskId) : null,
+    stop: session.stoppable && taskId !== null && !taken ? () => stops.stop(taskId) : null,
+    done:
+      offer?.done === true && taskId !== null && writes !== null
+        ? () => void writes.done(taskId)
+        : null,
+    release:
+      offer?.release === true && taskId !== null && writes !== null
+        ? () => void writes.release(taskId)
+        : null,
   };
 }

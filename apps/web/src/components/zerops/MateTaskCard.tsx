@@ -19,6 +19,7 @@ import {
   ArrowUpRightIcon,
   CalendarClockIcon,
   HashIcon,
+  MessageSquareIcon,
   MessagesSquareIcon,
   TimerIcon,
   WebhookIcon,
@@ -29,6 +30,13 @@ import { pullRequestName, taskAskBeyondTitle } from "~/zerops/automatedMate.logi
 import { spentWords, taskPillStatus, type TaskSession } from "~/zerops/taskSession.logic";
 import { TASK_STATUS_WORDS, type TaskTone, taskStatusTone, workedWords } from "~/zerops/taskStatus";
 import { useTaskSession } from "~/zerops/useTaskSession";
+import { useOpenTaskConversation } from "~/zerops/useBoardTasks";
+import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
+import { projectNameInApp } from "@t3tools/client-runtime/zerops";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { putOrigin } from "./projectAutomation/taskBoard.logic";
 
 import { cn } from "~/lib/utils";
 
@@ -81,6 +89,8 @@ function SourceMark({ source }: { readonly source: MateTaskSource }) {
       return <WebhookIcon aria-hidden="true" className={className} />;
     case "schedule":
       return <CalendarClockIcon aria-hidden="true" className={className} />;
+    case "conversation":
+      return <MessageSquareIcon aria-hidden="true" className={className} />;
   }
 }
 
@@ -108,19 +118,37 @@ export function MateTaskStatus({
   /** Its Mate's app-bar Review (`headerReviewItems`); `null` while nothing waits there. */
   readonly review?: TaskReviewDoor | null;
 }) {
-  const { session, stop } = useTaskSession(task, environmentId, conversationId, taskId);
-  return <MateTaskStatusView onStop={stop ?? undefined} review={review} session={session} />;
+  const { session, stop, done, release } = useTaskSession(
+    task,
+    environmentId,
+    conversationId,
+    taskId,
+  );
+  return (
+    <MateTaskStatusView
+      onDone={done ?? undefined}
+      onRelease={release ?? undefined}
+      onStop={stop ?? undefined}
+      review={review}
+      session={session}
+    />
+  );
 }
 
 export function MateTaskStatusView({
   session = NOT_KNOWN,
   onStop,
+  onDone,
+  onRelease,
   review = null,
 }: {
   /** Where it stands now (`taskSession`); not known: its room held, nothing said. */
   readonly session?: TaskSession;
   /** Stops the task, confirmed first; absent while it cannot be stopped from here. */
   readonly onStop?: (() => void) | undefined;
+  /** A task the person took: marks it done (its taker), or gives it back to the queue. */
+  readonly onDone?: (() => void) | undefined;
+  readonly onRelease?: (() => void) | undefined;
   /**
    * Its Mate's app-bar Review, led by this task's change (`taskReviewItems`); where it asks, the
    * pill does not say the task is up for review again (`taskPillStatus`).
@@ -135,7 +163,13 @@ export function MateTaskStatusView({
     review === null ? null : (
       <HeaderReviewDoor held={review.held} review={{ ...review.review, items }} />
     );
-  if (status === undefined && onStop === undefined) return door;
+  if (
+    status === undefined &&
+    onStop === undefined &&
+    onDone === undefined &&
+    onRelease === undefined
+  )
+    return door;
   return (
     <>
       {door}
@@ -197,6 +231,17 @@ export function MateTaskStatusView({
             Stop
           </Button>
         ) : null}
+        {/* A task the person took: give it back to the queue, or say it is done. */}
+        {onRelease === undefined ? null : (
+          <Button onClick={onRelease} size="sm" variant="ghost">
+            Release
+          </Button>
+        )}
+        {onDone === undefined ? null : (
+          <Button onClick={onDone} size="sm" variant="secondary">
+            Done
+          </Button>
+        )}
       </span>
     </>
   );
@@ -229,12 +274,14 @@ export function MateTaskCard({
   }) => void;
 }) {
   const { session, appId } = useTaskSession(task, environmentId, conversationId, taskId);
+  const origin = usePutOrigin(task);
   const openChange =
     onOpenChange === undefined || appId === null || session.change === null
       ? undefined
       : () => onOpenChange({ appId, ...session.change! });
   return (
     <MateTaskCardView
+      origin={origin}
       session={session}
       task={task}
       text={text}
@@ -243,13 +290,49 @@ export function MateTaskCard({
   );
 }
 
+/**
+ * Where a task put on the Board from a chat came from, in the reader's words: who put it and whose
+ * chat it was, with the way back to that chat where the reader's list holds its Mate. `undefined`
+ * for every other source, which names itself.
+ */
+function usePutOrigin(task: MateTaskSource): TaskCardOrigin | undefined {
+  const session = useZeropsSessionOptional();
+  const personName = useHqPersonNames(session?.activeOrganization?.id);
+  const { listing } = useZeropsCandidates();
+  const openConversation = useOpenTaskConversation();
+  if (task.kind !== "conversation") return undefined;
+  const mate = heldCandidates(listing).rows.find(
+    (row) => row.project.id === task.mateProjectId,
+  )?.project;
+  const origin = putOrigin(task, {
+    viewerId: session?.user?.id,
+    personName,
+    mateName: () => (mate === undefined ? undefined : projectNameInApp(mate)),
+  });
+  const { conversation } = origin;
+  return {
+    words: origin.full,
+    ...(conversation === null ? {} : { onOpen: () => openConversation(conversation) }),
+  };
+}
+
+/** Where a task came from, said by the reader's client where its source names nobody it knows. */
+interface TaskCardOrigin {
+  readonly words: string;
+  /** Opens the chat it was put from. */
+  readonly onOpen?: () => void;
+}
+
 export function MateTaskCardView({
   task,
+  origin,
   text = "",
   session = NOT_KNOWN,
   onOpenChange,
 }: {
   readonly task: MateTaskSource;
+  /** Where it came from in the reader's words, a Put on board's (`usePutOrigin`); else its source's. */
+  readonly origin?: TaskCardOrigin | undefined;
   readonly text?: string;
   /** Where it stands now (`taskSession`); not known: its facts' line holds its room, empty. */
   readonly session?: TaskSession;
@@ -274,7 +357,12 @@ export function MateTaskCardView({
       <div className="flex flex-col gap-1.5 px-5 pt-3.5 pb-3">
         <Text className="flex min-w-0 items-center gap-2" render={<div />} variant="remark">
           <SourceMark source={task} />
-          <span className="min-w-0 truncate">{mateTaskCardSource(task)}</span>
+          <span className="min-w-0 truncate">{origin?.words ?? mateTaskCardSource(task)}</span>
+          {origin?.onOpen === undefined ? null : (
+            <span className="ms-auto shrink-0">
+              <InlineButton onClick={origin.onOpen}>Open the chat</InlineButton>
+            </span>
+          )}
           {link === null ? null : (
             <span className="ms-auto shrink-0">
               <InlineButton render={<a href={link.url} rel="noreferrer" target="_blank" />}>
