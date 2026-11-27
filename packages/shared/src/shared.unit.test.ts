@@ -544,7 +544,7 @@ it("SH11: OpenCode stands in for a person's sign-in only on a model key they set
 });
 
 // witness: packages/shared/src/crewHome.ts | if (!unplaced(member)) return member; → return member;
-it("SH+1: A crew drafted before the Mate's dev services are read keeps every crewmate, and its builder is placed on the only dev service, sharing the database it reaches, before Apply admits it; breaks: a crew card pressed on a Mate with a new dev service saves nobody, or a builder starts with nowhere for its copy", () => {
+it("SH13: A crew drafted before the Mate's dev services are read keeps every crewmate, and its builder is placed on the only dev service, sharing the database it reaches, before Apply admits it; breaks: a crew card pressed on a Mate with a new dev service saves nobody, or a builder starts with nowhere for its copy", () => {
   const drafted = crewFromAsk({
     crew: "crew",
     devHosts: [],

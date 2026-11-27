@@ -156,9 +156,7 @@ function JobForm({
   const tints = freeTints(definition, target.handle, mateTint);
   const [draft, setDraft] = useState<CrewmateDraft>(() => {
     if (before !== undefined) return crewmateDraftOf(before);
-    const empty = emptyCrewmateDraft(target.lead);
-    const onlyHost = devHosts.length === 1 ? (devHosts[0]?.host ?? "") : "";
-    return { ...empty, tint: tints[0], host: onlyHost };
+    return { ...emptyCrewmateDraft(target.lead), tint: tints[0] };
   });
   const [more, setMore] = useState(false);
   const set = <K extends keyof CrewmateDraft>(key: K, value: CrewmateDraft[K]) =>
@@ -179,16 +177,14 @@ function JobForm({
   const poolNames = pools ?? [];
   const poolChoices =
     draft.pool === "" || poolNames.includes(draft.pool) ? poolNames : [...poolNames, draft.pool];
-  // Topology may arrive after a new builder's form opens.
-  if (
-    isNew &&
-    writes &&
-    !draft.host &&
-    !draft.pool &&
-    devHosts.length === 0 &&
-    poolNames.length === 1
-  ) {
-    setDraft({ ...draft, pool: poolNames[0]! });
+  // A builder with nowhere for its copy takes the one place there is: a new one, or one drafted
+  // before the services were read, and topology may arrive after its form opens.
+  if (writes && !draft.host && !draft.pool && hostNames.length + poolNames.length === 1) {
+    setDraft({
+      ...draft,
+      host: hostNames[0] ?? "",
+      pool: hostNames[0] === undefined ? poolNames[0]! : "",
+    });
   }
   const nameTaken = definition.members.some(
     (member) =>
