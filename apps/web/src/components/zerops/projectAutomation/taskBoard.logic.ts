@@ -123,6 +123,13 @@ export interface BoardRow {
   } | null;
   /** Why it failed or stopped, said under its title. */
   readonly detail: string | null;
+  /** What its Mate asks, while it waits on a person's answer; `null`: it asks nothing. */
+  readonly question: string | null;
+  /**
+   * Its putter answers it here, in its row: a task put on the Board itself, which has no chat. A
+   * task put from a conversation is answered on its card in that chat, never here.
+   */
+  readonly answeredHere: boolean;
 }
 
 /** A Mate HQ hands no task while the change of its last one waits for review. */
@@ -397,6 +404,8 @@ export function boardOf(
       route: taskRoute(task.link),
       change,
       detail: task.state === "failed" || task.state === "stopped" ? task.detail : null,
+      question: lane === "waiting" ? task.detail : null,
+      answeredHere: task.source?.kind === "board",
     });
   }
   lanes.queued.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));

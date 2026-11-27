@@ -366,21 +366,24 @@ export const BOARD_BRIEF_MAX = 8_000;
 export const BOARD_MESSAGE_MAX = 8_000;
 
 /**
- * `POST /api/apps/:appId/tasks` (a signed-in person): a person's **Put on board** from one of their
- * conversations — the title and the brief they saw, and the Mate and conversation it came from,
- * which must be in the application. HQ answers `201` {@link HqTaskAnswer}, the task queued at once.
+ * `POST /api/apps/:appId/tasks` (a signed-in person): a person's **Put on board** — the title and
+ * the brief, and where they put it from: one of their conversations, its Mate and conversation in
+ * the application (`from`), or the Board itself (no `from`: **New task**, source `board`). HQ
+ * answers `201` {@link HqTaskAnswer}, the task queued at once.
  */
 export const HqPutTaskRequest = Schema.Struct({
   title: TrimmedNonEmptyString.check(Schema.isMaxLength(BOARD_TITLE_MAX)),
   brief: TrimmedNonEmptyString.check(Schema.isMaxLength(BOARD_BRIEF_MAX)),
-  from: Schema.Struct({
-    mateProjectId: TrimmedNonEmptyString,
-    conversationId: TrimmedNonEmptyString,
-  }),
+  from: Schema.optionalKey(
+    Schema.Struct({
+      mateProjectId: TrimmedNonEmptyString,
+      conversationId: TrimmedNonEmptyString,
+    }),
+  ),
   /**
-   * The put's own request id, the same on every send of one card's put (`boardPutRequestId`): HQ
-   * puts one task per id however often it arrives. The client's operation adds it; a surface never
-   * names one.
+   * The put's own request id, the same on every send of one card's or draft's put
+   * (`boardPutRequestId`): HQ puts one task per id however often it arrives. The client's operation
+   * adds it; a surface never names one.
    */
   requestId: Schema.optionalKey(TrimmedNonEmptyString),
 });
@@ -388,15 +391,20 @@ export type HqPutTaskRequest = typeof HqPutTaskRequest.Type;
 
 /**
  * The request id a Put on board is sent under (`HqPutTaskRequest.requestId`): one per card — the
- * board ask's request in its chat of its Mate — the same on every send of it, from any tab or
- * device, so HQ answers a repeated put with the task the first made. A UUID (version 8) of a
- * 128-bit hash of the three; HQ scopes it to the application and the person.
+ * board ask's request in its chat of its Mate, or a New task's draft on the Board (no `from`) —
+ * the same on every send of it, from any tab or device, so HQ answers a repeated put with the task
+ * the first made. A UUID (version 8) of a 128-bit hash of them; HQ scopes it to the application
+ * and the person.
  */
 export function boardPutRequestId(
-  from: { readonly mateProjectId: string; readonly conversationId: string },
+  from: { readonly mateProjectId: string; readonly conversationId: string } | undefined,
   card: string,
 ): string {
-  const hex = hash128(`${from.mateProjectId}\n${from.conversationId}\n${card}`);
+  const hex = hash128(
+    from === undefined
+      ? `board\n${card}`
+      : `${from.mateProjectId}\n${from.conversationId}\n${card}`,
+  );
   const variant = ((Number.parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }

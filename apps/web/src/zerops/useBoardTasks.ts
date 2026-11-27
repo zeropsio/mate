@@ -250,8 +250,22 @@ export function useMateFaces(): ReadonlyMap<string, BoardFace> {
 }
 
 /**
+ * The task whose answer field the Board focuses as its row is drawn: asked by a press that opens
+ * the Board to answer it, taken by the first row that draws it. The tab's own, never kept.
+ */
+let answerOnArrival: string | null = null;
+
+/** Whether the Board's row of `taskId` takes the focus an opening press asked for it, once. */
+export function takeAnswerOnArrival(taskId: string): boolean {
+  if (answerOnArrival !== taskId) return false;
+  answerOnArrival = null;
+  return true;
+}
+
+/**
  * Where the person who put a task on the Board answers its question: their own card in the chat they
- * put it from, where the Board read says which; else the application's Board, on its page.
+ * put it from, where the Board read says which; else the application's Board, on its page, with
+ * that task's answer field focused (a task put on the Board itself is answered in its row).
  */
 export function useAnswerPutTask() {
   const store = useAccountStoreForAdapters();
@@ -268,6 +282,7 @@ export function useAnswerPutTask() {
           ? null
           : putChatOf(readsOfState(store.state()), { orgId, appId }, task.taskId);
       if (chat !== null) return openConversation(chat);
+      answerOnArrival = task.taskId;
       void router.navigate({ to: "/group/$groupId/board", params: { groupId: appId } });
     },
     [openConversation, orgId, placements, router, store],

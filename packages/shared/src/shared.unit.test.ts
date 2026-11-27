@@ -846,3 +846,16 @@ it("SH+2: The person who put a task on the Board directly may stop it and answer
     colleague: ["not_task_stopper", "not_task_putter"],
   });
 });
+
+// witness: packages/shared/src/hqIntake.ts | ? `board\n${card}` → ? "board"
+it("SH+3: A New task on the Board names one request per draft, the same on every send of it, and no other draft or card shares it; breaks: a second New task is answered with the first one's task, or a draft sent again after a lost answer makes a second task", () => {
+  const first = boardPutRequestId(undefined, "draft-1");
+  expect({
+    again: boardPutRequestId(undefined, "draft-1") === first,
+    otherDraft: boardPutRequestId(undefined, "draft-2") === first,
+    card:
+      boardPutRequestId({ mateProjectId: "mate-ana", conversationId: "chat-1" }, "draft-1") ===
+      first,
+    uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(first),
+  }).toEqual({ again: true, otherDraft: false, card: false, uuid: true });
+});

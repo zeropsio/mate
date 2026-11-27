@@ -6,7 +6,7 @@
  * sources.
  */
 import { ArrowUpRightIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, type Ref } from "react";
 
 import type { BoardFace } from "~/zerops/useBoardTasks";
 
@@ -93,15 +93,21 @@ export function BoardTaskRowView({
   );
 }
 
-/** What a pool Mate asks its task's putter, and, for them, the field that answers it. */
-function BoardTaskQuestion({
+/**
+ * What a pool Mate asks its task's putter, and, for them, the field that answers it: on a chat's
+ * put card for a task put from that chat, in the Board's row for one put on the Board itself.
+ */
+export function BoardTaskQuestion({
   asker,
   question,
   answer,
+  fieldRef,
 }: {
   readonly asker: string;
   readonly question: string;
   readonly answer: Parameters<typeof BoardTaskRowView>[0]["answer"];
+  /** The answer field, for a press that brings the person to it. */
+  readonly fieldRef?: Ref<HTMLTextAreaElement> | undefined;
 }) {
   const [text, setText] = useState("");
   const sending = answer?.state.kind === "sending";
@@ -121,6 +127,7 @@ function BoardTaskQuestion({
             <Textarea
               aria-label="Your answer"
               disabled={sending}
+              ref={fieldRef}
               onChange={(event) => setText(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {

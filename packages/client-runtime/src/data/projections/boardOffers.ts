@@ -1,9 +1,11 @@
 /**
  * What the person may do on an application's Board, by the verb rules
  * (`@t3tools/shared/zeropsPermissions`) over their own live read of Zerops, HQ's tasks of the
- * application and its Mates (whose each is, and which are automated): where a Put on board may come
- * from — only a Mate whose server takes the Board — and each task's Take (which of their own Mates
- * it may open in: only one whose server reads the task's source), Release, Done, Stop and Answer. Surfaces draw these answers and never decide one; HQ decides again at the press.
+ * application and its Mates (whose each is, and which are automated): whether a New task may be
+ * put on the Board itself, where a Put on board may come from — only a Mate whose server takes the
+ * Board — and each task's Take (which of their own Mates it may open in: only one whose server
+ * reads the task's source), Release, Done, Stop and Answer. Surfaces draw these answers and never
+ * decide one; HQ decides again at the press.
  * `undefined` until Zerops is read: nothing is offered or refused on a guess.
  *
  * @module data/projections/boardOffers
@@ -58,6 +60,8 @@ export function boardTaskOffer(
 }
 
 export interface BoardOffers {
+  /** Whether a New task may be put on the Board directly: wherever the person sees the application. */
+  readonly put: boolean;
   /** The application's Mates a Put on board may come from: all of them, where the person sees it. */
   readonly putFrom: ReadonlyArray<string>;
   /** Each task HQ answered, by its id; `undefined` while the Board is not read. */
@@ -107,6 +111,7 @@ export const boardOffers: Projection<
     const tasks = read.fact("hqAppTasks", settingId({ orgId, appId }));
     const known = tasks.kind === "known";
     return decided(livePermissionFacts(read, orgId), projectIds, (facts) => ({
+      put: putTaskPermission(facts, projectIds).allow,
       // Its agent proposes the work and its card puts it: only a Mate whose server draws that card.
       putFrom: projectIds.filter(
         (projectId) =>

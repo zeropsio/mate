@@ -15,6 +15,20 @@ import { TASK_STATUS_WORDS } from "~/zerops/taskStatus";
 
 import { type AskState, notNowWords } from "../../ask/ask.logic";
 import type { BoardRow } from "../projectAutomation/taskBoard.logic";
+import type { BoardAnswerState } from "./BoardTaskRow";
+
+/**
+ * Where its putter's answer to a task stands, from this account's latest write to the task
+ * (`appTaskWrites`): another write (a stop, a take) says nothing of the answer.
+ */
+export function boardAnswerState(write: TaskWriteAction | undefined): BoardAnswerState {
+  if (write === undefined || write.kind === "idle") return { kind: "idle" };
+  if (write.kind === "working")
+    return write.verb === "task-message" ? { kind: "sending" } : { kind: "idle" };
+  if (write.kind === "done")
+    return write.verb === "task-message" ? { kind: "sent" } : { kind: "idle" };
+  return { kind: "refused", words: write.words };
+}
 
 /** Where a board ask stands in the timeline: the run card it was asked in. */
 export interface BoardAskPlace {

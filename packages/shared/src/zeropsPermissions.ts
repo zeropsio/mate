@@ -399,17 +399,19 @@ const puts = (member: Member, task: BoardTask) =>
   task.putBy !== null && member.userId !== undefined && task.putBy === member.userId;
 
 /**
- * Putting work on an application's Board (`put_task`) from a conversation of one of its Mates:
- * whoever sees the application, from a Mate in it.
+ * Putting work on an application's Board (`put_task`): whoever sees the application, directly on
+ * its Board (`mateProjectId` absent) or from a conversation of one of its Mates.
  */
 export function putTaskPermission(
   facts: PermissionFacts,
   projectIds: ReadonlyArray<string>,
-  mateProjectId: string,
+  mateProjectId?: string,
 ): Decision {
   const seen = appPermission(facts, "read_app", projectIds);
   if (!seen.allow) return seen;
-  return projectIds.includes(mateProjectId) ? ALLOW : refuse("mate_not_in_app");
+  return mateProjectId === undefined || projectIds.includes(mateProjectId)
+    ? ALLOW
+    : refuse("mate_not_in_app");
 }
 
 /**

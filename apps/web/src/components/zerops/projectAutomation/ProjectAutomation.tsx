@@ -1,7 +1,8 @@
 /**
- * A project's Automation section, on its page's column: the pool of its automated Mates as one
- * line (their faces, how many and what they are doing, *Add a Mate*, and the organization's spend
- * this month against its budget); its task board — what they are on (at work), what waits by its
+ * A project's Board section, on its page's column: New task first, a title line that opens its
+ * brief in place (`NewBoardTask`); then the pool of its automated Mates as one line (their faces,
+ * how many and what they are doing, *Add a Mate*, and the organization's spend this month against
+ * its budget); its task board — what they are on (at work), what waits by its
  * place (each with Stop for an Owner or Admin), and what ended — read from HQ, and read again by
  * the data layer as HQ's navigation says their tasks moved (`hqTaskBoardRefresh`); then the
  * sources its tasks come from — GitHub issues by label, a Slack or Discord channel, webhooks,
@@ -9,8 +10,8 @@
  * Configured where the project is: Settings keeps only what is the organization's (its key, its
  * GitHub apps, its Slack and Discord, its limits and budget).
  *
- * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
- * and sees the section only once it holds something.
+ * An Owner or Admin sets it up here; anyone else puts tasks and reads the pool, the board and the
+ * GitHub source.
  */
 import { Failure } from "~/components/ui/failure";
 import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
@@ -53,6 +54,7 @@ import {
   useOrgTaskSource,
 } from "~/zerops/useTaskSourceSettings";
 import {
+  takeAnswerOnArrival,
   useBoardOffers,
   useMateFaces,
   useOpenTaskConversation,
@@ -103,6 +105,9 @@ import {
   type SourceRow,
 } from "./projectAutomation.logic";
 import { AppChannelView, AppIntakeView, AppSchedulesView, AppWebhooksView } from "./sourceForms";
+import { NewBoardTask } from "./NewBoardTask";
+import { BoardTaskQuestion, type BoardAnswerState } from "../board/BoardTaskRow";
+import { boardAnswerState } from "../board/boardAsk.logic";
 import {
   boardOf,
   boardWaitingCount,
@@ -168,6 +173,9 @@ export function ProjectAutomation({
     predictedBoard(tasks, intake.read.intake?.waiting ?? 0, useTakenCount(groupId)),
     pool,
   );
+  // The Board's first line, whoever reads it.
+  // Keyed by the application: no draft follows the person to another one.
+  const newTask = <NewBoardTask appId={groupId} key={groupId} />;
   if (!admin) {
     const { rows, withheld } = sourceRows({
       intake: intake.read.intake,
@@ -181,6 +189,7 @@ export function ProjectAutomation({
     return (
       <ProjectAutomationView
         board={board}
+        newTask={newTask}
         onOpenMate={onOpenMate}
         pool={pool}
         sources={{ rows, reading: intake.read.intake === undefined, withheld }}
@@ -194,6 +203,7 @@ export function ProjectAutomation({
       groupId={groupId}
       intake={intake}
       name={name ?? "This project"}
+      newTask={newTask}
       onOpenMate={onOpenMate}
       pool={pool}
       repos={repos}
@@ -409,6 +419,10 @@ function useTaskBoard(
             onDone: (taskId) => {
               void writes?.done(taskId);
             },
+            answerOf: (taskId) => boardAnswerState(stops.stops[taskId]),
+            onAnswer: (taskId, text) => {
+              writes?.answer(taskId, text);
+            },
           },
   };
 }
@@ -432,9 +446,11 @@ function AdminAutomation({
   intake,
   addMate,
   board,
+  newTask,
   onOpenMate,
 }: {
   readonly board: BoardView;
+  readonly newTask: ReactNode;
   readonly groupId: string;
   readonly name: string;
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
@@ -490,6 +506,7 @@ function AdminAutomation({
   return (
     <>
       <ProjectAutomationView
+        newTask={newTask}
         admin={{
           onAddMate: addMate,
           onTakeFrom: setOpen,
@@ -694,6 +711,10 @@ export interface BoardVerbs {
   readonly onTake: (taskId: string, mateProjectId: string) => void;
   readonly onRelease: (taskId: string) => void;
   readonly onDone: (taskId: string) => void;
+  /** Where its putter's answer stands (`boardAnswerState`), for a task answered in its row. */
+  readonly answerOf: (taskId: string) => BoardAnswerState;
+  /** Its putter's answer, for a task answered in its row (`BoardRow.answeredHere`). */
+  readonly onAnswer: (taskId: string, text: string) => void;
 }
 
 /**
@@ -733,6 +754,7 @@ export interface BoardView {
  * and the sources its tasks come from as rows of the same list. A group stands while it has a row.
  */
 export function ProjectAutomationView({
+  newTask,
   pool,
   sources,
   admin,
@@ -740,6 +762,8 @@ export function ProjectAutomationView({
   onOpenMate,
   workingOf,
 }: {
+  /** The Board's first line, New task (`NewBoardTask`); absent, none. */
+  readonly newTask?: ReactNode;
   /** The task board; absent, none is drawn. */
   readonly board?: BoardView | undefined;
   readonly pool: ReadonlyArray<PoolMate>;
@@ -759,6 +783,7 @@ export function ProjectAutomationView({
       className="grid min-w-0 grid-cols-[minmax(0,1fr)] [--ln-ground:transparent] [--ln-track:color-mix(in_oklab,var(--foreground)_30%,transparent)] @container/automation"
       data-zerops-surface="project-automation"
     >
+      {newTask}
       <AutomationBody
         admin={admin}
         board={board}
@@ -783,8 +808,6 @@ function AutomationBody({
   const held = new Set(
     board?.read.state === "known" ? board.read.board.blocked.map((line) => line.projectId) : [],
   );
-  // Nothing set to take a task from, as far as the reader may see.
-  const nowhere = sources.rows.length === 0 && !sources.reading && !sources.withheld;
   // Finished shows its first few; *+ N more* opens the rest in place. Held here, so what grows
   // eases open (`GrowsInPlace`) and the sources go down with it.
   const [all, setAll] = useState(false);
@@ -843,7 +866,7 @@ function AutomationBody({
               board={board}
               onAll={setAll}
               pool={pool}
-              waitsFor={nowhere && pool.length > 0 ? pool.map((mate) => mate.name) : undefined}
+              waitsFor={pool.length > 0 ? pool.map((mate) => mate.name) : undefined}
             />
           )}
           <SourcesView admin={admin} sources={sources} />
@@ -1239,6 +1262,13 @@ function BoardRowView({
   const stranded = verbs?.strandedOf(row.id) === true;
   const holderName =
     row.holder?.kind === "pool" ? (face?.name ?? row.holder.name) : (row.holder?.mate ?? null);
+  // A task put on the Board itself that asks its putter, the reader: answered here, in its row.
+  const answersHere =
+    verbs !== undefined && row.answeredHere && row.question !== null && offer?.answer === true;
+  const answerField = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    if (answersHere && takeAnswerOnArrival(row.id)) answerField.current?.focus();
+  }, [answersHere, row.id]);
   // The seat's one press; a taken task's other verbs in a menu beside it; a Stop alone on hover.
   const primary = busy
     ? null
@@ -1250,7 +1280,7 @@ function BoardRowView({
           ? "review"
           : done
             ? "done"
-            : asks && row.route !== null
+            : answersHere || (asks && row.route !== null)
               ? "answer"
               : null;
   // Done stands in the menu where Review or a stranded Take's Open takes the seat; a task that asks
@@ -1368,6 +1398,16 @@ function BoardRowView({
             >
               Done
             </Button>
+          ) : primary === "answer" && answersHere ? (
+            <Button
+              onClick={() => {
+                answerField.current?.focus();
+              }}
+              size="xs"
+              variant="secondary"
+            >
+              Answer
+            </Button>
           ) : primary === "answer" && row.route !== null ? (
             <OpenPress href={row.route} label="Answer" onOpen={board.onOpen} />
           ) : review !== null ? (
@@ -1402,6 +1442,21 @@ function BoardRowView({
       ) : null}
       {verbs !== undefined && asking ? (
         <StopAsk question={stopQuestion(row, holderName)} taskId={row.id} verbs={verbs} />
+      ) : null}
+      {answersHere && row.question !== null ? (
+        <div className={ASKS}>
+          <BoardTaskQuestion
+            answer={{
+              state: verbs.answerOf(row.id),
+              onSend: (text) => {
+                verbs.onAnswer(row.id, text);
+              },
+            }}
+            asker={holderName ?? "Its Mate"}
+            fieldRef={answerField}
+            question={row.question}
+          />
+        </div>
       ) : null}
     </li>
   );
@@ -1446,8 +1501,8 @@ function TaskBoardView({
   readonly all: boolean;
   readonly onAll: (all: boolean) => void;
   /**
-   * The pool's Mates by name, where the project takes tasks from nowhere yet: a Board with no
-   * task says what they wait for.
+   * The pool's Mates by name, where it has any: a Board with no task says the New task above it
+   * is theirs to take.
    */
   readonly waitsFor?: ReadonlyArray<string> | undefined;
 }) {
@@ -1486,8 +1541,10 @@ function TaskBoardView({
   if (LANES.every((lane) => lanes[lane.id].length === 0))
     return waitsFor === undefined ? null : (
       <Text className="m-0 px-2.5 pt-2 pb-1.5" render={<p />} variant="description">
-        No tasks yet. {waitsFor.length === 1 ? `${waitsFor[0] ?? "It"} takes` : "They take"} one as
-        soon as there is somewhere to take it from.
+        No tasks yet. Put one on the Board above, and{" "}
+        {waitsFor.length === 1
+          ? `${waitsFor[0] ?? "its automated Mate"} takes it.`
+          : "an automated Mate takes it."}
       </Text>
     );
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
@@ -1737,6 +1794,8 @@ const ROWS = "grid min-w-0 grid-cols-subgrid";
 const ROW =
   "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] [&:hover>[data-press]]:bg-item-hover";
 const PRESS = "row-start-1 min-h-10 items-center";
+/** A row's question and its answer field, on a line of its own under the row, past its mark. */
+const ASKS = "col-span-full row-start-3 min-w-0 ps-8 pe-2.5 pb-2";
 
 /** A row's mark: a Mate's face, a queued task's place, a finished one's bead, a source's icon. */
 const LEAD = "col-start-1 row-start-1 me-3 grid size-5 place-items-center text-muted-foreground";

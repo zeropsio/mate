@@ -306,6 +306,8 @@ const VERBS: BoardVerbs = {
   onTake: nothing,
   onRelease: nothing,
   onDone: nothing,
+  answerOf: () => ({ kind: "idle" }),
+  onAnswer: nothing,
 };
 function board(
   tasks: ReadonlyArray<HqAppTask>,

@@ -36,8 +36,7 @@ import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { boardOf } from "../projectAutomation/taskBoard.logic";
 import { BoardAskCardView } from "./BoardAskCard";
-import type { BoardAnswerState } from "./BoardTaskRow";
-import { boardAskFromKey, boardAskKey, boardAskState } from "./boardAsk.logic";
+import { boardAnswerState, boardAskFromKey, boardAskKey, boardAskState } from "./boardAsk.logic";
 
 export function BoardAskCardContainer({
   requestId,
@@ -182,19 +181,7 @@ function useFollowedTask(appId: string | null, taskId: string | null) {
   }).lanes;
   const shown = row.queued[0] ?? row.progress[0] ?? row.waiting[0] ?? row.review[0] ?? row.done[0];
   if (shown === undefined) return null;
-  const write = asked.stops[taskId];
-  const answerState: BoardAnswerState =
-    write === undefined || write.kind === "idle"
-      ? { kind: "idle" }
-      : write.kind === "working"
-        ? write.verb === "task-message"
-          ? { kind: "sending" }
-          : { kind: "idle" }
-        : write.kind === "done"
-          ? write.verb === "task-message"
-            ? { kind: "sent" }
-            : { kind: "idle" }
-          : { kind: "refused", words: write.words };
+  const answerState = boardAnswerState(asked.stops[taskId]);
   return {
     row: shown,
     face: shown.holder === null ? undefined : faces.get(shown.holder.projectId),
