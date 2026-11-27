@@ -30,6 +30,7 @@ import {
   extractModelConfigId,
   findSessionConfigOption,
   mergeToolCallState,
+  permissionAnswerDeclines,
   toolCallProgressLength,
   parseSessionModeState,
   parseSessionUpdateEvent,
@@ -47,6 +48,21 @@ interface AcpToolCallTrackedState {
   readonly state: AcpToolCallState;
   readonly lastEmittedDetailLength: number | undefined;
   readonly skippedSinceEmit: number;
+}
+
+/** The tracked calls with this one marked declined; a call asked about before it was announced is tracked from now. */
+function markToolCallDeclined(
+  current: ReadonlyMap<string, AcpToolCallTrackedState>,
+  toolCallId: string,
+): Map<string, AcpToolCallTrackedState> {
+  const tracked = current.get(toolCallId);
+  const next = new Map(current);
+  next.set(toolCallId, {
+    state: { ...(tracked?.state ?? { toolCallId, data: {} }), declined: true },
+    lastEmittedDetailLength: tracked?.lastEmittedDetailLength,
+    skippedSinceEmit: tracked?.skippedSinceEmit ?? 0,
+  });
+  return next;
 }
 
 function formatConfigOptionValue(value: string | boolean): string {
@@ -1043,7 +1059,18 @@ export const make = (
     });
 
     return {
-      handleRequestPermission: acp.handleRequestPermission,
+      // A declined call is marked before the answer goes back, so the agent's report of the call
+      // after it merges into a declined call.
+      handleRequestPermission: (handler) =>
+        acp.handleRequestPermission((request, context) =>
+          Effect.tap(handler(request, context), (response) =>
+            permissionAnswerDeclines(request, response)
+              ? Ref.update(toolCallsRef, (current) =>
+                  markToolCallDeclined(current, request.toolCall.toolCallId),
+                )
+              : Effect.void,
+          ),
+        ),
       handleElicitation: acp.handleElicitation,
       handleReadTextFile: acp.handleReadTextFile,
       handleWriteTextFile: acp.handleWriteTextFile,

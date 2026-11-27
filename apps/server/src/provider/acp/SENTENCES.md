@@ -18,3 +18,4 @@ next: AP19
 - AP16 — Antigravity starts with its own approve-everything flag only under full access; supervised, auto-accept-edits and auto start without it, so the person is asked
 - AP17 — An Antigravity session restores the conversation's saved model over the cold-resume default, and a model the account does not offer is refused, never replaced by a fallback
 - AP18 — An Antigravity prompt that cannot carry an attachment (a missing upload, an image over its own size limit or past the message's native budget) is refused whole, never sent without it
+- AP+1 — A call whose permission ask was answered with one of the ask's own reject options ends declined, though its agent then reports it completed or failed; an allow, a cancelled ask and an option the ask never offered leave the call as its agent reports it

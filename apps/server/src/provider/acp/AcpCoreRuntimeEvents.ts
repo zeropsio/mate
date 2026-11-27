@@ -156,12 +156,14 @@ export function makeAcpToolCallEvent(input: {
   readonly toolCall: AcpToolCallState;
   readonly rawPayload: unknown;
 }): ProviderRuntimeEvent {
-  const runtimeStatus = runtimeItemStatusFromAcpToolStatus(input.toolCall.status);
+  const ended = input.toolCall.status === "completed" || input.toolCall.status === "failed";
+  // A call its ask turned down ended declined, though its agent reports it completed or failed.
+  const runtimeStatus =
+    ended && input.toolCall.declined
+      ? "declined"
+      : runtimeItemStatusFromAcpToolStatus(input.toolCall.status);
   return {
-    type:
-      input.toolCall.status === "completed" || input.toolCall.status === "failed"
-        ? "item.completed"
-        : "item.updated",
+    type: ended ? "item.completed" : "item.updated",
     ...input.stamp,
     provider: input.provider,
     threadId: input.threadId,

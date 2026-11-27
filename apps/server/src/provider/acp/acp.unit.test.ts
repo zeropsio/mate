@@ -3,8 +3,16 @@ import { ProviderDriverKind, RuntimeRequestId, TurnId } from "@t3tools/contracts
 import * as Effect from "effect/Effect";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import { makeAcpRequestOpenedEvent, makeAcpRequestResolvedEvent } from "./AcpCoreRuntimeEvents.ts";
-import { mergeToolCallState, parseSessionUpdateEvent } from "./AcpRuntimeModel.ts";
+import {
+  makeAcpRequestOpenedEvent,
+  makeAcpRequestResolvedEvent,
+  makeAcpToolCallEvent,
+} from "./AcpCoreRuntimeEvents.ts";
+import {
+  mergeToolCallState,
+  parseSessionUpdateEvent,
+  permissionAnswerDeclines,
+} from "./AcpRuntimeModel.ts";
 import { sanitizeAcpStderrExcerpt } from "./AcpStderr.ts";
 import {
   antigravityApprovalOptions,
@@ -803,4 +811,67 @@ it("AP15: Only a local image path (a workspace path, a Windows path or a local f
       parseToolUpdate(normalizeAntigravitySessionUpdate(imageNotification)).toolCall,
     ).data.imagePath,
   ).toBe("/workspace/brain/result image.png");
+});
+
+// witness: apps/server/src/provider/acp/AcpRuntimeModel.ts | ...(next.declined || previous?.declined ? { declined: true as const } : {}), → ...(next.declined ? { declined: true as const } : {}),
+it("AP+1: A call whose permission ask was answered with one of the ask's own reject options ends declined, though its agent then reports it completed or failed; an allow, a cancelled ask and an option the ask never offered leave the call as its agent reports it", () => {
+  // The asks as Cursor (cursor-agent 2026.10.22) and Antigravity (agy 1.5.18) send them.
+  const cursorAsk = {
+    sessionId: "session-1",
+    toolCall: { toolCallId: "call-1", kind: "execute", title: "`wc -l a.txt`" },
+    options: [
+      { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
+      { optionId: "allow-always", name: "Allow always", kind: "allow_always" },
+      { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+    ],
+  } satisfies EffectAcpSchema.RequestPermissionRequest;
+  const agyAsk = {
+    sessionId: "session-1",
+    toolCall: { toolCallId: "call-1", kind: "execute", title: "wc -l a.txt" },
+    options: [
+      { optionId: "allow", name: "Allow", kind: "allow_once" },
+      { optionId: "deny", name: "Deny", kind: "reject_once" },
+      { optionId: "never", name: "Never", kind: "reject_always" },
+    ],
+  } satisfies EffectAcpSchema.RequestPermissionRequest;
+  const picked = (optionId: string): EffectAcpSchema.RequestPermissionResponse => ({
+    outcome: { outcome: "selected", optionId },
+  });
+  const endsAs = (
+    ask: EffectAcpSchema.RequestPermissionRequest,
+    answer: EffectAcpSchema.RequestPermissionResponse,
+    reported: "completed" | "failed",
+  ) => {
+    const asked = {
+      toolCallId: "call-1",
+      kind: "execute",
+      status: "inProgress" as const,
+      data: {},
+    };
+    const tracked = permissionAnswerDeclines(ask, answer)
+      ? { ...asked, declined: true as const }
+      : asked;
+    const update = parseSessionUpdateEvent({
+      sessionId: "session-1",
+      update: { sessionUpdate: "tool_call_update", toolCallId: "call-1", status: reported },
+    }).events.find((event) => event._tag === "ToolCallUpdated");
+    if (update?._tag !== "ToolCallUpdated") throw new Error("no tool call update");
+    const event = makeAcpToolCallEvent({
+      stamp: { eventId: "event-1" as never, createdAt: "2026-11-27T00:00:00.000Z" },
+      provider: ProviderDriverKind.make("cursor"),
+      threadId: "thread-1" as never,
+      turnId: TurnId.make("turn-1"),
+      toolCall: mergeToolCallState(tracked, update.toolCall),
+      rawPayload: {},
+    });
+    return event.type === "item.completed" ? event.payload.status : event.type;
+  };
+
+  expect(endsAs(cursorAsk, picked("reject-once"), "completed")).toBe("declined");
+  expect(endsAs(agyAsk, picked("deny"), "failed")).toBe("declined");
+  expect(endsAs(agyAsk, picked("never"), "completed")).toBe("declined");
+  expect(endsAs(cursorAsk, picked("allow-once"), "completed")).toBe("completed");
+  expect(endsAs(agyAsk, picked("allow"), "failed")).toBe("failed");
+  expect(endsAs(cursorAsk, { outcome: { outcome: "cancelled" } }, "completed")).toBe("completed");
+  expect(endsAs(cursorAsk, picked("deny"), "completed")).toBe("completed");
 });
