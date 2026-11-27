@@ -88,43 +88,29 @@ export const OPENCODE_KEY_PROVIDERS: ReadonlyArray<OpenCodeKeyProvider> = [
     // delivery" — tool calls and reasoning, a 1M context with no short cap on what one answer
     // writes (Kimi K3 stops at 8k), a third of Kimi K3's price.
     automatedModel: "zai-org/GLM-5.3",
-    // Kimi K2.7 Code ($0.95/$4.00) is left out: models.dev prices no cached input for it, which
-    // OpenCode would then charge at $0.
+    // Only models models.dev lists under this provider: OpenCode resolves a slug through it, and a
+    // model Nebius renamed or dropped fails every run at once ("Model not found").
     automatedModels: [
       {
         id: "zai-org/GLM-5.3",
         name: "GLM-5.3",
-        usdPerMillion: { input: 1.4, cachedInput: 1.4, output: 4.4 },
+        usdPerMillion: { input: 1.4, cachedInput: 0.26, output: 4.4 },
         readsImages: false,
         why: "The strongest for long coding work with tools; no short cap on one answer.",
       },
       {
         id: "zai-org/GLM-5.3-Flash",
         name: "GLM-5.3 Flash",
-        usdPerMillion: { input: 0.15, cachedInput: 0.15, output: 0.5 },
-        readsImages: false,
+        usdPerMillion: { input: 0.15, cachedInput: 0.03, output: 0.5 },
+        readsImages: true,
         why: "GLM-5.3's light sibling: the same long answers at about a tenth of the price.",
       },
       {
-        id: "deepseek-ai/DeepSeek-V4-Flash-0731",
-        name: "DeepSeek V4 Flash",
-        usdPerMillion: { input: 0.14, cachedInput: 0.14, output: 0.28 },
-        readsImages: false,
-        why: "The cheapest here: fast, reasons and calls tools; best for small, clear tasks.",
-      },
-      {
-        id: "Qwen/Qwen3.5-397B-A17B",
-        name: "Qwen3.5 397B",
-        usdPerMillion: { input: 0.6, cachedInput: 0.06, output: 3.6 },
-        readsImages: false,
-        why: "Strong at code, repeated context at a tenth; one answer stops at 8k tokens.",
-      },
-      {
-        id: "deepseek-ai/DeepSeek-V4.1-Flash",
+        id: "deepseek-ai/DeepSeek-V4.1-Flash-1017",
         name: "DeepSeek V4.1 Flash",
-        usdPerMillion: { input: 0.3, cachedInput: 0.3, output: 1.2 },
+        usdPerMillion: { input: 0.3, cachedInput: 0.006, output: 1.2 },
         readsImages: true,
-        why: "The one here that sees images: screenshots and mockups, fast and cheap.",
+        why: "Fast and cheap with screenshots and mockups; repeated context costs almost nothing.",
       },
     ],
   },
