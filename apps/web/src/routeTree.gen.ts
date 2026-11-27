@@ -45,6 +45,7 @@ import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$e
 import { Route as ServiceStackServiceIdDeployAppVersionIdRouteImport } from './routes/service-stack.$serviceId.deploy.$appVersionId'
 import { Route as ChatMateNewBirthIdRouteImport } from './routes/_chat.mate.new.$birthId'
 import { Route as ChatGroupGroupIdFlowRouteImport } from './routes/_chat.group.$groupId.flow'
+import { Route as ChatGroupGroupIdBoardRouteImport } from './routes/_chat.group.$groupId.board'
 import { Route as ChatGroupGroupIdProjectIdRouteImport } from './routes/_chat.group.$groupId.$projectId'
 import { Route as ChatChangeGroupIdRepositoryNumberRouteImport } from './routes/_chat.change.$groupId.$repository.$number'
 
@@ -231,6 +232,11 @@ const ChatGroupGroupIdFlowRoute = ChatGroupGroupIdFlowRouteImport.update({
   path: '/group/$groupId/flow',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatGroupGroupIdBoardRoute = ChatGroupGroupIdBoardRouteImport.update({
+  id: '/group/$groupId/board',
+  path: '/group/$groupId/board',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatGroupGroupIdProjectIdRoute =
   ChatGroupGroupIdProjectIdRouteImport.update({
     id: '/group/$groupId/$projectId',
@@ -278,6 +284,7 @@ export interface FileRoutesByFullPath {
   '/settings/team/$clientUserId': typeof SettingsTeamClientUserIdRoute
   '/settings/team/invite': typeof SettingsTeamInviteRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
+  '/group/$groupId/board': typeof ChatGroupGroupIdBoardRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
   '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
@@ -317,6 +324,7 @@ export interface FileRoutesByTo {
   '/settings/team/$clientUserId': typeof SettingsTeamClientUserIdRoute
   '/settings/team/invite': typeof SettingsTeamInviteRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
+  '/group/$groupId/board': typeof ChatGroupGroupIdBoardRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
   '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
@@ -358,6 +366,7 @@ export interface FileRoutesById {
   '/settings/team_/$clientUserId': typeof SettingsTeamClientUserIdRoute
   '/settings/team_/invite': typeof SettingsTeamInviteRoute
   '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
+  '/_chat/group/$groupId/board': typeof ChatGroupGroupIdBoardRoute
   '/_chat/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/_chat/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
   '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
@@ -399,6 +408,7 @@ export interface FileRouteTypes {
     | '/settings/team/$clientUserId'
     | '/settings/team/invite'
     | '/group/$groupId/$projectId'
+    | '/group/$groupId/board'
     | '/group/$groupId/flow'
     | '/mate/new/$birthId'
     | '/service-stack/$serviceId/deploy/$appVersionId'
@@ -438,6 +448,7 @@ export interface FileRouteTypes {
     | '/settings/team/$clientUserId'
     | '/settings/team/invite'
     | '/group/$groupId/$projectId'
+    | '/group/$groupId/board'
     | '/group/$groupId/flow'
     | '/mate/new/$birthId'
     | '/service-stack/$serviceId/deploy/$appVersionId'
@@ -478,6 +489,7 @@ export interface FileRouteTypes {
     | '/settings/team_/$clientUserId'
     | '/settings/team_/invite'
     | '/_chat/group/$groupId/$projectId'
+    | '/_chat/group/$groupId/board'
     | '/_chat/group/$groupId/flow'
     | '/_chat/mate/new/$birthId'
     | '/service-stack/$serviceId/deploy/$appVersionId'
@@ -754,6 +766,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatGroupGroupIdFlowRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/group/$groupId/board': {
+      id: '/_chat/group/$groupId/board'
+      path: '/group/$groupId/board'
+      fullPath: '/group/$groupId/board'
+      preLoaderRoute: typeof ChatGroupGroupIdBoardRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/group/$groupId/$projectId': {
       id: '/_chat/group/$groupId/$projectId'
       path: '/group/$groupId/$projectId'
@@ -778,6 +797,7 @@ interface ChatRouteChildren {
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
   ChatMateProjectIdRoute: typeof ChatMateProjectIdRoute
   ChatGroupGroupIdProjectIdRoute: typeof ChatGroupGroupIdProjectIdRoute
+  ChatGroupGroupIdBoardRoute: typeof ChatGroupGroupIdBoardRoute
   ChatGroupGroupIdFlowRoute: typeof ChatGroupGroupIdFlowRoute
   ChatMateNewBirthIdRoute: typeof ChatMateNewBirthIdRoute
   ChatChangeGroupIdRepositoryNumberRoute: typeof ChatChangeGroupIdRepositoryNumberRoute
@@ -790,6 +810,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
   ChatMateProjectIdRoute: ChatMateProjectIdRoute,
   ChatGroupGroupIdProjectIdRoute: ChatGroupGroupIdProjectIdRoute,
+  ChatGroupGroupIdBoardRoute: ChatGroupGroupIdBoardRoute,
   ChatGroupGroupIdFlowRoute: ChatGroupGroupIdFlowRoute,
   ChatMateNewBirthIdRoute: ChatMateNewBirthIdRoute,
   ChatChangeGroupIdRepositoryNumberRoute:

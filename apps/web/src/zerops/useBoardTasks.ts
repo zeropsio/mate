@@ -268,11 +268,7 @@ export function useAnswerPutTask() {
           ? null
           : putChatOf(readsOfState(store.state()), { orgId, appId }, task.taskId);
       if (chat !== null) return openConversation(chat);
-      void router.navigate({
-        to: "/group/$groupId/flow",
-        params: { groupId: appId },
-        hash: "automation",
-      });
+      void router.navigate({ to: "/group/$groupId/board", params: { groupId: appId } });
     },
     [openConversation, orgId, placements, router, store],
   );

@@ -105,6 +105,7 @@ import {
 import { AppChannelView, AppIntakeView, AppSchedulesView, AppWebhooksView } from "./sourceForms";
 import {
   boardOf,
+  boardWaitingCount,
   heldOnItsChange,
   LANES,
   poolSummary,
@@ -211,6 +212,18 @@ function useTakenCount(groupId: string): number {
     for (const placement of placements.values())
       if (placement.appId === groupId) count += placement.mate?.taken?.length ?? 0;
   return count;
+}
+
+/**
+ * How many of the application's tasks wait, Queued or Waiting for you (`boardWaitingCount`), for
+ * the page's *Board*; `undefined` until HQ answered the Board's read, which the page's Board
+ * section holds open, so counting asks nothing more.
+ */
+export function useBoardWaitingCount(groupId: string): number | undefined {
+  const setting = useAppTaskSource("hqAppTasks", groupId).read.setting;
+  const { live } = usePool(groupId);
+  const held = setting.state === "known" ? setting.held : null;
+  return useMemo(() => (held === null ? undefined : boardWaitingCount(held, live)), [held, live]);
 }
 
 /**

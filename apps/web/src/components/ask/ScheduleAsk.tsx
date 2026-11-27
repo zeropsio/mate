@@ -161,7 +161,7 @@ function ScheduleAskCard({
         }}
         onOpenAutomation={() => {
           if (groupId === null) return;
-          void navigate({ to: "/group/$groupId/flow", params: { groupId }, hash: "automation" });
+          void navigate({ to: "/group/$groupId/board", params: { groupId } });
         }}
         press={press}
         project={project}

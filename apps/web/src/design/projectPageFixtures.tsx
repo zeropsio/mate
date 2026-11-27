@@ -18,6 +18,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { releaseNotCreatedWords } from "@t3tools/client-runtime/zerops/flow";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
+import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
@@ -27,7 +28,7 @@ import {
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
 import type { SourceRow } from "~/components/zerops/projectAutomation/projectAutomation.logic";
-import { boardOf } from "~/components/zerops/projectAutomation/taskBoard.logic";
+import { boardOf, boardWaitingCount } from "~/components/zerops/projectAutomation/taskBoard.logic";
 import type { AccessTableView } from "~/components/zerops/projects/accessTable.logic";
 import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
 import { ProjectHistoryView } from "~/components/zerops/projects/ProjectHistory";
@@ -700,6 +701,9 @@ const TASK: HqAppTask = {
   pullRequest: null,
   link: "https://mate.zerops.io/odo-s/conversation-42",
 };
+/** No pool task is live in the fixtures: each task stands by its own record. */
+const NO_LIVE = new Map<string, HqNavigationMateTask>();
+
 const TASKS: ReadonlyArray<HqAppTask> = [
   TASK,
   {
@@ -1151,6 +1155,7 @@ export function HarnessLineMine<T>({
 export function harnessProjectPage(
   groupId: string,
   onAddMate: () => void,
+  boardInView = false,
 ): ProjectPageSlot["render"] {
   const running = groupId === "acme-store" || groupId === "tea";
   const repos =
@@ -1160,6 +1165,7 @@ export function harnessProjectPage(
     <Standins>
       <ProjectPageBody
         addMateWhy={addMateWhy}
+        boardInView={boardInView}
         // `?held`: the project's reads have not answered; the line keeps its shape.
         entry={PAGE_PARAMS.has("held") ? { ...entry, awaiting: true } : entry}
         facts={harnessFacts(groupId, entry.flow)}
@@ -1203,6 +1209,8 @@ export function harnessProjectPage(
           ),
           access: <PageAccess />,
           automation: <PageAutomation groupId={groupId} />,
+          // The fixtures' Board, counted as the page counts it; a project with none reads none.
+          boardWaiting: groupId === "acme-store" ? boardWaitingCount(TASKS, NO_LIVE) : 0,
           merging: (
             <MergingBody state={running ? MERGING_STATES.limited : MERGING_STATES.everyone} />
           ),

@@ -6,10 +6,18 @@
  * card does, so a place, a Mate and a change say the same on both; nothing on it is said twice.
  * Production's state is its Places card's; *Review release* is its `NextRelease`'s.
  */
-import { useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { ZeropsMateVerb } from "../ZeropsMateCard";
-import { FileIcon, GlobeIcon } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { FileIcon, GlobeIcon, SquareKanbanIcon } from "lucide-react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Card } from "~/components/ui/card";
@@ -195,6 +203,11 @@ export interface ProjectPageSetup {
    * tasks, the automated Mates that take them, and where they come from.
    */
   readonly automation: ReactNode;
+  /**
+   * How many of its tasks wait, Queued or Waiting for you (`boardWaitingCount`), the header's
+   * *Board* says; `undefined` until the Board is read.
+   */
+  readonly boardWaiting: number | undefined;
   /** Who can merge: opened from the Merging row. */
   readonly merging: ReactNode;
 }
@@ -204,6 +217,7 @@ export function ProjectPageBody<T>({
   props,
   addMateWhy,
   addMateHidden = false,
+  boardInView = false,
   onAddMate,
   facts,
   setup,
@@ -214,6 +228,8 @@ export function ProjectPageBody<T>({
   readonly addMateWhy: string | null;
   /** The person only reads here: *Add a Mate* is not theirs to want, and is not drawn. */
   readonly addMateHidden?: boolean;
+  /** Opened at its Board (`/group/$groupId/board`): the page paints with the Board in view. */
+  readonly boardInView?: boolean;
   readonly onAddMate: () => void;
   readonly facts: ProjectPageFacts;
   readonly setup: ProjectPageSetup;
@@ -226,12 +242,18 @@ export function ProjectPageBody<T>({
   const [open, setOpen] = useOpenDetails();
   const waits = props.cardWaits?.(entry) ?? NO_WAITS;
   const standingHere = useStandingHere(group.groupId);
+  const board = useBoardInView(boardInView);
   return (
     <div className={PAGE} data-zerops-surface="project-page">
       <PageHeader
         actions={
           // *Add a Mate* is the Mates grid's last card: one door on the page.
           <>
+            <BoardDoor
+              count={setup.boardWaiting}
+              groupId={group.groupId}
+              onHere={boardInView ? board.reveal : undefined}
+            />
             {/* Every address of the project, by where it runs: an address is reached through a
                 Sites door, the project's own here. */}
             <ProjectSitesDoor
@@ -277,13 +299,14 @@ export function ProjectPageBody<T>({
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
           />
           <section
-            aria-label="Board"
-            className={PAGE_GROUP}
+            aria-labelledby={BOARD_HEADING}
+            className={cn(PAGE_GROUP, "scroll-mt-6 outline-none")}
             data-zerops-project-automation=""
-            // What a schedule made from a conversation links to (`ScheduleAsk`).
-            id="automation"
+            ref={board.ref}
+            // Focused as the page opens at it, its heading said: never a stop of the Tab order.
+            tabIndex={-1}
           >
-            <SectionHeader title="Board" />
+            <SectionHeader id={BOARD_HEADING} title="Board" />
             <Card>{setup.automation}</Card>
           </section>
         </div>
@@ -320,6 +343,69 @@ export function ProjectPageBody<T>({
         {setup.merging}
       </SetupDialog>
     </div>
+  );
+}
+
+/** The Board section's heading, which names the section. */
+const BOARD_HEADING = "project-board";
+
+/**
+ * The Board section in view: where the page opens at it, scrolled there and focused before the
+ * page first paints; and `reveal`, the same again (eased) for *Board* pressed while it is open
+ * there. What reads in above it afterwards does not move it: the browser's scroll anchoring holds
+ * the section where it stands.
+ */
+function useBoardInView(inView: boolean) {
+  const ref = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (inView) showSection(ref.current, true);
+  }, [inView]);
+  return {
+    ref,
+    reveal: () => {
+      showSection(ref.current, prefersReducedMotion());
+    },
+  };
+}
+
+function showSection(section: HTMLElement | null, still: boolean): void {
+  if (section === null) return;
+  section.scrollIntoView({ block: "start", behavior: still ? "instant" : "smooth" });
+  section.focus({ preventScroll: true });
+}
+
+/**
+ * The header's way to the Board, `/group/$groupId/board`, with how many tasks wait there
+ * (`boardWaitingCount`) once it is read and some do. Pressed on a page already opened at its
+ * Board, it goes there again in place (`onHere`).
+ */
+function BoardDoor({
+  groupId,
+  count,
+  onHere,
+}: {
+  readonly groupId: string;
+  readonly count: number | undefined;
+  readonly onHere: (() => void) | undefined;
+}) {
+  const waiting = count !== undefined && count > 0;
+  return (
+    <Button
+      aria-label={waiting ? `Board, ${String(count)} waiting` : "Board"}
+      data-zerops-surface="project-board-door"
+      onClick={(event) => {
+        if (onHere === undefined) return;
+        event.preventDefault();
+        onHere();
+      }}
+      render={<Link params={{ groupId }} to="/group/$groupId/board" />}
+      size="sm"
+      variant="secondary"
+    >
+      <SquareKanbanIcon aria-hidden="true" />
+      <span>Board</span>
+      {waiting ? <Badge count>{count}</Badge> : null}
+    </Button>
   );
 }
 

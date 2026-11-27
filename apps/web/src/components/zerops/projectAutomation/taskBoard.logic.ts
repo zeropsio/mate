@@ -398,6 +398,22 @@ export function boardOf(
   return { lanes, blocked };
 }
 
+/**
+ * How many of the application's tasks wait, as the page's *Board* counts them: the ones Queued and
+ * the ones Waiting for you, each in the lane the Board stands it in (`live` as `boardOf` reads it).
+ */
+export function boardWaitingCount(
+  tasks: ReadonlyArray<HqAppTask>,
+  live: ReadonlyMap<string, HqNavigationMateTask>,
+): number {
+  let count = 0;
+  for (const task of tasks) {
+    const lane = laneOf(liveStatus(task, live.get(task.id)));
+    if (lane === "queued" || lane === "waiting") count += 1;
+  }
+  return count;
+}
+
 /** How many rows each lane will hold while the Board reads; a lane that will hold none, none. */
 export type PredictedBoard = Readonly<Record<Lane, number>>;
 
