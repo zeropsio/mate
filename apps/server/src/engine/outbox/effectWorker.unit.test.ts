@@ -759,7 +759,7 @@ it.effect(
 );
 
 // witness: apps/server/src/engine/ports.ts | resumes: held, → resumes: held && saved.instanceId !== instanceId,
-it("EO+1: A session open resumes whenever its thread's binding holds a saved conversation, its own instance's as well as one another instance hands over, and a binding with none resumes nothing; breaks: a crewmate whose agent lost its own saved conversation fails every turn as its session opens and never moves to a new one", () => {
+it("EO19: A session open resumes whenever its thread's binding holds a saved conversation, its own instance's as well as one another instance hands over, and a binding with none resumes nothing; breaks: a crewmate whose agent lost its own saved conversation fails every turn as its session opens and never moves to a new one", () => {
   const cursor = { schemaVersion: 1, sessionId: "native-1" };
   expect(threadResumeOf({ instanceId: "cursor", cursor }, "cursor")).toEqual({
     resumes: true,

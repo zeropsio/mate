@@ -186,21 +186,15 @@ export interface PlaceFix {
 
 /** The side column's rows, and what their *Manage* opens: each a dialog over the page. */
 export interface ProjectPageSetup {
-  /** Code, Automation, Who has access, Merging and Spend, in that order; each given its *Manage*. */
-  readonly rows: (open: {
-    readonly access: () => void;
-    readonly automation: () => void;
-    readonly merging: () => void;
-  }) => ReactNode;
+  /** Code, Who has access, Merging and Spend, in that order; each given its *Manage*. */
+  readonly rows: (open: { readonly access: () => void; readonly merging: () => void }) => ReactNode;
   /** Who has access where: opened from People, or by a place's link to its column. */
   readonly access: ReactNode;
-  /** The whole Automation section: on the page while it stands, else opened from its row. */
-  readonly automation: ReactNode;
   /**
-   * The project has automated Mates, so Automation is a section of the page's main column, after
-   * its changes, with nothing to open or close.
+   * The application's Board, a section of every project page's main column after its Mates: its
+   * tasks, the automated Mates that take them, and where they come from.
    */
-  readonly automationStanding: boolean;
+  readonly automation: ReactNode;
   /** Who can merge: opened from the Merging row. */
   readonly merging: ReactNode;
 }
@@ -282,29 +276,22 @@ export function ProjectPageBody<T>({
             props={props}
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
           />
-          {setup.automationStanding ? (
-            // The application's Board: its tasks, the automated Mates that take them, and where
-            // they come from.
-            <section
-              aria-label="Board"
-              className={PAGE_GROUP}
-              data-zerops-project-automation=""
-              // What a schedule made from a conversation links to (`ScheduleAsk`).
-              id="automation"
-            >
-              <SectionHeader title="Board" />
-              <Card>{setup.automation}</Card>
-            </section>
-          ) : null}
+          <section
+            aria-label="Board"
+            className={PAGE_GROUP}
+            data-zerops-project-automation=""
+            // What a schedule made from a conversation links to (`ScheduleAsk`).
+            id="automation"
+          >
+            <SectionHeader title="Board" />
+            <Card>{setup.automation}</Card>
+          </section>
         </div>
         <div className={PAGE_SIDE}>
           <SetupCard>
             {setup.rows({
               access: () => {
                 setOpen((now) => ({ ...now, access: true }));
-              },
-              automation: () => {
-                setOpen((now) => ({ ...now, automation: true }));
               },
               merging: () => {
                 setOpen((now) => ({ ...now, merging: true }));
@@ -322,17 +309,6 @@ export function ProjectPageBody<T>({
         wide
       >
         {setup.access}
-      </SetupDialog>
-      <SetupDialog
-        flush
-        label="Automation"
-        onClose={() => {
-          setOpen((now) => ({ ...now, automation: false }));
-        }}
-        open={open.automation && !setup.automationStanding}
-        wide
-      >
-        {setup.automation}
       </SetupDialog>
       <SetupDialog
         label={MERGING_TITLE}
@@ -355,7 +331,6 @@ function useOpenDetails() {
   const hash = useRouterState({ select: (state) => state.location.hash });
   return useState(() => ({
     access: hash.startsWith("access-"),
-    automation: false,
     merging: false,
   }));
 }

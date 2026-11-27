@@ -202,21 +202,6 @@ export function connectionMissing(
 }
 
 /**
- * How a project's page shows its Automation section: to an Owner or Admin always — they set it up
- * there; to anyone else once it holds something to read: an automated Mate, or a source.
- */
-export function automationSection(input: {
-  readonly admin: boolean;
-  readonly pool: number;
-  readonly sources: number;
-  /** Anyone wrote to its Board (`boardRevision`): its tasks are for every member to read. */
-  readonly board?: boolean;
-}): "shown" | "hidden" {
-  if (input.admin) return "shown";
-  return input.pool > 0 || input.sources > 0 || input.board === true ? "shown" : "hidden";
-}
-
-/**
  * Where a task's Stop stands on its row: at rest; asking whether to, in the row; under way; or
  * refused, in HQ's words, on the row it was pressed on.
  */

@@ -54,7 +54,6 @@ import {
 } from "~/zerops/useTaskSourceSettings";
 import {
   useBoardOffers,
-  useBoardRevision,
   useMateFaces,
   useOpenTaskConversation,
   useTakeOpenings,
@@ -90,14 +89,11 @@ import { Skeleton } from "../../ui/skeleton";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { appReaching } from "../../settings/automationSettings.logic";
 import { MateFace, PersonAvatar } from "../primitives";
-import { SetupRow } from "../project/SetupCard";
-import { automationSummary } from "../project/projectSetup.logic";
 import { BeadMark, CutText, GrowsInPlace, SectionAction } from "../system";
 import { goClass } from "../system/ChangeRow";
 import { cn } from "~/lib/utils";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
-  automationSection,
   connectionMissing,
   poolMateLine,
   SOURCE_KINDS,
@@ -171,7 +167,6 @@ export function ProjectAutomation({
     predictedBoard(tasks, intake.read.intake?.waiting ?? 0, useTakenCount(groupId)),
     pool,
   );
-  const written = (useBoardRevision(groupId) ?? 0) > 0;
   if (!admin) {
     const { rows, withheld } = sourceRows({
       intake: intake.read.intake,
@@ -182,11 +177,6 @@ export function ProjectAutomation({
       slackConnected: undefined,
       discordConnected: undefined,
     });
-    if (
-      automationSection({ admin, pool: pool.length, sources: rows.length, board: written }) ===
-      "hidden"
-    )
-      return null;
     return (
       <ProjectAutomationView
         board={board}
@@ -211,48 +201,6 @@ export function ProjectAutomation({
 }
 
 /**
- * The Automation row of a project page's side column: one line until the project has automated
- * Mates — *No automated Mates* and *Add* for an Owner or Admin — then their faces, how many are at
- * work, and *Manage*, which opens the whole section (`ProjectAutomation`). Not drawn for anyone
- * else while there is nothing to read.
- */
-export function ProjectAutomationRow({
-  groupId,
-  onManage,
-}: {
-  readonly groupId: string;
-  readonly onManage: (from: HTMLElement) => void;
-}) {
-  const { activeOrganization } = useZeropsSession();
-  const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
-  const { pool } = usePool(groupId);
-  const addMate = useAddAutomatedMate(groupId);
-  const openMate = useOpenMate();
-  if (automationSection({ admin, pool: pool.length, sources: 0 }) !== "shown") return null;
-  const onOpen = (projectId: string) => {
-    openMate({ projectId });
-  };
-  return (
-    <ProjectAutomationRowView
-      face={(mate) => <PoolFace key={mate.projectId} mate={mate} onOpen={onOpen} />}
-      onAdd={admin ? (addMate ?? onManage) : undefined}
-      onManage={onManage}
-      pool={pool}
-    />
-  );
-}
-
-/**
- * Whether a project's Automation stands on its page as a section of its own: it does once the
- * project has an automated Mate. Until then its side row offers the first one, and opens the
- * section in a dialog.
- */
-export function useAutomationStanding(groupId: string): boolean {
-  const written = (useBoardRevision(groupId) ?? 0) > 0;
-  return usePool(groupId).pool.length > 0 || written;
-}
-
-/**
  * How many tasks people took for their own Mates in the application, as navigation carries them on
  * each Mate's row: how many rows In progress will hold while the Board reads.
  */
@@ -272,56 +220,6 @@ function useTakenCount(groupId: string): number {
 export function useAutomatedMateCount(groupId: string): number | null {
   const { pool, complete } = usePool(groupId);
   return pool.length > 0 || complete ? pool.length : null;
-}
-
-/** What an automated Mate is for, where the project has none. */
-const AUTOMATION_IS_FOR =
-  "A Mate that takes tasks from GitHub issues, Slack, Discord or a schedule.";
-
-export function ProjectAutomationRowView({
-  pool,
-  onAdd,
-  onManage,
-  face,
-}: {
-  readonly pool: ReadonlyArray<PoolMate>;
-  /** *Add*, for an Owner or Admin while the project has no automated Mate. */
-  readonly onAdd: ((from: HTMLElement) => void) | undefined;
-  readonly onManage: (from: HTMLElement) => void;
-  /** A pool Mate's face, which opens it (`PoolFace`). */
-  readonly face: (mate: PoolMate) => ReactNode;
-}) {
-  if (pool.length === 0)
-    return (
-      <SetupRow empty label="Automation" surface="project-automation-row">
-        <p>{AUTOMATION_IS_FOR}</p>
-        {onAdd === undefined ? null : (
-          <Button
-            onClick={(event) => {
-              onAdd(event.currentTarget);
-            }}
-            size="sm"
-            variant="secondary"
-          >
-            Add one
-          </Button>
-        )}
-      </SetupRow>
-    );
-  return (
-    <SetupRow
-      action={<SectionAction onClick={onManage}>Manage</SectionAction>}
-      label="Automation"
-      surface="project-automation-row"
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="flex shrink-0 items-center">{pool.slice(0, 5).map(face)}</span>
-        <Text className="min-w-0" truncate variant="remark">
-          {automationSummary(pool)}
-        </Text>
-      </div>
-    </SetupRow>
-  );
 }
 
 const WITHHELD = { state: "withheld" } as const;

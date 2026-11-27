@@ -702,7 +702,6 @@ export { projectOperator } from "./projections/permissionFacts.ts";
 export { makeDraftPreviewWire } from "./adapters/draftPreview.ts";
 export {
   boardOffers,
-  boardRevision,
   putChatOf,
   type BoardOffers,
   type BoardTaskOffer,

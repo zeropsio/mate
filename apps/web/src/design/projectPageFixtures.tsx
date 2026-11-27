@@ -22,7 +22,6 @@ import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
 import {
-  ProjectAutomationRowView,
   ProjectAutomationView,
   type AutomationControls,
   type PoolMate,
@@ -1191,15 +1190,6 @@ export function harnessProjectPage(
                   />
                 </SetupRow>
               ) : null}
-              {/* Its automated Mates make Automation a section of the page: no row opens it. */}
-              {groupId === "acme-store" ? null : (
-                <ProjectAutomationRowView
-                  face={() => null}
-                  onAdd={open.automation}
-                  onManage={open.automation}
-                  pool={[]}
-                />
-              )}
               <ProjectPeopleRowView
                 onManage={open.access}
                 view={groupId === "juno-notes" ? MANY_PEOPLE_VIEW : PEOPLE_VIEW}
@@ -1213,7 +1203,6 @@ export function harnessProjectPage(
           ),
           access: <PageAccess />,
           automation: <PageAutomation groupId={groupId} />,
-          automationStanding: groupId === "acme-store",
           merging: (
             <MergingBody state={running ? MERGING_STATES.limited : MERGING_STATES.everyone} />
           ),

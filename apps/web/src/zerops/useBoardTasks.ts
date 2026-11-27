@@ -1,13 +1,12 @@
 /**
  * The Board's doors in the web client: what the person may do on an application's Board
- * (`boardOffers`), whether the application has a Board yet (`boardRevision`), **Take** — HQ's take,
+ * (`boardOffers`), **Take** — HQ's take,
  * then a new conversation in the person's own Mate whose first message is the task's brief, sent
  * as them and linked to the task (`ComposerSendIds.taken`), where it stands until it went
  * (`TakeOpening`) — and the ways back to the conversation a task was put from.
  */
 import {
   boardOffers,
-  boardRevision,
   putChatOf,
   readsOfState,
   type BoardOffers,
@@ -40,7 +39,6 @@ import { useBoardTaskWrites } from "./useTaskSourceSettings";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "./useZeropsCandidates";
 
 const NO_OFFERS = Atom.make<BoardOffers | undefined>(undefined);
-const NO_REVISION = Atom.make<number | undefined>(undefined);
 
 function useAppKey(appId: string | null) {
   const orgId = useAccountOrgId();
@@ -53,11 +51,6 @@ function useAppKey(appId: string | null) {
 /** What the person may do on application `appId`'s Board; `undefined` until Zerops is read. */
 export function useBoardOffers(appId: string | null): BoardOffers | undefined {
   return useProjection(boardOffers, useAppKey(appId), NO_OFFERS);
-}
-
-/** The application's Board revision (`boardRevision`): above zero once its Board was written. */
-export function useBoardRevision(appId: string | null): number | undefined {
-  return useProjection(boardRevision, useAppKey(appId), NO_REVISION);
 }
 
 /**

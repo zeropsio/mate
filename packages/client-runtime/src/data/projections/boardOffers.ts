@@ -120,26 +120,6 @@ export const boardOffers: Projection<
 };
 
 /**
- * The application's Board revision as navigation says it (`HqNavigationApp.boardRevision`): above
- * zero once anyone wrote to one of its tasks, so its page shows the Board; `undefined` from an HQ
- * without the Board, or while unread.
- */
-export const boardRevision: Projection<
-  { readonly orgId: string; readonly appId: string },
-  number | undefined
-> = {
-  name: "boardRevision",
-  keyOf: ({ orgId, appId }) => `${orgId}/${appId}`,
-  derive: (read, { orgId, appId }) => {
-    if (!read.members(hqAppsScope(orgId)).ids.includes(appId)) return undefined;
-    const app = read.fact("hqApp", appId);
-    if (app.kind !== "known") return undefined;
-    return app.value.boardRevision;
-  },
-  equals: (a, b) => a === b,
-};
-
-/**
  * The chat a task was put from, by its id, as the application's Board was last read: where its
  * putter answers its question (their own card there). `null` where the Board was not read, or the
  * task came from elsewhere.

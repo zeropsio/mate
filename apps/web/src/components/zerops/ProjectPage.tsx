@@ -59,11 +59,7 @@ import type {
 import { ProjectSpendRow } from "./projects/ProjectSpend";
 import { spendProjectIds } from "./projects/projectSpend.logic";
 import { groupRepository } from "./projects/projectHistory.logic";
-import {
-  ProjectAutomation,
-  ProjectAutomationRow,
-  useAutomationStanding,
-} from "./projectAutomation/ProjectAutomation";
+import { ProjectAutomation } from "./projectAutomation/ProjectAutomation";
 import { ProjectMerging, ProjectMergingRow } from "./projectMerging/ProjectMerging";
 import { openMains } from "./projectMerging/projectMerging.logic";
 import { useReleaseOffer } from "./ZeropsReleaseVerb";
@@ -185,7 +181,6 @@ function ProjectPage<T>({
   const builders = useProjectBuilders(groupId);
   const rules = useRepoGovernance(groupId).of;
   const openOnGithub = useMemo(() => openMains(repos, rules), [repos, rules]);
-  const automationStanding = useAutomationStanding(groupId);
   const setup: ProjectPageSetup = {
     rows: (open) => (
       <>
@@ -194,10 +189,6 @@ function ProjectPage<T>({
           <SetupRow label="Code" rows surface="project-repositories">
             <ProjectRepositories groupId={groupId} groupName={groupName} repos={repos} />
           </SetupRow>
-        )}
-        {/* Standing on the page, Automation needs no row to open it. */}
-        {automationStanding ? null : (
-          <ProjectAutomationRow groupId={groupId} onManage={open.automation} />
         )}
         <ProjectPeopleRow groupId={groupId} onManage={open.access} />
         <ProjectMergingRow
@@ -211,7 +202,6 @@ function ProjectPage<T>({
     ),
     access: <ProjectPeople groupId={groupId} />,
     automation: <ProjectAutomation groupId={groupId} name={groupName} repos={repos} />,
-    automationStanding,
     merging: <ProjectMerging merging={merging} open={openOnGithub} />,
   };
   return (
