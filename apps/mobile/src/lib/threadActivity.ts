@@ -34,7 +34,7 @@ import {
   type ToolGroupSummaryKind,
 } from "@t3tools/client-runtime/work-log/presentation";
 import { commandProgramName } from "@t3tools/client-runtime/work-log/command-label";
-import { readCallPage } from "@t3tools/client-runtime/zerops/publishedPage";
+import { newestPages, readCallPage } from "@t3tools/client-runtime/zerops/publishedPage";
 
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
@@ -1613,7 +1613,7 @@ function rowTurnId(row: ThreadFeedEntry): TurnId | null {
 }
 
 /**
- * The pages each run's calls published, each once, in the order they were published, stand in
+ * The pages each run's calls published, each the newest under its title (`newestPages`), stand in
  * their run right above its answer — the run's last word, when it came after them — or else under
  * the run's work. A folded run keeps them in sight: they are what the Mate made for the person.
  */
@@ -1621,19 +1621,17 @@ function placePublishedPages(
   result: ThreadFeedEntry[],
   sourceFeed: ReadonlyArray<ThreadFeedEntry>,
 ): void {
-  const pagesByTurn = new Map<TurnId, PublishedPageRow[]>();
-  const shown = new Set<string>();
+  const publishedByTurn = new Map<TurnId, PublishedPageRow[]>();
   for (const entry of sourceFeed) {
     if (entry.type !== "activity-group" || entry.turnId === null) continue;
     for (const activity of entry.activities) {
       const page = activity.workEntry.publishedPage;
-      if (page === undefined || shown.has(page.asset.id)) continue;
-      shown.add(page.asset.id);
+      if (page === undefined) continue;
       let row = pageRowsCache.get(page);
       if (row?.turnId !== entry.turnId) {
         row = {
           type: "page",
-          id: `page:${page.asset.id}`,
+          id: `page:${activity.workEntry.toolCallId ?? page.asset.id}`,
           createdAt: new Date(page.publishedAt).toISOString(),
           turnId: entry.turnId,
           page,
@@ -1641,12 +1639,13 @@ function placePublishedPages(
         };
         pageRowsCache.set(page, row);
       }
-      const pages = pagesByTurn.get(entry.turnId) ?? [];
-      pages.push(row);
-      pagesByTurn.set(entry.turnId, pages);
+      const published = publishedByTurn.get(entry.turnId) ?? [];
+      published.push(row);
+      publishedByTurn.set(entry.turnId, published);
     }
   }
-  for (const [turnId, pages] of pagesByTurn) {
+  for (const [turnId, published] of publishedByTurn) {
+    const pages = newestPages(published, (row) => row.page.title);
     const publishedAt = pages[0]!.createdAt;
     const answer = result.findLastIndex(
       (row) =>
