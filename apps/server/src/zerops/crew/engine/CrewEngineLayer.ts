@@ -81,8 +81,11 @@ import {
   ZeropsRepositorySource,
   type ZeropsRepositories,
 } from "../../ZeropsRepositorySource.ts";
-import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
-import { turnPrincipalOf } from "../../engineAdapters.ts";
+import {
+  turnPrincipalOf,
+  ZeropsTurnAdmission,
+  type TurnPrincipal,
+} from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { crewLane } from "../CrewDefinition.ts";
 import { proposeCrewPorts, readDeclaredPorts } from "../crewPorts.ts";

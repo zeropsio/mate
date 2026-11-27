@@ -11,7 +11,6 @@ import {
   PERSON,
   finish,
   home,
-  landIt,
   lead,
   newTask,
   reader,

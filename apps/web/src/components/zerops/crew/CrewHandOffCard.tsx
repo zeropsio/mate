@@ -64,7 +64,7 @@ export function CrewHandOffCard({
     });
   };
   // What needs the Crew tab (a draft for the Mate, its copy of the app) stays there.
-  const [first] = model.actions.filter(
+  const first = model.actions.find(
     (action) =>
       action.kind !== "ask" &&
       action.kind !== "try" &&

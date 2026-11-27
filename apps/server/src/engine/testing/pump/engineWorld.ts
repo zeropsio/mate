@@ -55,7 +55,7 @@ import {
   type InstanceUsage,
 } from "../../ports.ts";
 import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
-import { turnPrincipalOf } from "../../../zerops/engineAdapters.ts";
+import { turnPrincipalOf } from "../../../zerops/ZeropsTurnAdmission.ts";
 import { principalUserId } from "../../../zerops/ZeropsTurnAdmission.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import {

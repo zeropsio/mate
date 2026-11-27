@@ -33,9 +33,12 @@ import {
   agentIdForDriverKind,
   agentIdForProviderInstance,
   type AgentAdmissionRefusal,
-  type SessionSubject,
+  type Principal,
+  recordedPersonId,
+  type RunTrigger,
+  SessionSubject,
   type ZeropsLoginState,
-  type ZeropsUserId,
+  ZeropsUserId,
   zeropsUserIdOf,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -91,6 +94,38 @@ export type TurnPrincipal =
   | { readonly kind: "standup"; readonly startedBy: ZeropsUserId }
   | { readonly kind: "task"; readonly taskId: string }
   | { readonly kind: "mate"; readonly messageId: string; readonly ownerUserId: ZeropsUserId };
+
+/**
+ * A person at the keyboard is their session; a crew wake is crew's, a task's run the task's, a
+ * Mate's message's run that message's, for the owner HQ named as it was taken; every other wake a
+ * stand-up's kind, for the person it continues. The engine is never a run's principal: none.
+ */
+export const turnPrincipalOf = (
+  principal: Principal,
+  trigger: RunTrigger,
+): TurnPrincipal | null => {
+  switch (principal.kind) {
+    case "person":
+      if (trigger.kind === "person") {
+        return { kind: "session", subject: SessionSubject.make(principal.subject) };
+      }
+      return { kind: "standup", startedBy: recordedPersonId(principal.subject) };
+    case "crew":
+      return { kind: "crew", startedBy: recordedPersonId(principal.startedBy) };
+    case "standup":
+      return { kind: "standup", startedBy: recordedPersonId(principal.startedBy) };
+    case "task":
+      return { kind: "task", taskId: principal.taskId };
+    case "mate":
+      return {
+        kind: "mate",
+        messageId: principal.messageId,
+        ownerUserId: ZeropsUserId.make(principal.ownerUserId),
+      };
+    default:
+      return null;
+  }
+};
 
 /** Admission's refusal: the sentence its person reads, the login it is about, and whether the door could not say now. */
 export class TurnRefused extends Data.TaggedError("TurnRefused")<{
