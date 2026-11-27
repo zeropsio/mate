@@ -729,7 +729,7 @@ it("MN88: A Production Mate did not make that leaves the project is a part the d
         ["code", "Its code"],
       ],
       words: ["Still here", "Still here", "Still here"],
-      line: "bakery was not deleted · Only an organization owner can delete this production's deploy token. Still here: Production acme-live, Rye and its code.",
+      line: "bakery was not deleted · Only an organization owner can delete this environment's deploy token. Still here: Production acme-live, Rye and its code.",
     },
     {
       name: "a Stage is also still here after the token was refused",
@@ -747,7 +747,7 @@ it("MN88: A Production Mate did not make that leaves the project is a part the d
         ["code", "Its code"],
       ],
       words: ["Still here", "Still here", "Still here", "Still here"],
-      line: "bakery was not deleted · Only an organization owner can delete this production's deploy token. Still here: Production acme-live, Rye, Stage acme-stage and its code.",
+      line: "bakery was not deleted · Only an organization owner can delete this environment's deploy token. Still here: Production acme-live, Rye, Stage acme-stage and its code.",
     },
     {
       name: "a later part was refused",
