@@ -137,7 +137,6 @@ const ZEROPS_CLIENT_VERBS = [
   "fetchProject",
   "fetchProjectLogAccess",
   "fetchUser",
-  "listProjectServices",
   "login",
   "logout",
   "renewHeldSession",

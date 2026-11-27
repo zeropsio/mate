@@ -747,27 +747,6 @@ export class ZeropsApiClient {
     }
   }
 
-  /**
-   * `GET /project/{id}/service-stack` — the project's own services.
-   *
-   * Answered under `list`, not the `items` the search endpoints use (measured
-   * 2026-09-18): reading only `items` made every project look empty.
-   */
-  async listProjectServices(
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsService>> {
-    const response = await this.#request<{
-      readonly list?: ReadonlyArray<ZeropsService>;
-      readonly items?: ReadonlyArray<ZeropsService>;
-    }>(
-      `/project/${projectId}/service-stack?limit=500`,
-      { signal: signal ?? null },
-      { operationKind: "read" },
-    );
-    return response.list ?? response.items ?? [];
-  }
-
   /** Redeploy a Mate whose container has no active app version, retaining its saved run config. */
   async deployMate(
     serviceId: string,

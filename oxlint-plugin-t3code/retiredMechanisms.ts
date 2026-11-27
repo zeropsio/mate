@@ -211,18 +211,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "the projects page prepares every drawn Mate's inventory up front; read on open",
   },
   {
-    token: "client.listProjectServices(projectId)",
-    family: "services",
-    reason: "a component lists services and processes itself; the services adapter owns the read",
-    paths: ["apps/web/src/components/zerops/ZeropsHqCard.tsx"],
-  },
-  {
-    token: "client.listProjectProcesses(projectId)",
-    family: "services",
-    reason: "a component lists services and processes itself; the services adapter owns the read",
-    paths: ["apps/web/src/components/zerops/ZeropsHqCard.tsx"],
-  },
-  {
     token: "const runRequest = async",
     family: "services",
     reason: "a component runs its own data-catalog requests; the adapter owns them",

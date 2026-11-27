@@ -230,8 +230,8 @@ export const serviceFamily: FamilySpec<"service"> = {
       zerops: {
         path: ({ ownerId }) =>
           `/project/${encodeURIComponent(ownerId ?? "")}/service-stack?limit=500`,
-        // Answered under `list`, not the search's `items` (measured 2026-09-18,
-        // `listProjectServices`); each row is the project's, named or not.
+        // Answered under `list`, not the search's `items` (measured 2026-09-18);
+        // each row is the project's, named or not.
         items: (answer, owner) => {
           if (typeof answer !== "object" || answer === null) return undefined;
           const list =

@@ -78,7 +78,7 @@ import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "
 
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
-  "deployMate" | "fetchProject" | "writeProject" | "listProjectServices" | "door"
+  "deployMate" | "fetchProject" | "writeProject" | "door"
 >;
 
 /** A service's and a project's lifecycle calls as the admitted client takes them. */
@@ -305,7 +305,6 @@ export function makeZeropsExecutor(input: {
         deletePublicPortRouting: (id) => deletePublicPortRouting(source.door, id, undefined, check),
         requestProjectPublicIp: (id) => requestProjectPublicIp(source.door, id, undefined, check),
         fetchProject: (...args) => source.fetchProject(...args),
-        listProjectServices: (...args) => source.listProjectServices(...args),
         listOrganizationMembers: (orgId) => listOrganizationMembers(source.door, orgId),
         validateOrganizationUser: (orgId, email) =>
           validateOrganizationUser(source.door, orgId, email, check),
