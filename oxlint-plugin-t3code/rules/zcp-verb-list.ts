@@ -3,6 +3,7 @@
 // spawner:
 // - `mate status`, `mate update` (ZeropsCli.ts, spec §2.9 MU-2);
 // - `version` (ZeropsCli.ts: which zcp the container runs);
+// - `preview` (ZeropsCli.ts: open a change's copy, spec §2.8);
 // - `where` (ZeropsCli.ts: where the work stands, before a run's message);
 // - `lease acquire` (ZeropsCli.ts: a crew writer takes its own copy);
 // - `lease release` (ZeropsCli.ts: a removed writer or archived conversation
@@ -27,6 +28,7 @@ const ALLOWED_ARGV = [
   "lease acquire",
   "lease release",
   "version",
+  "preview",
   "where",
   "git * ls-remote",
 ];

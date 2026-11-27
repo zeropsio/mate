@@ -15,7 +15,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { LeaseAlias, type LeaseReleaseResult } from "@t3tools/contracts";
+import {
+  LeaseAlias,
+  ZeropsDraftPreview,
+  type ZeropsDraftCopy,
+  type LeaseReleaseResult,
+} from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -35,6 +40,8 @@ const MATE_STATUS_MAX_OUTPUT_BYTES = 64 * 1024;
 /** `mate update` downloads a release and runs npm install — MD-13's staged-then-activated path. */
 const MATE_UPDATE_TIMEOUT = Duration.minutes(5);
 const MATE_UPDATE_MAX_OUTPUT_BYTES = 256 * 1024;
+/** zcp bounds preview at ten minutes; leave time for its answer to reach us. */
+const DRAFT_PREVIEW_TIMEOUT = Duration.seconds(615);
 /** DP-39 reserves for up to 600 s and waits up to 20 s for warm work after answering. */
 const LEASE_ACQUIRE_TIMEOUT = Duration.seconds(630);
 export const ZCP_LEASE_ACQUIRE_SINCE = "9.271.0";
@@ -240,6 +247,9 @@ export class ZeropsCli extends Context.Service<
      * call to this method, never a {@link ZeropsCliFailed}.
      */
     readonly mateUpdate: () => Effect.Effect<MateUpdateResult, ZeropsCliError>;
+    readonly draftPreview: (
+      copy: ZeropsDraftCopy,
+    ) => Effect.Effect<ZeropsDraftPreview, ZeropsCliError>;
     /** The work's current state, read by zcp for the agent at a run's start (W-5). */
     readonly where: (input: { readonly lease?: string }) => Effect.Effect<string | null>;
     /** DP-39: acquire or reuse the pool's default repository on this branch without a session. */
@@ -376,6 +386,47 @@ export const make = (options: ZeropsCliOptions) =>
                   }),
                 )
               : Effect.succeed(parsed);
+          }),
+        );
+
+    const draftPreview: ZeropsCli["Service"]["draftPreview"] = (copy) =>
+      processRunner
+        .run({
+          command,
+          args: [
+            ...baseArgs,
+            "preview",
+            ...(copy.kind === "lease"
+              ? ["--lease", copy.alias, "--acquired-at", copy.acquiredAt]
+              : ["--service", copy.hostname]),
+            "--branch",
+            copy.branch,
+            "--json",
+          ],
+          cwd,
+          stdin: "",
+          timeout: DRAFT_PREVIEW_TIMEOUT,
+          maxOutputBytes: MATE_STATUS_MAX_OUTPUT_BYTES,
+          outputMode: "truncate",
+        })
+        .pipe(
+          Effect.mapError((cause): ZeropsCliError =>
+            cause._tag === "ProcessSpawnError"
+              ? spawnErrorToCliError(command, cause.cause)
+              : new ZeropsCliFailed({ command, reason: "preview could not be run" }),
+          ),
+          Effect.flatMap((result) => {
+            const answer = Option.getOrUndefined(
+              lastAnswer(
+                result.stdout,
+                Schema.decodeUnknownOption(Schema.fromJsonString(ZeropsDraftPreview)),
+              ),
+            );
+            return answer === undefined
+              ? Effect.fail(
+                  new ZeropsCliFailed({ command, reason: "preview gave no answer to read" }),
+                )
+              : Effect.succeed(answer);
           }),
         );
 
@@ -609,6 +660,7 @@ export const make = (options: ZeropsCliOptions) =>
     return {
       mateStatus,
       mateUpdate,
+      draftPreview,
       where,
       leaseAcquire,
       leaseReleaseCopy,

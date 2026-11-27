@@ -195,6 +195,9 @@ import {
   ZeropsGitRemoteProbeResult,
   ZeropsLifecycle,
   ZeropsMateCopies,
+  ZeropsDraftCopy,
+  ZeropsDraftPreview,
+  ZeropsDraftPreviewError,
   ZeropsLifecycleGetInput,
   StandUpVerdictReading,
   ZeropsMateUpdateError,
@@ -360,6 +363,7 @@ export const WS_METHODS = {
   zeropsLoginRemove: "zerops.login.remove",
   zeropsMacInput: "zerops.mac.input",
   zeropsMacForget: "zerops.mac.forget",
+  zeropsDraftPreview: "zerops.draft.preview",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
   zeropsExtendGrant: "zerops.grant.extend",
@@ -1102,6 +1106,12 @@ const WsZeropsMacForgetRpc = Rpc.make(WS_METHODS.zeropsMacForget, {
  * covers the RPC not being offered here or the caller lacking the scope —
  * the same pairing upstream's own self-update RPC uses.
  */
+const WsZeropsDraftPreviewRpc = Rpc.make(WS_METHODS.zeropsDraftPreview, {
+  payload: ZeropsDraftCopy,
+  success: ZeropsDraftPreview,
+  error: Schema.Union([ZeropsDraftPreviewError, EnvironmentAuthorizationError]),
+});
+
 const WsZeropsMateUpdateRpc = Rpc.make(WS_METHODS.zeropsMateUpdate, {
   payload: Schema.Struct({}),
   success: ZeropsMateUpdateResult,
@@ -1459,6 +1469,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeZeropsMacStreamRpc,
   WsZeropsMacInputRpc,
   WsZeropsMacForgetRpc,
+  WsZeropsDraftPreviewRpc,
   WsZeropsMateUpdateRpc,
   WsZeropsMateCheckUpdateRpc,
   WsZeropsExtendGrantRpc,

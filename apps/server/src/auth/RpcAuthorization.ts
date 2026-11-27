@@ -119,8 +119,8 @@ const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeZeropsMacStream]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsMacInput]: AuthOrchestrationOperateScope,
   [WS_METHODS.zeropsMacForget]: AuthOrchestrationOperateScope,
-  // Runs a real update on the container — the same authority as exec.run,
-  // not a read (spec-mate.md §2.9 MU-2).
+  // Both commands operate on the container, so they need the same authority as exec.run.
+  [WS_METHODS.zeropsDraftPreview]: AuthExecOperateScope,
   [WS_METHODS.zeropsMateUpdate]: AuthExecOperateScope,
   // A check reads the manifest; it does not operate.
   [WS_METHODS.zeropsMateCheckUpdate]: AuthOrchestrationReadScope,
