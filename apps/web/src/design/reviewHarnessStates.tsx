@@ -104,16 +104,26 @@ export function DraftLookStage() {
   const title = "Clearer copy on the admin sign-in";
   const frame = new URL("/draft-frame-fixture.html", window.location.href).href;
   return (
-    <div className="grid h-screen grid-cols-3 grid-rows-2 gap-3 bg-muted p-3">
+    <div className="grid h-screen grid-cols-4 grid-rows-2 gap-3 bg-muted p-3">
       <div className="overflow-auto border bg-background p-4">
         <h1 className="mb-6 font-semibold">{title}</h1>
         <ReviewTry draft={look} onOpenDraft={noop} />
+        <ReviewTry draft={{ kind: "unavailable" }} onOpenDraft={noop} />
       </div>
       <div className="overflow-hidden border">
         <DraftPaneView
           title={title}
           look={look}
           state={{ kind: "opening", copy }}
+          onReload={noop}
+          onRetry={noop}
+        />
+      </div>
+      <div className="overflow-hidden border">
+        <DraftPaneView
+          title={title}
+          look={{ kind: "unavailable" }}
+          state={{ kind: "idle" }}
           onReload={noop}
           onRetry={noop}
         />

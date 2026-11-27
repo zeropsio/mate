@@ -467,7 +467,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsCli.ts | return answer === undefined → return result.code !== 0 || answer === undefined
 it.effect(
-  "ZC+1: zcp's preview answer reaches the pane with its running address or failure reason even when zcp exits 1; breaks: a failed draft loses zcp's reason.",
+  "ZC25: zcp's preview answer reaches the pane with its running address or failure reason even when zcp exits 1; breaks: a failed draft loses zcp's reason.",
   () =>
     Effect.gen(function* () {
       const answerOf = (

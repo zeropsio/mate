@@ -746,7 +746,7 @@ it("CD83: A crewmate's turn whose session could not resume its agent's own threa
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.tools.ts | ...(owner?.kind === "reader" && task.reviews === undefined → ...(owner?.kind === "lead" && task.reviews === undefined
-it('CD+2: A reader\'s task the lead plans names what it reviews: one that names nothing is refused and nothing is planned, and one that says "none" is planned reviewing no task; breaks: a review left untied to the work, whose reader opens no app and holds no verdict', () => {
+it('CD85: A reader\'s task the lead plans names what it reviews: one that names nothing is refused and nothing is planned, and one that says "none" is planned reviewing no task; breaks: a review left untied to the work, whose reader opens no app and holds no verdict', () => {
   const w = new CrewWorld();
   w.apply(home(lead(), writer("backend"), reader("reviewer")));
   w.press({ _tag: "start", ...LEAD_LANDS }, OTHER);
@@ -772,7 +772,7 @@ it('CD+2: A reader\'s task the lead plans names what it reviews: one that names 
 });
 
 // witness: apps/server/src/zerops/crew/engine/state.ts | if (reviewed.owner.handle !== handle) { → if (reviewed.owner.handle === handle) {
-it("CD+3: A reader opens only the app of the writer whose task its own task reviews, on that writer's service and crew port; another writer's app, and any app before its task reviews one, is refused; breaks: a reviewer opening another crewmate's app, or none at all", () => {
+it("CD86: A reader opens only the app of the writer whose task its own task reviews, on that writer's service and crew port; another writer's app, and any app before its task reviews one, is refused; breaks: a reviewer opening another crewmate's app, or none at all", () => {
   const w = new CrewWorld();
   w.tell({
     _tag: "Press",

@@ -963,13 +963,6 @@ export function ReviewTry({
           App address not available yet.
         </Text>
       ) : null}
-      {draft.kind === "reading" || draft.kind === "unavailable" ? (
-        <Text className="mt-1.5" render={<p />} variant="description">
-          {draft.kind === "reading"
-            ? "Draft availability is not known yet."
-            : "Draft is not available yet."}
-        </Text>
-      ) : null}
     </ReviewSection>
   );
 }

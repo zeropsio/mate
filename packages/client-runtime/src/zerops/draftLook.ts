@@ -2,8 +2,9 @@ import type { ZeropsDraftCopy, ZeropsLease } from "@t3tools/contracts";
 import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
 import { leaseMayBeOf, repoOfUrl } from "@t3tools/shared/hqChanges";
 
+/** Unavailable selects no copy; it does not describe the draft server's condition. */
 export type DraftLook =
-  | { readonly kind: "reading" | "unavailable" | "added" | "discarded" }
+  | { readonly kind: "unavailable" | "added" | "discarded" }
   | { readonly kind: "openable"; readonly copy: ZeropsDraftCopy };
 
 /** A change's copy, from copy identities, never from a server's last observation. */
@@ -21,20 +22,12 @@ export function draftLook(input: {
 }): DraftLook {
   if (input.state === "merged") return { kind: "added" };
   if (input.state === "closed") return { kind: "discarded" };
-  if (
-    input.branch === undefined ||
-    input.leases === undefined ||
-    input.classic === undefined ||
-    (input.repositoryUrl === undefined && input.repositoryRemote === undefined)
-  )
-    return { kind: "reading" };
+  if (input.branch === undefined) return { kind: "unavailable" };
   const changeRepo = input.repositoryUrl === undefined ? null : repoOfUrl(input.repositoryUrl);
-  let repositoryUnread = false;
-  for (const lease of input.leases) {
+  for (const lease of input.leases ?? []) {
     if (
       lease.branch !== input.branch ||
-      lease.state !== "held" ||
-      lease.unverified === true ||
+      (lease.state !== "held" && lease.state !== "parked" && lease.state !== "unmounted") ||
       lease.acquiredAt === undefined
     )
       continue;
@@ -48,10 +41,8 @@ export function draftLook(input: {
       (changeRepo === null ||
         leaseRepo === null ||
         changeRepo.hq.toLowerCase() !== leaseRepo.hq.toLowerCase())
-    ) {
-      repositoryUnread = true;
+    )
       continue;
-    }
     if (remoteMatches || leaseMayBeOf(lease.repo, changeRepo))
       return {
         kind: "openable",
@@ -63,13 +54,10 @@ export function draftLook(input: {
         },
       };
   }
-  if (input.classic !== null) {
-    if (input.classic.branch === undefined) return { kind: "reading" };
-    if (input.classic.branch === input.branch)
-      return {
-        kind: "openable",
-        copy: { kind: "service", hostname: input.classic.hostname, branch: input.branch },
-      };
-  }
-  return { kind: repositoryUnread ? "reading" : "unavailable" };
+  if (input.classic != null && input.classic.branch === input.branch)
+    return {
+      kind: "openable",
+      copy: { kind: "service", hostname: input.classic.hostname, branch: input.branch },
+    };
+  return { kind: "unavailable" };
 }

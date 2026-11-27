@@ -109,7 +109,7 @@ export function useMatePreviews(
         branch,
         repositoryUrl,
         repositoryRemote,
-        leases: row?.services?.pools?.length === 0 ? [] : leases,
+        leases,
         classic:
           parts === undefined
             ? undefined

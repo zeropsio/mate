@@ -29,12 +29,10 @@ const held = {
 };
 
 // witness: packages/client-runtime/src/zerops/draftLook.ts | lease.branch !== input.branch → false
-it("ZV200: A change offers Open draft only for a verified copy of its branch and repository, regardless of its last server observation; breaks: a review opens another change's copy.", () => {
+it("ZV200: A change offers Open draft only for a held copy of its branch and repository, regardless of its last server observation; breaks: a review opens another change's copy.", () => {
   const cases = [
     { input: base, answer: held },
-    { input: { ...base, branch: undefined }, answer: { kind: "reading" } },
-    { input: { ...base, leases: undefined }, answer: { kind: "reading" } },
-    { input: { ...base, repositoryUrl: undefined, leases: [] }, answer: { kind: "reading" } },
+    { input: { ...base, classic: undefined }, answer: held },
     {
       input: { ...base, leases: [{ ...lease, branch: "other" }] },
       answer: { kind: "unavailable" },
@@ -43,13 +41,16 @@ it("ZV200: A change offers Open draft only for a verified copy of its branch and
       input: { ...base, leases: [{ ...lease, repo: "https://hq.example/git/org/other/web.git" }] },
       answer: { kind: "unavailable" },
     },
-    { input: { ...base, leases: [{ ...lease, repo: undefined }] }, answer: { kind: "reading" } },
     {
-      input: { ...base, leases: [{ ...lease, unverified: true }] },
+      input: { ...base, leases: [{ ...lease, repo: undefined }] },
       answer: { kind: "unavailable" },
     },
     {
-      input: { ...base, leases: [{ ...lease, state: "parked" }] },
+      input: { ...base, repositoryUrl: undefined, repositoryRemote: repo },
+      answer: held,
+    },
+    {
+      input: { ...base, leases: [{ ...lease, state: "lost" }] },
       answer: { kind: "unavailable" },
     },
     {
@@ -70,15 +71,15 @@ it("ZV200: A change offers Open draft only for a verified copy of its branch and
       answer: held,
     },
     {
-      input: { ...base, leases: [], classic: { hostname: "webdev", branch: "feature" } },
+      input: { ...base, leases: undefined, classic: { hostname: "webdev", branch: "feature" } },
       answer: {
         kind: "openable",
         copy: { kind: "service", hostname: "webdev", branch: "feature" },
       },
     },
     {
-      input: { ...base, leases: [], classic: { hostname: "webdev", branch: undefined } },
-      answer: { kind: "reading" },
+      input: { ...base, leases: [], classic: { hostname: "webdev", branch: "other" } },
+      answer: { kind: "unavailable" },
     },
   ] as const;
   for (const { input, answer } of cases) {
@@ -99,15 +100,11 @@ it("ZV202: Only an open or adding change offers its draft; merged and discarded 
   }
 });
 
-// witness: packages/client-runtime/src/zerops/draftLook.ts | (input.repositoryUrl === undefined && input.repositoryRemote === undefined) → false
-it("ZV+1: A draft's availability is unknown until its branch, copies and repository have been read; breaks: a draft whose repository is still unread is reported unavailable.", () => {
-  for (const input of [
-    { ...base, branch: undefined },
-    { ...base, leases: undefined },
-    { ...base, classic: undefined },
-    { ...base, repositoryUrl: undefined, repositoryRemote: undefined, leases: [] },
-  ]) {
-    expect(draftLook(input)).toEqual({ kind: "reading" });
+// witness: packages/client-runtime/src/zerops/draftLook.ts | lease.branch !== input.branch || → lease.unverified === true || lease.branch !== input.branch ||
+it("ZV212: A held copy remains openable when parked, unmounted or unverified; breaks: a person cannot ask zcp to open a held copy that needs its answer.", () => {
+  for (const state of ["held", "parked", "unmounted"] as const) {
+    for (const unverified of [false, true]) {
+      expect(draftLook({ ...base, leases: [{ ...lease, state, unverified }] })).toEqual(held);
+    }
   }
-  expect(draftLook({ ...base, leases: [] })).toEqual({ kind: "unavailable" });
 });

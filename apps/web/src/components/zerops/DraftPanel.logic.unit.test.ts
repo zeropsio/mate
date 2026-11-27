@@ -2,7 +2,7 @@ import { expect, it } from "vite-plus/test";
 import { draftPane, type DraftPaneState } from "./DraftPanel.logic.ts";
 
 // witness: apps/web/src/components/zerops/DraftPanel.logic.ts | if (state.invalidated === true) return { kind: "ended" }; → if (false) return { kind: "ended" };
-it("MN+1: Opening a draft holds one request per act and shows only zcp's answer; an ended draft returns to availability instead of keeping its frame; breaks: a late answer shows an old copy or two openings overlap.", () => {
+it("MN123: Opening a draft holds one request per act and shows only zcp's answer; an ended draft returns to availability instead of keeping its frame; breaks: a late answer shows an old copy or two openings overlap.", () => {
   const copy = { kind: "service", hostname: "appdev", branch: "feature" } as const;
   const idle: DraftPaneState = { kind: "idle" };
   const opening = draftPane(idle, { type: "mount", copy });

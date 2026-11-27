@@ -50,15 +50,11 @@ export function DraftPaneView({
       ? "This draft is in your app now."
       : look.kind === "discarded"
         ? "This draft was discarded."
-        : look.kind === "reading"
-          ? "Draft availability is not known yet."
-          : look.kind === "unavailable"
-            ? "Draft is not available yet."
-            : state.kind === "failed"
-              ? state.reason
-              : state.kind === "opening" && state.invalidated !== true
-                ? "Opening the draft…"
-                : "Draft is not available yet.";
+        : look.kind === "openable" && state.kind === "failed"
+          ? state.reason
+          : look.kind === "openable" && state.kind === "opening" && state.invalidated !== true
+            ? "Opening the draft…"
+            : undefined;
   const sandbox =
     "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" +
     (showing &&
@@ -96,9 +92,11 @@ export function DraftPaneView({
         />
       ) : (
         <div className="p-4">
-          <Text render={<p />} variant="description">
-            {reason}
-          </Text>
+          {reason === undefined ? null : (
+            <Text render={<p />} variant="description">
+              {reason}
+            </Text>
+          )}
           {!ended && look.kind === "openable" && state.kind === "failed" ? (
             <Button size="sm" variant="secondary" onClick={onRetry}>
               Try again
@@ -143,9 +141,9 @@ function LoadedDraft({
   const mountHandled = useRef(false);
   const started = useRef<DraftPaneState | null>(null);
   useEffect(() => {
-    if (mountHandled.current || draft.kind === "reading") return;
+    if (mountHandled.current || draft.kind !== "openable") return;
     mountHandled.current = true;
-    if (draft.kind === "openable") dispatch({ type: "mount", copy: draft.copy });
+    dispatch({ type: "mount", copy: draft.copy });
   }, [draft]);
   useEffect(() => {
     if (
@@ -205,7 +203,7 @@ function DraftPanel({
     return (
       <DraftPaneView
         title="Draft"
-        look={{ kind: "reading" }}
+        look={{ kind: "unavailable" }}
         state={{ kind: "idle" }}
         onReload={() => {}}
         onRetry={() => {}}

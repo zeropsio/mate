@@ -18,18 +18,18 @@ import {
 } from "./ZeropsReview.logic.ts";
 
 // witness: apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx | draft.kind === "openable" ? ( → draft.kind !== "openable" ? (
-it("RV+1: A review offers Open draft only when the change's copy is openable, and says when availability is still being read; breaks: a review offers a draft it cannot open or calls an unread copy unavailable.", () => {
+it("RV13: A review offers an openable draft through a button inside Mate; breaks: a person opens a lease address or has no way into a draft.", () => {
   const copy = { kind: "service", hostname: "webdev", branch: "feature" } as const;
   const openable = renderToStaticMarkup(
     createElement(ReviewTry, { draft: { kind: "openable", copy }, onOpenDraft: () => {} }),
   );
-  expect(openable).toContain("Open draft");
+  expect(openable).toContain("<button");
   expect(openable).not.toContain("<a ");
-  const reading = renderToStaticMarkup(
-    createElement(ReviewTry, { draft: { kind: "reading" }, onOpenDraft: () => {} }),
+  const unavailable = renderToStaticMarkup(
+    createElement(ReviewTry, { draft: { kind: "unavailable" }, onOpenDraft: () => {} }),
   );
-  expect(reading).not.toContain("Open draft");
-  expect(reading).toContain("Draft availability is not known yet.");
+  expect(unavailable).not.toContain("<button");
+  expect(unavailable).not.toContain("<a ");
 });
 
 // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | branch: pull.branch, → branch: undefined,
