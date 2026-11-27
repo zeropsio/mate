@@ -13,6 +13,7 @@ import {
   isWorking,
   laneShown,
   leadReviews,
+  reviewsOf,
   type CrewState,
   type MemberRecord,
   type TaskRecord,
@@ -26,8 +27,10 @@ import {
   step,
   stepOrRefuse,
   requireFreeCopy,
+  dispatchPrincipal,
 } from "./decide.step.ts";
-import { checkpoint, deliver } from "./decide.turns.ts";
+import { checkpoint, continueTask, deliver } from "./decide.turns.ts";
+import { continueCard } from "./cards.ts";
 
 /** How long a task stands with nobody acting on it before it waits on the person. */
 export const UNATTENDED_MS = 5 * 60_000;
@@ -156,7 +159,23 @@ export const mergeIn = (b: Builder, task: TaskRecord): void => {
 export const checkPassed = (b: Builder, task: TaskRecord, set: TaskPatch = {}): void => {
   const reviewed = leadReviews(b.state) && task.review?.verdict !== "accept";
   const done = step(b, task, { type: "check-passed", reviewed }, set);
-  if (done?.state === "review") unattended(b, done);
+  if (done?.state !== "review") return;
+  unattended(b, done);
+  // A reader that blocked while the task it reviews was sent back waits on news nobody else
+  // brings: the lead's review waits on the reader's verdict, so the lead is not woken for it.
+  for (const review of reviewsOf(b.state, done)) {
+    if (review.state !== "blocked") continue;
+    continueTask(
+      b,
+      review,
+      dispatchPrincipal(b.state, review),
+      continueCard(
+        review,
+        `#${done.number} is back in review after @${done.owner}'s rework: review it again.`,
+      ),
+      "continue",
+    );
+  }
 };
 
 export const unattended = (b: Builder, task: TaskRecord): void => {

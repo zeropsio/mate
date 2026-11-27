@@ -81,5 +81,6 @@ next: CD84
 - CD80 — A reader's verdict lands nothing: it waits on the reader's own task for the lead, and only the lead's accept lands the task it reviews
 - CD81 — A reader gives its verdict only on the task its own task reviews: one on another task is refused and changes nothing
 - CD82 — A reader's task that reviews another starts only once that task is in review, and the lead is woken for that task only once the reader reported
+- CD+1 — A reader blocked while the task it reviews went back to its builder goes on with its review, unasked, once that task is back in review
 - CD79 — A run's start opens no new session for a crewmate whose session has had no turn yet, and one that has had a turn goes on in a new session
 - CD83 — A crewmate's turn whose session could not resume its agent's own thread goes again on a new session, which starts from the crewmate's packet, with nobody pressing anything; when its agent cannot resume twice more in the attempt, the task parks saying so; breaks: one lost thread fails the crewmate's every turn until a person clears its conversation
