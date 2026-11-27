@@ -522,9 +522,10 @@ export const makeRecords = Effect.gen(function* () {
   };
 
   /**
-   * What a window shows of its runs: the runs, every person message, request and answer, every
-   * page published above an answer, every open request (wherever it was asked), the newest items
-   * of each run not ended, and the items loose of any run since its oldest run began.
+   * What a window shows of its runs: the runs, every person message, crew card, request and
+   * answer, every page published above an answer, every open request (wherever it was asked), the
+   * newest items of each run not ended, and the items loose of any run since its oldest run began.
+   * A crew card opens its run as a person's message does, so it paints with the conversation.
    *
    * Read once for the widest window a read may send (`runIds`), then narrowed in memory to the
    * groups it does send: a window over its budget carries fewer groups without reading again.
@@ -558,6 +559,7 @@ export const makeRecords = Effect.gen(function* () {
               SELECT * FROM engine_item WHERE +conversation_id = ${conversation}
                 AND ${sql.in("run_id", runIds)}
                 AND (kind IN ('person', 'request')
+                  OR (kind = 'note' AND json_extract(body_json, '$.card') IS NOT NULL)
                   OR (kind = 'call' AND json_extract(body_json, '$.result.page') IS NOT NULL)
                   ${answers.length === 0 ? sql`` : sql`OR ${sql.in("item_id", answers)}`})
             `;

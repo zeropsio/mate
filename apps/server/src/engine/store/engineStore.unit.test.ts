@@ -24,6 +24,7 @@ import {
   sqliteWithEngineTables,
   turn,
 } from "../testing/fixtures.ts";
+import { makeRecords } from "../wire/records.ts";
 import { makeEngineStore } from "./EngineStore.ts";
 
 /** Each engine table's row count, by name. */
@@ -433,5 +434,47 @@ it.effect(
         rows: { ...before, engine_receipt: before.engine_receipt! + 1 },
         reloaded: running.state,
       });
+    }).pipe(Effect.provide(sqliteWithEngineTables)),
+);
+
+// witness: apps/server/src/engine/wire/records.ts | OR (kind = 'note' AND json_extract(body_json, '$.card') IS NOT NULL) → OR (kind = 'note' AND json_extract(body_json, '$.card') IS NULL)
+it.effect(
+  "ES+1: A conversation's window carries the crew card that opened each run it holds, ended or not, beside the person's messages; breaks: a crewmate's conversation opens on a finished turn with no task, and its card drops in above it on Show work",
+  () =>
+    Effect.gen(function* () {
+      const store = yield* makeEngineStore();
+      const card = {
+        kind: "task",
+        taskId: "task-1",
+        number: 1,
+        title: "Build the page",
+        why: "A form and a list.",
+        doneWhen: null,
+        links: [],
+      } as const;
+      yield* drive(store, initialState(conversation), [
+        { _tag: "Send", text: "Build the page", card },
+        prepared(1),
+        opened(1),
+        sent(1),
+        ended(1),
+        send("and the list"),
+        prepared(2),
+        sent(2),
+        ended(2),
+      ]);
+      const records = yield* makeRecords;
+      const narrow = yield* records.windowsOf(conversation, [r(1), r(2)]);
+      const shown = narrow([r(1), r(2)], { oldestOrdinal: 1, earlier: false });
+      expect(
+        shown.items.map((item) => ({
+          run: item.runId,
+          kind: item.kind,
+          card: item.kind === "note" ? (item.card?.title ?? null) : null,
+        })),
+      ).toEqual([
+        { run: r(1), kind: "note", card: "Build the page" },
+        { run: r(2), kind: "person", card: null },
+      ]);
     }).pipe(Effect.provide(sqliteWithEngineTables)),
 );
