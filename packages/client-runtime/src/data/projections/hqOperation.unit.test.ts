@@ -23,6 +23,27 @@ const answered = (name: string): HqOperation | undefined => {
   return applications.find((operation) => operation !== undefined);
 };
 
+// witness: packages/client-runtime/src/data/projections/hqOperation.ts | : { unplacedProjectId: operation.unplacedProjectId }), → : {}),
+it("PJ163: A failed environment or Put it live operation carries the project HQ says it could not place, and no project is named when HQ omits it; breaks: the person cannot identify the project involved.", () => {
+  for (const kind of ["environment", "put_live"]) {
+    for (const offers of [[], ["again"]]) {
+      const operation: HqOperation = {
+        ...listed(kind, "project_requested", {
+          failure: failure("placed_or_production_taken", "place"),
+          offers,
+        }),
+        unplacedProjectId: "project-1",
+      };
+      expect(hqOperationOf(operation, kind)).toMatchObject({
+        kind: "failed",
+        unplacedProjectId: "project-1",
+      });
+      const { unplacedProjectId: _unplaced, ...withoutProject } = operation;
+      expect(hqOperationOf(withoutProject, kind)).not.toHaveProperty("unplacedProjectId");
+    }
+  }
+});
+
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | yours: operation.offers?.includes(CONTINUE) === true, → yours: operation.continueBy !== undefined,
 it("PJ131: An application's environment, deploy-key, rename and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker exactly where HQ names one to continue it, whatever it waits on, yours only where HQ offers the reader its Continue, and failed for every other failure; breaks: a second device draws no stage being added, a failed deploy key reads as waiting, or a maker who lost the right is shown a Continue HQ refuses", () => {
   const cases: ReadonlyArray<

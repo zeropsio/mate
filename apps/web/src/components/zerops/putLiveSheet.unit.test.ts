@@ -14,6 +14,27 @@ const sheet = (stageHeld: boolean | undefined) =>
     stageHeld,
   });
 
+// witness: apps/web/src/zerops/putLive.logic.ts | : { unplacedProjectId: standing.unplacedProjectId }), → : {}),
+it("MN130: A failed Put it live keeps the project HQ says it could not place, and names none when HQ omits it; breaks: its production row cannot identify the project involved.", () => {
+  const operation: HqOperation = {
+    id: "op-1",
+    kind: "put_live",
+    phase: "project_requested",
+    acceptedAt: "2026-11-24T10:00:00Z",
+    at: "2026-11-24T10:00:00Z",
+    failure: {
+      step: "place",
+      code: "placed_or_production_taken",
+      origin: "hq",
+      at: "2026-11-24T10:00:00Z",
+    },
+    unplacedProjectId: "project-1",
+  };
+  expect(putLiveOf(operation)).toMatchObject({ kind: "failed", unplacedProjectId: "project-1" });
+  const { unplacedProjectId: _unplaced, ...withoutProject } = operation;
+  expect(putLiveOf(withoutProject)).not.toHaveProperty("unplacedProjectId");
+});
+
 // witness: apps/web/src/zerops/putLive.logic.ts | const later = input.stageHeld === false ? PUT_LIVE_LATER : undefined; → const later = input.stageHeld !== true ? PUT_LIVE_LATER : undefined;
 it("MN52: Put it live suggests adding a stage only once HQ's environments are read and hold none; breaks: an application with a stage is told to add one, or the suggestion paints and is taken back", () => {
   expect(sheet(false).later).toBeDefined();

@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
+import { ZeropsUnplacedProject } from "./ZeropsUnplacedProject";
 import { Card } from "~/components/ui/card";
 import { Text } from "~/components/ui/text";
 
@@ -119,6 +120,9 @@ export function ZeropsEnvironmentCreation({
             : undefined
         }
       />
+      {standing.kind === "failed" && standing.unplacedProjectId !== undefined ? (
+        <ZeropsUnplacedProject projectId={standing.unplacedProjectId} />
+      ) : null}
       {standing.kind === "waiting" ? (
         <Text render={<p />} variant="note">
           {standing.yours ? standing.line : waitingFor}

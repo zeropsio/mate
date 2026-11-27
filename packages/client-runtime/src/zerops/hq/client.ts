@@ -381,6 +381,8 @@ export const HqOperation = Schema.Struct({
   at: Schema.String,
   acceptedAt: Schema.String,
   failure: Schema.optionalKey(HqOperationFailure),
+  /** The project named by a failed environment placement, when HQ lets this reader see it. */
+  unplacedProjectId: Schema.optionalKey(Schema.String),
   continueBy: Schema.optionalKey(Schema.String),
   /** What an application's operation ended at for the person to decide (`release_review`). */
   needs: Schema.optionalKey(Schema.String),

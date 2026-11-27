@@ -9,16 +9,20 @@
  * here ships, and no route imports this module.
  */
 import type { ProductionShape } from "@t3tools/shared/hqRelease";
+import { hqOperationOf } from "@t3tools/client-runtime/data";
+import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import { type ReactNode, StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { PutLiveRow } from "~/components/zerops/ProductionRun";
+import { ZeropsEnvironmentCreation } from "~/components/zerops/ZeropsEnvironmentCreation";
 import { PutLiveSheet } from "~/components/zerops/PutLiveSheet";
 import { ZeropsNextStepStrip } from "~/components/zerops/ZeropsNextStepBanner";
 import { Dialog } from "~/components/ui/dialog";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import {
   putLiveServices,
+  putLiveOf,
   putLiveShapes,
   putLiveSheet,
   putLiveSheetUnderWay,
@@ -33,6 +37,7 @@ const SHAPE: ProductionShape | undefined =
   ASKED_SHAPE === "small" || ASKED_SHAPE === "available" ? ASKED_SHAPE : undefined;
 const RECIPE_READING = params.get("recipe") === "loading";
 const BUSY = params.get("busy") === "1";
+const RETAINED_PROJECT = params.get("state") === "retained-project";
 
 /** An invented production tier, highly available as recipes write it. */
 const TIER = [
@@ -91,6 +96,66 @@ const ROWS: ReadonlyArray<{
 
 const noop = () => {};
 
+/** The same application after a refused placement, with and without the project HQ lets us see. */
+function failedApplication(kind: "environment" | "put_live", showProject: boolean) {
+  const operation: HqOperation = {
+    id: `op-${kind}`,
+    kind,
+    phase: "project_requested",
+    at: new Date(NOW).toISOString(),
+    acceptedAt: new Date(NOW).toISOString(),
+    failure: {
+      step: "place",
+      code: "placed_or_production_taken",
+      at: new Date(NOW).toISOString(),
+      origin: "hq",
+    },
+    ...(showProject ? { unplacedProjectId: "f2a9271b8d2f43d9a8be50cf013772c1" } : {}),
+  };
+  return { name: "Cookbook", operation };
+}
+
+function RetainedProjectExamples() {
+  return (
+    <main
+      className="mx-auto grid max-w-5xl gap-8 p-10 md:grid-cols-2"
+      data-retained-project-example
+    >
+      {[true, false].map((showProject) => {
+        const stage = failedApplication("environment", showProject);
+        const production = failedApplication("put_live", showProject);
+        const stageStanding = hqOperationOf(stage.operation, "environment");
+        const productionStanding = putLiveOf(production.operation);
+        if (stageStanding.kind === "none" || productionStanding.kind === "none") return null;
+        return (
+          <section className="grid content-start gap-6" key={String(showProject)}>
+            <h2 className="text-body font-semibold">
+              {showProject ? "Project ID visible" : "Project ID not sent"}
+            </h2>
+            <ZeropsEnvironmentCreation
+              kind={stage.operation.kind}
+              name={`${stage.name} - stage`}
+              nowMs={NOW}
+              onDismiss={noop}
+              onStartAgain={noop}
+              phase={stage.operation.phase}
+              standing={stageStanding}
+              startedAtMs={NOW - 120_000}
+            />
+            <PutLiveRow
+              onAgain={noop}
+              onContinue={undefined}
+              onReview={noop}
+              project={production.name}
+              standing={productionStanding}
+            />
+          </section>
+        );
+      })}
+    </main>
+  );
+}
+
 function Composer({ name, top }: { readonly name: string; readonly top: ReactNode }) {
   return (
     <section className="flex w-full max-w-3xl flex-col gap-2" data-put-live-harness={name}>
@@ -132,6 +197,12 @@ function Harness() {
     shapes: putLiveShapes(TIER),
     shape,
   });
+  if (RETAINED_PROJECT)
+    return (
+      <TooltipProvider>
+        <RetainedProjectExamples />
+      </TooltipProvider>
+    );
   return (
     <TooltipProvider>
       <div className="flex min-h-screen flex-col items-center gap-10 bg-background p-10 text-foreground">

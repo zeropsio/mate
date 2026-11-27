@@ -26,6 +26,7 @@ import { formatElapsed } from "../ui/progress.logic";
 import { Spinner } from "../ui/spinner";
 import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
+import { ZeropsUnplacedProject } from "./ZeropsUnplacedProject";
 
 /**
  * The run's step: a spinner and its words. Its clock says how long the step has run, so a long
@@ -117,6 +118,9 @@ export function PutLiveRow(props: PutLiveRowProps) {
         {progress.step}
         {details === null ? null : <FailureDetails>{details}</FailureDetails>}
       </div>
+      {standing.kind === "failed" && standing.unplacedProjectId !== undefined ? (
+        <ZeropsUnplacedProject projectId={standing.unplacedProjectId} />
+      ) : null}
       {action === undefined && props.onEnd === undefined ? null : (
         <p className="flex flex-wrap items-center gap-2.5">
           {action === undefined ? null : (

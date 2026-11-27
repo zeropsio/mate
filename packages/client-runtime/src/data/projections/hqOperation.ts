@@ -49,6 +49,7 @@ export type HqOperationStanding =
       readonly kind: "failed";
       readonly id: string;
       readonly failure: HqOperationFailure;
+      readonly unplacedProjectId?: string;
       readonly again?: true;
     }
   /**
@@ -80,7 +81,13 @@ export function hqOperationOf(
       ...waitingWords(operation.failure.code),
       ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}),
     };
-  if (operation.offers?.includes(AGAIN) === true)
-    return { kind: "failed", id: operation.id, failure: operation.failure, again: true };
-  return { kind: "failed", id: operation.id, failure: operation.failure };
+  return {
+    kind: "failed",
+    id: operation.id,
+    failure: operation.failure,
+    ...(operation.offers?.includes(AGAIN) === true ? { again: true as const } : {}),
+    ...(operation.unplacedProjectId === undefined
+      ? {}
+      : { unplacedProjectId: operation.unplacedProjectId }),
+  };
 }

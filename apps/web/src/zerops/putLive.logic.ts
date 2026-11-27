@@ -331,7 +331,11 @@ export type PutLiveStanding =
       /** HQ offers the person reading its End. */
       readonly endable?: true;
     }
-  | { readonly kind: "failed"; readonly failure: HqOperationFailure };
+  | {
+      readonly kind: "failed";
+      readonly failure: HqOperationFailure;
+      readonly unplacedProjectId?: string;
+    };
 
 const NOT_PUT_LIVE: PutLiveStanding = { kind: "none" };
 
@@ -364,7 +368,13 @@ export function putLiveOf(operation: HqOperation | undefined): PutLiveStanding {
         ...(standing.endable === true ? { endable: true as const } : {}),
       };
     case "failed":
-      return { kind: "failed", failure: standing.failure };
+      return {
+        kind: "failed",
+        failure: standing.failure,
+        ...(standing.unplacedProjectId === undefined
+          ? {}
+          : { unplacedProjectId: standing.unplacedProjectId }),
+      };
   }
 }
 
