@@ -283,14 +283,16 @@ export function ProjectPageBody<T>({
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
           />
           {setup.automationStanding ? (
+            // The application's Board: its tasks, the automated Mates that take them, and where
+            // they come from.
             <section
-              aria-label="Automation"
+              aria-label="Board"
               className={PAGE_GROUP}
               data-zerops-project-automation=""
               // What a schedule made from a conversation links to (`ScheduleAsk`).
               id="automation"
             >
-              <SectionHeader title="Automation" />
+              <SectionHeader title="Board" />
               <Card>{setup.automation}</Card>
             </section>
           ) : null}

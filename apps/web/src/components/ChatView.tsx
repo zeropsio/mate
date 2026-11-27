@@ -6007,6 +6007,7 @@ function ConversationView(props: ChatViewProps) {
           // A page's ask never names the conversation (`ComposerSendIds.fromPanel`).
           ...(attemptIds?.fromPanel === true ? { fromPanel: true as const } : {}),
           ...(attemptIds?.about === undefined ? {} : { about: attemptIds.about }),
+          ...(attemptIds?.taken === undefined ? {} : { taken: attemptIds.taken }),
           ...(queueBehindTurn ? { queued: true as const } : {}),
           createdAt: messageCreatedAt,
         },

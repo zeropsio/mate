@@ -34,7 +34,9 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUpRightIcon,
   CalendarClockIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
+  MoreHorizontalIcon,
   HashIcon,
   MessagesSquareIcon,
   WebhookIcon,
@@ -46,17 +48,25 @@ import { useAppIntake, useAutomatedKey } from "~/zerops/useAutomationSettings";
 import {
   useAppTaskSource,
   useAppTaskStops,
+  useBoardTaskWrites,
   useGithubApp,
   useOrgTaskSource,
 } from "~/zerops/useTaskSourceSettings";
-import { TASK_STATUS_WORDS } from "~/zerops/taskStatus";
+import {
+  useBoardOffers,
+  useBoardRevision,
+  useOpenTaskConversation,
+  useTakeTask,
+} from "~/zerops/useBoardTasks";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import type { BoardTaskOffer } from "@t3tools/client-runtime/data";
 import { useNewMateDialog } from "~/zerops/newMate";
 import { useAddMateOffer } from "~/zerops/useHqOffers";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { mateActivityAtom } from "~/zerops/mateActivityAtoms";
-import { hqMateVersionsAtom } from "~/state/zerops";
+import { hqMateVersionsAtom, hqPlacementsAtom } from "~/state/zerops";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
@@ -71,12 +81,12 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../../ui/dialog";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
+import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Row } from "../../ui/row";
 import { Skeleton } from "../../ui/skeleton";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { appReaching } from "../../settings/automationSettings.logic";
-import { MateFace } from "../primitives";
+import { MateFace, PersonAvatar } from "../primitives";
 import { SetupRow } from "../project/SetupCard";
 import { automationSummary } from "../project/projectSetup.logic";
 import { BeadMark, CutText, GrowsInPlace, SectionAction } from "../system";
@@ -88,7 +98,6 @@ import {
   connectionMissing,
   poolMateLine,
   SOURCE_KINDS,
-  sourceRowPress,
   sourceRows,
   type RowPress,
   type SourceKind,
@@ -96,14 +105,17 @@ import {
 } from "./projectAutomation.logic";
 import { AppChannelView, AppIntakeView, AppSchedulesView, AppWebhooksView } from "./sourceForms";
 import {
-  atWorkWords,
   boardOf,
   heldOnItsChange,
+  LANES,
   poolSummary,
   predictedBoard,
   RECENT_SHOWN,
   spendLine,
+  taskRowPress,
   type Board,
+  type BoardRow,
+  type PredictedBoard,
 } from "./taskBoard.logic";
 import { RealName } from "~/components/ui/real-name";
 import { Text } from "~/components/ui/text";
@@ -153,9 +165,10 @@ export function ProjectAutomation({
   const board = useTaskBoard(
     groupId,
     live,
-    predictedBoard(tasks, intake.read.intake?.waiting ?? 0),
-    admin,
+    predictedBoard(tasks, intake.read.intake?.waiting ?? 0, useTakenCount(groupId)),
+    pool,
   );
+  const written = (useBoardRevision(groupId) ?? 0) > 0;
   if (!admin) {
     const { rows, withheld } = sourceRows({
       intake: intake.read.intake,
@@ -166,7 +179,10 @@ export function ProjectAutomation({
       slackConnected: undefined,
       discordConnected: undefined,
     });
-    if (automationSection({ admin, pool: pool.length, sources: rows.length }) === "hidden")
+    if (
+      automationSection({ admin, pool: pool.length, sources: rows.length, board: written }) ===
+      "hidden"
+    )
       return null;
     return (
       <ProjectAutomationView
@@ -229,7 +245,20 @@ export function ProjectAutomationRow({
  * section in a dialog.
  */
 export function useAutomationStanding(groupId: string): boolean {
-  return usePool(groupId).pool.length > 0;
+  const written = (useBoardRevision(groupId) ?? 0) > 0;
+  return usePool(groupId).pool.length > 0 || written;
+}
+
+/**
+ * How many tasks people took for their own Mates in the application, as navigation carries them on
+ * each Mate's row: how many rows In progress will hold while the Board reads.
+ */
+function useTakenCount(groupId: string): number {
+  const placements = useAtomValue(hqPlacementsAtom);
+  let count = 0;
+  for (const placement of placements?.values() ?? [])
+    if (placement.appId === groupId) count += placement.mate?.taken?.length ?? 0;
+  return count;
 }
 
 /**
@@ -346,33 +375,31 @@ function usePool(groupId: string): {
   return { pool, live, tasks, complete: held.complete };
 }
 
-/** How many rows each group will hold while the board reads (`predictedBoard`); none, no group. */
-interface Predicted {
-  readonly atWork: number;
-  readonly queued: number;
-  readonly recent: number;
+/** How many rows each lane will hold while the Board reads (`predictedBoard`); none, no lane. */
+interface Predicted extends PredictedBoard {
   /** The line that opens the ones that ended earlier. */
-  readonly recentMore?: boolean | undefined;
+  readonly doneMore?: boolean | undefined;
 }
 
 /**
- * How Finished last landed, per application, while this page lives: navigation names only each
- * Mate's latest task, so the next read's placeholders take Finished's size from the last answer.
+ * How Done last landed, per application, while this page lives: navigation names only each Mate's
+ * latest task, so the next read's placeholders take Done's size from the last answer.
  */
-const landed = new Map<string, { readonly recent: number; readonly recentMore: boolean }>();
+const landed = new Map<string, { readonly done: number; readonly doneMore: boolean }>();
 
 /**
- * The application's task board: HQ's tasks of it, read while the section is drawn (and again by
- * the data layer as navigation says its tasks moved), live rows moving with navigation; the
- * organization's spend this month; and an Owner's or Admin's Stop of a task, asked in its row,
- * each task's stop its own record (`appTaskStops`), the one its conversation's band reads too.
+ * The application's Board: HQ's tasks of it, read while the section is drawn (and again by the
+ * data layer as its Board revision or its pool's tasks move), live rows moving with navigation; the
+ * organization's spend this month; who and which Mate each task names; and what the reader may do
+ * with each task (`boardOffers`) — Take into one of their own Mates, Release, Done, Stop (asked in
+ * its row first) — each task's writes its own record (`appTaskWrites`), the one its conversation
+ * reads too.
  */
 function useTaskBoard(
   groupId: string,
   live: ReadonlyMap<string, HqNavigationMateTask>,
   predicted: Predicted,
-  /** An Owner or Admin: each live task has its Stop. */
-  admin: boolean,
+  pool: ReadonlyArray<PoolMate>,
 ): BoardView {
   const tasks = useAppTaskSource("hqAppTasks", groupId);
   const limits = useOrgTaskSource("hqTaskLimits");
@@ -380,22 +407,39 @@ function useTaskBoard(
   const versions = useAtomValue(hqMateVersionsAtom);
   const nowMs = useNowMs();
   const navigate = useNavigate();
+  const viewerId = useZeropsSession().user?.id;
+  const { activeOrganization } = useZeropsSession();
+  const personName = useHqPersonNames(activeOrganization?.id);
+  const faces = useMateFaces();
+  const offers = useBoardOffers(groupId);
+  const writes = useBoardTaskWrites(groupId);
+  const take = useTakeTask(groupId);
+  const openConversation = useOpenTaskConversation();
   const [asking, setAsking] = useState<string | null>(null);
   const setting = tasks.read.setting;
   const held = setting.state === "known" ? setting.held : null;
   const board = useMemo(() => {
     if (held === null) return null;
-    const made = boardOf(held, nowMs, groupId, live, (projectId) =>
-      heldOnItsChange(versions[projectId]),
-    );
+    const made = boardOf(held, nowMs, {
+      appId: groupId,
+      live,
+      held: (projectId) => heldOnItsChange(versions[projectId]),
+      viewerId,
+      personName,
+      mateName: (projectId) => faces.get(projectId)?.name,
+    });
     landed.set(groupId, {
-      recent: Math.min(made.recent.length, RECENT_SHOWN),
-      recentMore: made.recent.length > RECENT_SHOWN,
+      done: Math.min(made.lanes.done.length, RECENT_SHOWN),
+      doneMore: made.lanes.done.length > RECENT_SHOWN,
     });
     return made;
-  }, [held, nowMs, groupId, live, versions]);
-  const stoppable = board === null ? [] : [...board.atWork, ...board.queued].map((row) => row.id);
-  const stops = useAppTaskStops(groupId, stoppable);
+  }, [held, nowMs, groupId, live, versions, viewerId, personName, faces]);
+  const shownIds = useMemo(() => (held === null ? [] : held.map((task) => task.id)), [held]);
+  const stops = useAppTaskStops(groupId, shownIds);
+  const poolFaces = useMemo(
+    () => new Map(pool.map((mate) => [mate.projectId, mate] as const)),
+    [pool],
+  );
   return {
     read:
       board !== null
@@ -410,28 +454,71 @@ function useTaskBoard(
     onOpen: (route) => {
       void navigate({ href: route });
     },
-    stop: !admin
-      ? undefined
-      : {
-          pressOf: (taskId) =>
-            sourceRowPress({
-              key: taskId,
-              asking,
-              pressed: taskId,
-              action: stops.stops[taskId] ?? { kind: "idle" },
-            }),
-          onAsk: (taskId) => {
-            setAsking(taskId);
+    onOpenConversation: openConversation,
+    faceOf: (projectId) => poolFaces.get(projectId) ?? faces.get(projectId),
+    verbs:
+      offers === undefined
+        ? undefined
+        : {
+            offerOf: (taskId) => offers.tasks[taskId],
+            takeInto: offers.ownMates.map((projectId) => ({
+              projectId,
+              name: faces.get(projectId)?.name ?? "Your Mate",
+            })),
+            pressOf: (taskId) => taskRowPress({ taskId, asking, action: stops.stops[taskId] }),
+            onAsk: (taskId) => {
+              setAsking(taskId);
+            },
+            onKeep: () => {
+              setAsking(null);
+            },
+            onStop: (taskId) => {
+              setAsking(null);
+              stops.stop(taskId);
+            },
+            onTake: (taskId, mateProjectId) => {
+              void take(taskId, mateProjectId);
+            },
+            onRelease: (taskId) => {
+              void writes?.release(taskId);
+            },
+            onDone: (taskId) => {
+              void writes?.done(taskId);
+            },
           },
-          onKeep: () => {
-            setAsking(null);
-          },
-          onStop: (taskId) => {
-            setAsking(null);
-            stops.stop(taskId);
-          },
-        },
   };
+}
+
+/** A Mate's face as the Board draws it: its name, colour and shape. */
+export interface BoardFace {
+  readonly name: string;
+  readonly tint: MateTintId;
+  readonly shape: MateShapeId | undefined;
+}
+
+/**
+ * Each Mate the reader's list holds, by its project: its name and face — what the Board names a
+ * person's Mate by, and whether a task's conversation opens for them.
+ */
+function useMateFaces(): ReadonlyMap<string, BoardFace> {
+  const { listing } = useZeropsCandidates();
+  const rows = useMemo(() => heldCandidates(listing).rows, [listing]);
+  return useMemo(() => {
+    const tints = assignCandidateMateTints(rows);
+    return new Map(
+      rows.map((candidate) => {
+        const tint = tints.get(candidate.project.id) ?? "slate";
+        return [
+          candidate.project.id,
+          {
+            name: projectNameInApp(candidate.project),
+            tint,
+            shape: mateShapeOf(candidate.project, tint),
+          },
+        ] as const;
+      }),
+    );
+  }, [rows]);
 }
 
 /** *Add an automated Mate*: the New Mate dialog over the page, Automated chosen. */
@@ -697,10 +784,26 @@ export interface AutomationControls {
   readonly onOpenSettings: () => void;
 }
 
+/** What the reader may do with each task on the Board, and the presses; absent: a reader only. */
+export interface BoardVerbs {
+  /** The task's verbs as the rules offer them (`boardOffers`); `undefined`: none known. */
+  readonly offerOf: (taskId: string) => BoardTaskOffer | undefined;
+  /** The reader's own Mates in the application a Take opens in: a choice where several. */
+  readonly takeInto: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
+  /** Where the row's press stands: its Stop asking, a write under way or refused (`taskRowPress`). */
+  readonly pressOf: (taskId: string) => RowPress;
+  readonly onAsk: (taskId: string) => void;
+  readonly onKeep: () => void;
+  readonly onStop: (taskId: string) => void;
+  readonly onTake: (taskId: string, mateProjectId: string) => void;
+  readonly onRelease: (taskId: string) => void;
+  readonly onDone: (taskId: string) => void;
+}
+
 /**
- * The task board as the section draws it: what HQ answered, or how its read stands (`reading`,
- * with how many rows navigation says each group will hold, so the board keeps its height when they
- * land; `none` where the reader may not read it).
+ * The Board as the section draws it: what HQ answered, or how its read stands (`reading`, with how
+ * many rows navigation says each lane will hold, so the Board keeps its height when they land;
+ * `none` where the reader may not read it).
  */
 export interface BoardView {
   readonly read:
@@ -716,15 +819,13 @@ export interface BoardView {
   readonly onReadAgain: () => void;
   /** Opens a task's conversation or its change, by its in-app path. */
   readonly onOpen: (route: string) => void;
-  /** An Owner's or Admin's Stop of a live task, asked in its row; absent for anyone else. */
-  readonly stop?:
-    | {
-        readonly pressOf: (taskId: string) => RowPress;
-        readonly onAsk: (taskId: string) => void;
-        readonly onKeep: () => void;
-        readonly onStop: (taskId: string) => void;
-      }
+  /** Opens the conversation a task was put from. */
+  readonly onOpenConversation?:
+    | ((conversation: NonNullable<BoardRow["origin"]["conversation"]>) => void)
     | undefined;
+  /** A Mate's face by its project: a pool Mate's, or a person's own; `undefined` unknown. */
+  readonly faceOf?: ((projectId: string) => BoardFace | undefined) | undefined;
+  readonly verbs?: BoardVerbs | undefined;
 }
 
 /**
@@ -934,57 +1035,49 @@ function RowPress({
 const RESTS: RowPress = { kind: "idle" };
 
 /**
- * A live task's Stop, for an Owner or Admin: in its row's seat while the row is pointed at or
- * focused (always where nothing hovers); pressed, it asks in the row, over its facts, so no column
- * moves. The press moves with it: to *Keep* as it asks, back to *Stop* once kept.
+ * A task's Stop, asked in its row over its facts, so no column moves: *Keep* or *Stop*. The press
+ * moves with it: to *Keep* as it asks, back to the row once kept.
  */
-function TaskStop({
-  board,
+function StopAsk({
+  verbs,
   taskId,
   question,
 }: {
-  readonly board: BoardView;
+  readonly verbs: BoardVerbs;
   readonly taskId: string;
   readonly question: string;
 }) {
-  const asking = (board.stop?.pressOf(taskId) ?? RESTS).kind === "asking";
-  const pressed = useRef(false);
   const keep = useRef<HTMLButtonElement | null>(null);
-  const stop = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    if (!pressed.current) return;
-    if (asking) keep.current?.focus();
-    else {
-      pressed.current = false;
-      stop.current?.focus();
-    }
-  }, [asking]);
-  if (board.stop === undefined) return null;
-  if (asking)
-    return (
-      // Stop asks in the row, over its facts, which keep their columns under it.
-      <span className="absolute inset-y-0 start-4 end-2.5 z-2 col-start-3 -col-end-1 flex min-w-0 items-center justify-end gap-1.5 motion-safe:animate-zerops-appear @max-[520px]/automation:start-0 @max-[520px]/automation:col-start-2 @max-[520px]/automation:bg-card">
-        <span className="me-1 min-w-0 truncate text-caption leading-4.5 text-muted-foreground">
-          {question}
-        </span>
-        <Button onClick={board.stop.onKeep} ref={keep} size="sm" variant="ghost">
-          Keep
-        </Button>
-        <Button
-          onClick={() => {
-            pressed.current = false;
-            board.stop?.onStop(taskId);
-          }}
-          size="sm"
-          variant="destructive"
-        >
-          Stop
-        </Button>
-      </span>
-    );
+    keep.current?.focus();
+  }, []);
   return (
-    // Stop stands only on the row pointed at or focused, in the chevron's place; always where
-    // nothing hovers.
+    <span className="absolute inset-y-0 start-4 end-2.5 z-2 col-start-3 -col-end-1 flex min-w-0 items-center justify-end gap-1.5 motion-safe:animate-zerops-appear @max-[520px]/automation:start-0 @max-[520px]/automation:col-start-2 @max-[520px]/automation:bg-card">
+      <span className="me-1 min-w-0 truncate text-caption leading-4.5 text-muted-foreground">
+        {question}
+      </span>
+      <Button onClick={verbs.onKeep} ref={keep} size="sm" variant="ghost">
+        Keep
+      </Button>
+      <Button
+        onClick={() => {
+          verbs.onStop(taskId);
+        }}
+        size="sm"
+        variant="destructive"
+      >
+        Stop
+      </Button>
+    </span>
+  );
+}
+
+/**
+ * A live task's Stop alone, where it is the row's one verb: in its row's seat while the row is
+ * pointed at or focused (always where nothing hovers), in the chevron's place.
+ */
+function HoverStop({ verbs, taskId }: { readonly verbs: BoardVerbs; readonly taskId: string }) {
+  return (
     <span
       className={cn(
         SEAT,
@@ -993,15 +1086,130 @@ function TaskStop({
     >
       <Button
         onClick={() => {
-          pressed.current = true;
-          board.stop?.onAsk(taskId);
+          verbs.onAsk(taskId);
         }}
-        ref={stop}
         size="sm"
         variant="ghost"
       >
         Stop
       </Button>
+    </span>
+  );
+}
+
+/**
+ * **Take**: into the reader's one Mate in the application at once; where they have several, a
+ * choice of which, each by its name.
+ */
+function TakePress({
+  verbs,
+  taskId,
+  title,
+}: {
+  readonly verbs: BoardVerbs;
+  readonly taskId: string;
+  readonly title: string;
+}) {
+  const [only] = verbs.takeInto;
+  if (verbs.takeInto.length === 1 && only !== undefined)
+    return (
+      <Button
+        aria-label={`Take “${title}” into ${only.name}`}
+        onClick={() => {
+          verbs.onTake(taskId, only.projectId);
+        }}
+        size="xs"
+        variant="secondary"
+      >
+        Take
+      </Button>
+    );
+  return (
+    <Menu>
+      <MenuTrigger
+        render={<Button aria-label={`Take “${title}” into…`} size="xs" variant="secondary" />}
+      >
+        Take
+        <ChevronDownIcon aria-hidden="true" />
+      </MenuTrigger>
+      <MenuPopup align="end" width="sm">
+        <MenuGroup>
+          <MenuGroupLabel>Take it into</MenuGroupLabel>
+          {verbs.takeInto.map((mate) => (
+            <MenuItem
+              key={mate.projectId}
+              onClick={() => {
+                verbs.onTake(taskId, mate.projectId);
+              }}
+            >
+              {mate.name}
+            </MenuItem>
+          ))}
+        </MenuGroup>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/**
+ * A task's verbs beyond the seat's one press — Done where Review takes the seat, Release, and Stop
+ * asked in the row — in a menu that stands while the row is pointed at or focused (always where
+ * nothing hovers, and while it is open).
+ */
+function MoreVerbs({
+  verbs,
+  taskId,
+  title,
+  done,
+  release,
+  stop,
+}: {
+  readonly verbs: BoardVerbs;
+  readonly taskId: string;
+  readonly title: string;
+  readonly done: boolean;
+  readonly release: boolean;
+  readonly stop: boolean;
+}) {
+  return (
+    <span className="flex opacity-0 transition-opacity duration-150 ease-out-strong group-focus-within/pa:opacity-100 group-hover/pa:opacity-100 has-data-popup-open:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
+      <Menu>
+        <MenuTrigger
+          render={<Button aria-label={`More for “${title}”`} size="icon-xs" variant="ghost" />}
+        >
+          <MoreHorizontalIcon aria-hidden="true" />
+        </MenuTrigger>
+        <MenuPopup align="end" width="sm">
+          {done ? (
+            <MenuItem
+              onClick={() => {
+                verbs.onDone(taskId);
+              }}
+            >
+              Mark it done
+            </MenuItem>
+          ) : null}
+          {release ? (
+            <MenuItem
+              onClick={() => {
+                verbs.onRelease(taskId);
+              }}
+            >
+              Release to the queue
+            </MenuItem>
+          ) : null}
+          {stop ? (
+            <MenuItem
+              onClick={() => {
+                verbs.onAsk(taskId);
+              }}
+              variant="destructive"
+            >
+              Stop…
+            </MenuItem>
+          ) : null}
+        </MenuPopup>
+      </Menu>
     </span>
   );
 }
@@ -1034,12 +1242,8 @@ function RowText({
   );
 }
 
-/** "Sol · 12m": whose, and how long or when; either alone where the other is not known. */
-const whoWords = (mate: string | null, time: string): string =>
-  [mate, time === "—" ? null : time].filter((part) => part !== null).join(" · ");
-
 /**
- * A task slides to its new place when it changes group: each row's place in the ledger is read
+ * A task slides to its new place when it changes lane: each row's place in the ledger is read
  * after every render, and one that stood elsewhere eases from there. A row that arrives is placed.
  * Reduced motion cuts.
  */
@@ -1066,6 +1270,259 @@ function useSlidingRows() {
   return ledger;
 }
 
+/** The question a row's Stop asks: who stops, and what of it is lost. */
+function stopQuestion(row: BoardRow, holder: string | null): string {
+  if (row.lane === "queued") return "Stop this task? Nobody has taken it yet.";
+  if (row.holder?.kind === "person") return "Stop this task? It leaves the Board.";
+  return `Stop this task? ${holder ?? "Its Mate"} stops where it got to.`;
+}
+
+/** Where a task came from, in its column: linked out, or back to its conversation, where it can be. */
+function OriginWords({
+  origin,
+  onOpenConversation,
+}: {
+  readonly origin: BoardRow["origin"];
+  readonly onOpenConversation: BoardView["onOpenConversation"];
+}) {
+  if (origin.url !== null)
+    return (
+      <InlineButton
+        className="pointer-events-auto max-w-full"
+        render={<a href={origin.url} rel="noreferrer" target="_blank" />}
+        tone="muted"
+      >
+        <RealName>{origin.words}</RealName>
+        <ArrowUpRightIcon aria-hidden="true" className={OUT} />
+      </InlineButton>
+    );
+  const { conversation } = origin;
+  if (conversation !== null && onOpenConversation !== undefined)
+    return (
+      <InlineButton
+        aria-label={origin.full}
+        className="pointer-events-auto max-w-full"
+        onClick={() => {
+          onOpenConversation(conversation);
+        }}
+        title={origin.full}
+        tone="muted"
+      >
+        <span className="truncate">{origin.words}</span>
+      </InlineButton>
+    );
+  return (
+    <span className="truncate" title={origin.full === origin.words ? undefined : origin.full}>
+      {origin.words}
+    </span>
+  );
+}
+
+/** One task of the Board, in the ledger's columns, its verbs as the rules offer them. */
+function BoardRowView({
+  row,
+  board,
+  face,
+}: {
+  readonly row: BoardRow;
+  readonly board: BoardView;
+  readonly face: BoardFace | undefined;
+}) {
+  const { verbs } = board;
+  const offer = verbs?.offerOf(row.id);
+  const press = verbs?.pressOf(row.id) ?? RESTS;
+  const asking = press.kind === "asking";
+  const busy = press.kind === "working";
+  const stopping = row.status === "stopping";
+  const asks = row.lane === "waiting" && !busy;
+  const take = verbs !== undefined && offer?.take === true && verbs.takeInto.length > 0;
+  const done = offer?.done === true;
+  const release = offer?.release === true;
+  const stop = offer?.stop === true && !stopping;
+  const review = row.lane === "review" ? row.change : null;
+  const holderName =
+    row.holder?.kind === "pool" ? (face?.name ?? row.holder.name) : (row.holder?.mate ?? null);
+  // The seat's one press; a taken task's other verbs in a menu beside it; a Stop alone on hover.
+  const primary = busy
+    ? null
+    : take
+      ? "take"
+      : review !== null
+        ? "review"
+        : done
+          ? "done"
+          : asks && row.route !== null
+            ? "answer"
+            : null;
+  // Done stands in the menu where Review takes the seat; a task that asks keeps its Stop in its chat.
+  const doneInMenu = done && primary === "review";
+  const more =
+    !busy && (release || doneInMenu || (stop && primary !== null && primary !== "answer"));
+  const hoverStop = !busy && stop && !more && primary === null;
+  // A write under way says so in the state's column, so the row keeps its height.
+  const why = press.kind === "refused" ? press.words : row.detail;
+  const state = press.kind === "working" ? (press.words ?? row.state) : row.state;
+  return (
+    <li className={ROW} data-zerops-task={row.id}>
+      <RowPress
+        onOpen={board.onOpen}
+        route={primary === "review" || primary === "answer" ? null : row.route}
+      >
+        <span className={cn(LEAD, row.lane === "queued" && "text-caption leading-5 tabular-nums")}>
+          {row.lane === "queued" ? (
+            row.position
+          ) : row.holder?.kind === "person" ? (
+            <PersonAvatar name={row.holder.called ?? row.holder.name} size={20} />
+          ) : row.lane === "done" || row.lane === "review" ? (
+            <BeadMark
+              className="pointer-events-none cursor-default"
+              mark={undefined}
+              tint={face?.tint}
+            />
+          ) : face === undefined ? null : (
+            <MateFace
+              shape={face.shape}
+              size={20}
+              state={asks ? "needs" : stopping ? "idle" : "working"}
+              tint={face.tint}
+            />
+          )}
+        </span>
+        <RowText
+          failed={press.kind === "refused" || row.tone === "failed"}
+          title={row.title}
+          why={why}
+        />
+        <span className={facts(asking)}>
+          {/* Too narrow for columns: where it came from and its state lead the line under it. */}
+          <span className={NARROW}>{row.origin.words}</span>
+          {state === null ? null : <span className={NARROW}>{state}</span>}
+          <span className={WHO}>{row.who}</span>
+          <span className={COST}>{row.cost}</span>
+        </span>
+        <span className={act(asking)}>
+          {primary !== null || more || row.route === null ? null : (
+            <ChevronRightIcon aria-hidden="true" className={go(hoverStop)} />
+          )}
+        </span>
+      </RowPress>
+      {/* Where it came from and its state stand beside the row's press: their links are their own. */}
+      <span className={cn(ORIGIN, asking && "opacity-0")}>
+        <OriginWords onOpenConversation={board.onOpenConversation} origin={row.origin} />
+      </span>
+      <span
+        className={cn(
+          STATE,
+          !busy && row.tone === "attention" && "text-status-attention-text",
+          !busy && row.tone === "failed" && "text-status-failed-text",
+          asking && "opacity-0",
+        )}
+      >
+        {state}
+        {row.change?.external === true && row.lane === "done" ? (
+          <>
+            {state === null ? null : <span aria-hidden="true"> · </span>}
+            <InlineButton
+              className="pointer-events-auto"
+              render={<a href={row.change.href} rel="noreferrer" target="_blank" />}
+              tone="muted"
+            >
+              {row.change.label}
+              <ArrowUpRightIcon aria-hidden="true" className={OUT} />
+            </InlineButton>
+          </>
+        ) : null}
+      </span>
+      {verbs === undefined || asking || primary === null ? null : (
+        <span className={cn(VERB, "flex items-center gap-1")}>
+          {/* Its other verbs before it, so every row's one press ends on the seat's edge. */}
+          {more ? (
+            <MoreVerbs
+              done={doneInMenu}
+              release={release}
+              stop={stop}
+              taskId={row.id}
+              title={row.title}
+              verbs={verbs}
+            />
+          ) : null}
+          {primary === "take" ? (
+            <TakePress taskId={row.id} title={row.title} verbs={verbs} />
+          ) : primary === "done" ? (
+            <Button
+              onClick={() => {
+                verbs.onDone(row.id);
+              }}
+              size="xs"
+              variant="secondary"
+            >
+              Done
+            </Button>
+          ) : primary === "answer" && row.route !== null ? (
+            <OpenPress href={row.route} label="Answer" onOpen={board.onOpen} />
+          ) : review !== null ? (
+            review.external ? (
+              <Button
+                render={<a href={review.href} rel="noreferrer" target="_blank" />}
+                size="xs"
+                variant="secondary"
+              >
+                Review
+              </Button>
+            ) : (
+              <OpenPress href={review.href} label="Review" onOpen={board.onOpen} />
+            )
+          ) : null}
+        </span>
+      )}
+      {verbs === undefined || primary !== null || !more || asking ? null : (
+        <span className={VERB}>
+          <MoreVerbs
+            done={doneInMenu}
+            release={release}
+            stop={stop}
+            taskId={row.id}
+            title={row.title}
+            verbs={verbs}
+          />
+        </span>
+      )}
+      {verbs !== undefined && hoverStop && !asking ? (
+        <HoverStop taskId={row.id} verbs={verbs} />
+      ) : null}
+      {verbs !== undefined && asking ? (
+        <StopAsk question={stopQuestion(row, holderName)} taskId={row.id} verbs={verbs} />
+      ) : null}
+    </li>
+  );
+}
+
+/** A press in the row's seat that opens a page in Mate: Answer, Review. */
+function OpenPress({
+  href,
+  label,
+  onOpen,
+}: {
+  readonly href: string;
+  readonly label: string;
+  readonly onOpen: (route: string) => void;
+}) {
+  return (
+    <Button
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+        event.preventDefault();
+        onOpen(href);
+      }}
+      render={<a href={href} />}
+      size="xs"
+      variant="secondary"
+    >
+      {label}
+    </Button>
+  );
+}
+
 function TaskBoardView({
   board,
   pool,
@@ -1075,11 +1532,11 @@ function TaskBoardView({
 }: {
   readonly board: BoardView;
   readonly pool: ReadonlyArray<PoolMate>;
-  /** Whether Finished shows every task that ended, or its first few; and the press that says. */
+  /** Whether Done shows every task that ended, or its first few; and the press that says. */
   readonly all: boolean;
   readonly onAll: (all: boolean) => void;
   /**
-   * The pool's Mates by name, where the project takes tasks from nowhere yet: a board with no
+   * The pool's Mates by name, where the project takes tasks from nowhere yet: a Board with no
    * task says what they wait for.
    */
   readonly waitsFor?: ReadonlyArray<string> | undefined;
@@ -1089,7 +1546,7 @@ function TaskBoardView({
   if (read.state === "none") return null;
   if (read.state === "failed")
     return (
-      // The board's read failed: HQ's words, and the way to read again.
+      // The Board's read failed: HQ's words, and the way to read again.
       <div className={LINE}>
         <Failure cause={read.words} className="min-w-0 flex-1" role="alert" size="line" />
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
@@ -1098,31 +1555,25 @@ function TaskBoardView({
       </div>
     );
   if (read.state === "reading") {
-    const { atWork, queued, recent, recentMore } = read.predicted;
-    if (atWork + queued + recent === 0) return null;
+    const { predicted } = read;
+    if (LANES.every((lane) => predicted[lane.id] === 0)) return null;
     return (
       <div className={LEDGER} data-zerops-surface="project-automation-board">
-        {atWork === 0 ? null : (
-          <LedgerGroup name="At work">
-            <Placeholders count={atWork} />
-          </LedgerGroup>
-        )}
-        {queued === 0 ? null : (
-          <LedgerGroup name="Queued">
-            <Placeholders count={queued} />
-          </LedgerGroup>
-        )}
-        {recent === 0 ? null : (
-          <LedgerGroup name="Finished">
-            <Placeholders count={recent} />
-            {recentMore === true ? <div aria-hidden="true" className={MORE} /> : null}
-          </LedgerGroup>
+        {LANES.map((lane) =>
+          predicted[lane.id] === 0 ? null : (
+            <LedgerGroup key={lane.id} name={lane.name}>
+              <Placeholders count={predicted[lane.id]} />
+              {lane.id === "done" && predicted.doneMore === true ? (
+                <div aria-hidden="true" className={MORE} />
+              ) : null}
+            </LedgerGroup>
+          ),
         )}
       </div>
     );
   }
-  const { atWork, queued, recent } = read.board;
-  if (atWork.length + queued.length + recent.length === 0)
+  const { lanes } = read.board;
+  if (LANES.every((lane) => lanes[lane.id].length === 0))
     return waitsFor === undefined ? null : (
       <Text className="m-0 px-2.5 pt-2 pb-1.5" render={<p />} variant="description">
         No tasks yet. {waitsFor.length === 1 ? `${waitsFor[0] ?? "It"} takes` : "They take"} one as
@@ -1130,248 +1581,40 @@ function TaskBoardView({
       </Text>
     );
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
-  const finished = all ? recent : recent.slice(0, RECENT_SHOWN);
+  const faceOf = (row: BoardRow): BoardFace | undefined => {
+    const projectId = row.holder?.projectId;
+    return projectId === undefined
+      ? undefined
+      : (faces.get(projectId) ?? board.faceOf?.(projectId));
+  };
   return (
     <div className={LEDGER} data-zerops-surface="project-automation-board" ref={ledger}>
-      {atWork.length === 0 ? null : (
-        <LedgerGroup count={atWork.length} name="At work">
-          <List className={ROWS} render={<ul />}>
-            {atWork.map((row) => {
-              const mate = row.mate === null ? undefined : faces.get(row.mate.projectId);
-              const name = mate?.name ?? row.mate?.name ?? null;
-              const press = board.stop?.pressOf(row.id) ?? RESTS;
-              // HQ has its stop, or takes it now: the row says so and offers nothing more.
-              const stopping = row.status === "stopping" || press.kind === "working";
-              const asks = row.status === "waiting" && !stopping;
-              const words = atWorkWords(stopping ? "stopping" : row.status);
-              // A task that asks holds its seat for Answer; its conversation keeps its Stop.
-              const stoppable = board.stop !== undefined && !stopping && !asks;
-              return (
-                <li className={ROW} data-zerops-task={row.id} key={row.id}>
-                  <RowPress onOpen={board.onOpen} route={row.route}>
-                    <span className={LEAD}>
-                      {mate === undefined ? null : (
-                        <MateFace
-                          shape={mate.shape}
-                          size={20}
-                          state={asks ? "needs" : stopping ? "idle" : "working"}
-                          tint={mate.tint}
-                        />
-                      )}
-                    </span>
-                    <RowText
-                      failed
-                      title={row.title}
-                      why={press.kind === "refused" ? press.words : null}
-                    />
-                    <span className={facts(press.kind === "asking")}>
-                      {words === null ? null : (
-                        <span className={cn(STATE, asks && "text-status-attention-text")}>
-                          {words}
-                        </span>
-                      )}
-                      <span className={WHO}>
-                        {name}
-                        {name === null || row.worked === "—" ? null : " · "}
-                        {row.worked === "—" ? null : (
-                          <>
-                            <span className="sr-only">worked </span>
-                            {row.worked}
-                          </>
-                        )}
-                      </span>
-                      <span className={COST}>{row.cost}</span>
-                    </span>
-                    <span className={act(press.kind === "asking")}>
-                      {row.route === null || stopping ? null : asks ? (
-                        <Button render={<span />} size="xs" variant="secondary">
-                          Answer
-                        </Button>
-                      ) : (
-                        <ChevronRightIcon aria-hidden="true" className={go(stoppable)} />
-                      )}
-                    </span>
-                  </RowPress>
-                  {stoppable ? (
-                    <TaskStop
-                      board={board}
-                      question={`Stop this task? ${name ?? "Its Mate"} stops where it got to.`}
-                      taskId={row.id}
-                    />
-                  ) : null}
-                </li>
-              );
-            })}
-          </List>
-        </LedgerGroup>
-      )}
-      {queued.length === 0 ? null : (
-        <LedgerGroup count={queued.length} name="Queued">
-          <List className={ROWS} render={<ul />}>
-            {queued.map((row) => {
-              const press = board.stop?.pressOf(row.id) ?? RESTS;
-              const stopping = press.kind === "working";
-              const stoppable = board.stop !== undefined && !stopping;
-              return (
-                <li className={ROW} data-zerops-task={row.id} key={row.id}>
-                  <Row className={PRESS} columns>
-                    {/* Its place stands where a face will. */}
-                    <span className={cn(LEAD, "text-caption leading-5 tabular-nums")}>
-                      {row.position}
-                    </span>
-                    <RowText
-                      failed
-                      title={row.title}
-                      why={press.kind === "refused" ? press.words : null}
-                    />
-                    <span className={facts(press.kind === "asking")}>
-                      {stopping ? (
-                        <span className={STATE}>{atWorkWords("stopping")}</span>
-                      ) : row.url === null ? (
-                        <span className={STATE}>{row.source}</span>
-                      ) : (
-                        <span className={STATE}>
-                          <InlineButton
-                            className="max-w-full"
-                            render={<a href={row.url} rel="noreferrer" target="_blank" />}
-                            tone="muted"
-                          >
-                            <RealName>{row.source}</RealName>
-                            <ArrowUpRightIcon aria-hidden="true" className={OUT} />
-                          </InlineButton>
-                        </span>
-                      )}
-                      <span className={WHO}>
-                        <span className="sr-only">Waited </span>
-                        {row.waited}
-                      </span>
-                    </span>
-                    <span className={act(press.kind === "asking")} />
-                  </Row>
-                  {stoppable ? (
-                    <TaskStop
-                      board={board}
-                      question="Stop this task? No Mate has taken it yet."
-                      taskId={row.id}
-                    />
-                  ) : null}
-                </li>
-              );
-            })}
-          </List>
-        </LedgerGroup>
-      )}
-      {recent.length === 0 ? null : (
-        <LedgerGroup count={recent.length} name="Finished">
-          <List className={ROWS} render={<ul />}>
-            {finished.map((row) => {
-              const mate = row.mateId === null ? undefined : faces.get(row.mateId);
-              const review = row.outcome === "review" ? row.change : null;
-              return (
-                <li className={ROW} data-zerops-task={row.id} key={row.id}>
-                  <RowPress onOpen={board.onOpen} route={row.route}>
-                    <span className={LEAD}>
-                      <BeadMark
-                        className="pointer-events-none cursor-default"
-                        mark={undefined}
-                        tint={mate?.tint}
-                      />
-                    </span>
-                    <RowText failed={row.outcome === "failed"} title={row.title} why={row.detail} />
-                    <span className={facts(false)}>
-                      <span
-                        className={cn(
-                          STATE,
-                          row.outcome === "failed"
-                            ? "text-status-failed-text"
-                            : row.outcome === "review"
-                              ? "text-status-attention-text"
-                              : undefined,
-                        )}
-                      >
-                        {TASK_STATUS_WORDS[row.outcome]}
-                      </span>
-                      <span className={WHO}>
-                        {row.when === "—" ? null : <span className="sr-only">Ended </span>}
-                        {whoWords(row.mate, row.when)}
-                      </span>
-                      <span className={COST}>{row.cost}</span>
-                    </span>
-                    <span className={act(false)}>
-                      {row.route === null || review !== null ? null : (
-                        <ChevronRightIcon aria-hidden="true" className={go(false)} />
-                      )}
-                    </span>
-                  </RowPress>
-                  {/* Its pull request on GitHub, where it has one. */}
-                  {row.change?.external === true ? (
-                    // Its pull request on GitHub: beside the row's press, in its own column.
-                    <span
-                      className={cn(
-                        FACT,
-                        "z-1 col-start-4 row-start-1 inline-flex items-center gap-0.75 @max-[760px]/automation:hidden",
-                      )}
-                    >
-                      <InlineButton
-                        render={<a href={row.change.href} rel="noreferrer" target="_blank" />}
-                        tone="muted"
-                      >
-                        {row.change.label}
-                        <ArrowUpRightIcon aria-hidden="true" className={OUT} />
-                      </InlineButton>
-                    </span>
-                  ) : null}
-                  {/* The Changes card's Review: it opens the change, the row its conversation. */}
-                  {review === null ? null : (
-                    <span className={VERB}>
-                      {review.external ? (
-                        <Button
-                          render={<a href={review.href} rel="noreferrer" target="_blank" />}
-                          size="xs"
-                          variant="secondary"
-                        >
-                          Review
-                        </Button>
-                      ) : (
-                        <Button
-                          onClick={(event) => {
-                            if (
-                              event.metaKey ||
-                              event.ctrlKey ||
-                              event.shiftKey ||
-                              event.button !== 0
-                            )
-                              return;
-                            event.preventDefault();
-                            board.onOpen(review.href);
-                          }}
-                          render={<a href={review.href} />}
-                          size="xs"
-                          variant="secondary"
-                        >
-                          Review
-                        </Button>
-                      )}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </List>
-          {recent.length > RECENT_SHOWN ? (
-            // Finished past its first few: opened in place, on the titles' edge.
-            <div className={MORE}>
-              <SectionAction
-                onClick={() => {
-                  onAll(!all);
-                }}
-              >
-                {all ? "Show fewer" : `+ ${String(recent.length - RECENT_SHOWN)} more`}
-              </SectionAction>
-            </div>
-          ) : null}
-        </LedgerGroup>
-      )}
+      {LANES.map((lane) => {
+        const rows = lanes[lane.id];
+        if (rows.length === 0) return null;
+        const shown = lane.id === "done" && !all ? rows.slice(0, RECENT_SHOWN) : rows;
+        return (
+          <LedgerGroup count={rows.length} key={lane.id} name={lane.name}>
+            <List className={ROWS} render={<ul />}>
+              {shown.map((row) => (
+                <BoardRowView board={board} face={faceOf(row)} key={row.id} row={row} />
+              ))}
+            </List>
+            {lane.id === "done" && rows.length > RECENT_SHOWN ? (
+              // Done past its first few: opened in place, on the titles' edge.
+              <div className={MORE}>
+                <SectionAction
+                  onClick={() => {
+                    onAll(!all);
+                  }}
+                >
+                  {all ? "Show fewer" : `+ ${String(rows.length - RECENT_SHOWN)} more`}
+                </SectionAction>
+              </div>
+            ) : null}
+          </LedgerGroup>
+        );
+      })}
     </div>
   );
 }
@@ -1596,11 +1839,23 @@ const TITLE = "truncate text-body leading-5 max-sm:line-clamp-2 max-sm:whitespac
 const FACT =
   "ms-4 text-caption leading-4.5 whitespace-nowrap text-muted-foreground tabular-nums @max-[520px]/automation:ms-0 @max-[520px]/automation:min-w-0";
 
-/** A state said in words, only where there is one: Asks you, Failed, Up for review. */
+/**
+ * Where a task came from, in its column beside the row's press (its link is its own); too narrow
+ * for columns, it leads the line under the title instead (`NARROW`).
+ */
+const ORIGIN = cn(
+  FACT,
+  "pointer-events-none z-1 col-start-3 row-start-1 flex max-w-82.5 min-w-0 items-center transition-opacity duration-150 ease-out-strong motion-reduce:transition-none @max-[760px]/automation:max-w-42.5 @max-[520px]/automation:hidden",
+);
+
+/** A state said in words, only where its lane does not: Taken by Ana, Asks you, Failed, Merged. */
 const STATE = cn(
   FACT,
-  "col-start-3 row-start-1 max-w-82.5 truncate @max-[760px]/automation:max-w-42.5",
+  "pointer-events-none z-1 col-start-4 row-start-1 transition-opacity duration-150 ease-out-strong motion-reduce:transition-none @max-[520px]/automation:hidden",
 );
+
+/** What stands in a column of its own on a wide ledger, said on the line under the title on a narrow one. */
+const NARROW = "hidden truncate @max-[520px]/automation:inline";
 const WHO = cn(FACT, "col-start-5 row-start-1 text-end");
 const COST = cn(FACT, "col-start-6 row-start-1 min-w-9.5 text-end");
 const OUT = "size-2.75 flex-none";

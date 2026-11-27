@@ -23,11 +23,23 @@ import {
   ProjectAutomationView,
   SourceDialog,
   type AutomationControls,
+  type BoardFace,
+  type BoardVerbs,
   type BoardView,
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
-import { boardOf } from "~/components/zerops/projectAutomation/taskBoard.logic";
-import type { HqAppTask } from "@t3tools/shared/hqIntake";
+import { boardOf, type BoardContext } from "~/components/zerops/projectAutomation/taskBoard.logic";
+import type { BoardTaskOffer } from "@t3tools/client-runtime/data";
+import { boardTaskOf, type HqAppTask } from "@t3tools/shared/hqIntake";
+import {
+  answerTaskPermission,
+  doneTaskPermission,
+  releaseTaskPermission,
+  stopTaskPermission,
+  takeTaskPermission,
+  type BoardMate,
+  type PermissionFacts,
+} from "@t3tools/shared/zeropsPermissions";
 import {
   connectionMissing,
   sourceRows,
@@ -246,33 +258,189 @@ const LIVE = new Map([
   ["43", { id: "43", title: ROUNDING.title, url: null, waiting: true as const }],
 ]);
 
-type Stop = NonNullable<BoardView["stop"]>;
-const STOP: Stop = {
+/** The reader: an Owner of the organization, signed in as Mara, whose own Mates are Lark and Quill. */
+const ME = "u-mara";
+const RHEA = "u-rhea";
+const PEOPLE: Readonly<Record<string, string>> = { [ME]: "Mara", [RHEA]: "Rhea", "u-ivo": "Ivo" };
+const OWN_MATES: Readonly<Record<string, BoardFace>> = {
+  "p-lark": { name: "Lark", tint: "violet", shape: "gem" },
+  "p-quill": { name: "Quill", tint: "coral", shape: "flower" },
+  "p-moss": { name: "Moss", tint: "rose", shape: "seal" },
+};
+const POOL_FACES = new Map([SOL, PIM, WREN, BO].map((mate) => [mate.projectId, mate] as const));
+const faceOf = (projectId: string): BoardFace | undefined =>
+  OWN_MATES[projectId] ?? POOL_FACES.get(projectId);
+/** Whose each Mate is, for Take: Mara's two, Rhea's one, and the pool. */
+const MATES: ReadonlyArray<BoardMate> = [
+  { projectId: "p-lark", ownerUserId: ME, automated: false },
+  { projectId: "p-quill", ownerUserId: ME, automated: false },
+  { projectId: "p-moss", ownerUserId: RHEA, automated: false },
+  ...[SOL, PIM, WREN, BO].map((mate) => ({
+    projectId: mate.projectId,
+    ownerUserId: undefined,
+    automated: true,
+  })),
+];
+const facts = (roleCode: string): PermissionFacts => ({
+  member: { userId: ME, roleCode, canCreateProjects: true },
+  project: () => ({}),
+});
+/** Each task's verbs as the rules offer them to Mara in `roleCode`, her Mates `mates`. */
+function offers(
+  tasks: ReadonlyArray<HqAppTask>,
+  roleCode: string,
+  mates: ReadonlyArray<BoardMate> = MATES,
+) {
+  const byId = new Map(tasks.map((each) => [each.id, boardTaskOf(each)] as const));
+  const who = facts(roleCode);
+  return (taskId: string): BoardTaskOffer | undefined => {
+    const board = byId.get(taskId);
+    return board === undefined
+      ? undefined
+      : {
+          take: takeTaskPermission(who, board, mates).allow,
+          release: releaseTaskPermission(who, board).allow,
+          done: doneTaskPermission(who, board).allow,
+          stop: stopTaskPermission(who, board).allow,
+          answer: answerTaskPermission(who, board).allow,
+        };
+  };
+}
+const VERBS: BoardVerbs = {
+  offerOf: () => undefined,
+  takeInto: [
+    { projectId: "p-lark", name: "Lark" },
+    { projectId: "p-quill", name: "Quill" },
+  ],
   pressOf: () => ({ kind: "idle" }),
   onAsk: nothing,
   onKeep: nothing,
   onStop: nothing,
+  onTake: nothing,
+  onRelease: nothing,
+  onDone: nothing,
 };
 function board(
   tasks: ReadonlyArray<HqAppTask>,
   spend: string,
   more: {
-    readonly pressOf?: Stop["pressOf"];
-    readonly live?: Parameters<typeof boardOf>[3];
-    readonly held?: Parameters<typeof boardOf>[4];
+    readonly pressOf?: BoardVerbs["pressOf"];
+    readonly live?: BoardContext["live"];
+    readonly held?: BoardContext["held"];
+    /** Mara's role in the organization: what the rules offer her. */
+    readonly role?: string;
+    readonly takeInto?: BoardVerbs["takeInto"];
   } = {},
 ): BoardView {
   return {
     read: {
       state: "known",
-      board: boardOf(tasks, NOW, "plant-shop", more.live ?? LIVE, more.held),
+      board: boardOf(tasks, NOW, {
+        appId: "plant-shop",
+        live: more.live ?? LIVE,
+        ...(more.held === undefined ? {} : { held: more.held }),
+        viewerId: ME,
+        personName: (userId) => PEOPLE[userId],
+        mateName: (projectId) => OWN_MATES[projectId]?.name,
+      }),
     },
     spend: `${spend} this month`,
     onReadAgain: nothing,
     onOpen: nothing,
-    stop: { ...STOP, pressOf: more.pressOf ?? STOP.pressOf },
+    onOpenConversation: nothing,
+    faceOf,
+    verbs: {
+      ...VERBS,
+      offerOf: offers(tasks, more.role ?? "OWNER"),
+      pressOf: more.pressOf ?? VERBS.pressOf,
+      ...(more.takeInto === undefined ? {} : { takeInto: more.takeInto }),
+    },
   };
 }
+
+/** Tasks people put on the Board from their conversations, and took for their own Mates. */
+const putFrom = (putBy: string, mateProjectId: string, title: string) => ({
+  label: "a conversation",
+  url: null,
+  source: {
+    kind: "conversation" as const,
+    putBy,
+    mateProjectId,
+    conversationId: `c-${mateProjectId}`,
+    title,
+  },
+});
+const GIFT_WRAP = task({
+  id: "50",
+  title: "Offer gift wrapping at checkout",
+  state: "queued",
+  position: 1,
+  createdAt: ago(25),
+  link: null,
+  ...putFrom(RHEA, "p-moss", "Offer gift wrapping at checkout"),
+  taker: null,
+});
+const REPOT = task({
+  id: "51",
+  title: "Add a repotting guide to every plant page",
+  state: "taken",
+  createdAt: ago(3 * DAY),
+  link: null,
+  ...putFrom(RHEA, "p-moss", "Add a repotting guide to every plant page"),
+  taker: { kind: "person", userId: ME, mateProjectId: "p-lark" },
+  takenAt: ago(2 * HOUR),
+});
+const STALE = task({
+  id: "52",
+  title: "Move the newsletter sign-up to the footer",
+  state: "taken",
+  createdAt: ago(9 * DAY),
+  link: null,
+  ...putFrom(ME, "p-quill", "Move the newsletter sign-up to the footer"),
+  taker: { kind: "person", userId: RHEA, mateProjectId: "p-moss" },
+  takenAt: ago(6 * DAY),
+});
+const FERTILISER = task({
+  id: "53",
+  title: "Explain which fertiliser suits each plant",
+  state: "waiting",
+  mate: by(WREN),
+  startedAt: ago(30),
+  spentUsd: 0.64,
+  workedMs: 18 * 60_000,
+  ...putFrom(ME, "p-lark", "Explain which fertiliser suits each plant"),
+  taker: { kind: "pool", mateProjectId: WREN.projectId },
+});
+const WISHLIST = task({
+  id: "54",
+  title: "Let people keep a wishlist",
+  state: "taken",
+  createdAt: ago(4 * DAY),
+  link: null,
+  ...putFrom(ME, "p-quill", "Let people keep a wishlist"),
+  taker: { kind: "person", userId: ME, mateProjectId: "p-quill" },
+  takenAt: ago(DAY),
+  changes: [{ repo: "shop", number: 47 }],
+});
+/** The whole Board: a task in every lane, put from conversations and taken by people. */
+const BOARD_TASKS: ReadonlyArray<HqAppTask> = [
+  GIFT_WRAP,
+  ...QUEUE.map((each) => ({ ...each, position: (each.position ?? 0) + 1 })),
+  REPOT,
+  STALE,
+  DATES,
+  FERTILISER,
+  ROUNDING,
+  WISHLIST,
+  PRICE,
+  SORT,
+  CATALOGUE,
+  GUIDES,
+];
+const BOARD_LIVE = new Map([
+  ...LIVE,
+  ["53", { id: "53", title: FERTILISER.title, url: null, waiting: true as const }],
+]);
 
 const SCHEDULE = {
   id: "s1",
@@ -342,6 +510,77 @@ const STATES: ReadonlyArray<{
   readonly title: string;
   readonly view: ReactNode;
 }> = [
+  {
+    id: "board",
+    title: "The Board: put from conversations, taken by people, every lane (Mara, an Owner, reads)",
+    view: (
+      <ProjectAutomationView
+        admin={ADMIN}
+        board={board(BOARD_TASKS, "$9.12 of $50", { live: BOARD_LIVE })}
+        onOpenMate={nothing}
+        pool={BUSY_POOL}
+        sources={SOURCES(2)}
+        workingOf={working(SOL)}
+      />
+    ),
+  },
+  {
+    id: "board-member",
+    title: "The Board as a member reads it: Take into her one Mate, Stop only on her own",
+    view: (
+      <ProjectAutomationView
+        board={board(BOARD_TASKS, "$9.12 of $50", {
+          live: BOARD_LIVE,
+          role: "BASIC_USER",
+          takeInto: [{ projectId: "p-lark", name: "Lark" }],
+        })}
+        onOpenMate={nothing}
+        pool={BUSY_POOL}
+        sources={{ rows: SOURCES(2).rows.slice(0, 1), reading: false, withheld: true }}
+        workingOf={working(SOL)}
+      />
+    ),
+  },
+  {
+    id: "board-presses",
+    title: "Presses: a Take under way, a Release refused, a Stop asking",
+    view: (
+      <ProjectAutomationView
+        admin={ADMIN}
+        board={board(BOARD_TASKS, "$9.12 of $50", {
+          live: BOARD_LIVE,
+          pressOf: (id) =>
+            id === GIFT_WRAP.id
+              ? { kind: "working", words: "Taking it…" }
+              : id === REPOT.id
+                ? { kind: "refused", words: "That task moved meanwhile. Look at the Board again." }
+                : id === STALE.id
+                  ? { kind: "asking" }
+                  : { kind: "idle" },
+        })}
+        onOpenMate={nothing}
+        pool={BUSY_POOL}
+        sources={SOURCES(2)}
+        workingOf={working(SOL)}
+      />
+    ),
+  },
+  {
+    id: "board-no-pool",
+    title: "A Board with no automated Mates: people put and take its tasks",
+    view: (
+      <ProjectAutomationView
+        board={board([GIFT_WRAP, REPOT, STALE, WISHLIST], "$0.00 of $50", {
+          live: new Map(),
+          role: "BASIC_USER",
+        })}
+        onOpenMate={nothing}
+        pool={[]}
+        sources={NO_SOURCES}
+        workingOf={working()}
+      />
+    ),
+  },
   {
     id: "idle",
     title: "Idle: nothing queued, a few finished",
@@ -492,7 +731,7 @@ const STATES: ReadonlyArray<{
           ...board([], "$7.94 of $50"),
           read: {
             state: "reading",
-            predicted: { atWork: 2, queued: 2, recent: 3 },
+            predicted: { queued: 2, progress: 1, waiting: 1, review: 0, done: 3 },
           },
         }}
         onOpenMate={nothing}
@@ -566,7 +805,7 @@ const STATES: ReadonlyArray<{
     title: "A member reads it",
     view: (
       <ProjectAutomationView
-        board={{ ...board(BUSY_TASKS, "$7.94 of $50"), stop: undefined }}
+        board={board(BUSY_TASKS, "$7.94 of $50", { role: "BASIC_USER", takeInto: [] })}
         onOpenMate={nothing}
         pool={BUSY_POOL}
         sources={{ rows: SOURCES(1).rows.slice(0, 1), reading: false, withheld: true }}
@@ -734,7 +973,7 @@ function DialogFor({ kind }: { readonly kind: SourceKind }) {
 function OnPage({ children }: { readonly children: ReactNode }) {
   return (
     <div className={PAGE_GROUP}>
-      <SectionHeader size="panel" title="Automation" />
+      <SectionHeader size="panel" title="Board" />
       <Card>{children}</Card>
     </div>
   );

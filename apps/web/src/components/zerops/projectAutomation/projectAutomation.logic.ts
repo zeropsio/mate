@@ -209,9 +209,11 @@ export function automationSection(input: {
   readonly admin: boolean;
   readonly pool: number;
   readonly sources: number;
+  /** Anyone wrote to its Board (`boardRevision`): its tasks are for every member to read. */
+  readonly board?: boolean;
 }): "shown" | "hidden" {
   if (input.admin) return "shown";
-  return input.pool > 0 || input.sources > 0 ? "shown" : "hidden";
+  return input.pool > 0 || input.sources > 0 || input.board === true ? "shown" : "hidden";
 }
 
 /**
@@ -221,7 +223,8 @@ export function automationSection(input: {
 export type RowPress =
   | { readonly kind: "idle" }
   | { readonly kind: "asking" }
-  | { readonly kind: "working" }
+  /** `words`: what is under way, where the row says it ("Taking it…"). */
+  | { readonly kind: "working"; readonly words?: string }
   | { readonly kind: "refused"; readonly words: string };
 
 export function sourceRowPress(input: {

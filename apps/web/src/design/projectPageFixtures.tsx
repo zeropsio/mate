@@ -893,7 +893,7 @@ function PageAutomation({ groupId }: { readonly groupId: string }) {
       board={
         groupId === "acme-store"
           ? {
-              read: { state: "known", board: boardOf(TASKS, NOW, "acme-store") },
+              read: { state: "known", board: boardOf(TASKS, NOW, { appId: "acme-store" }) },
               spend: "$21.40 of $40 this month",
               onReadAgain: nothing,
               onOpen: nothing,

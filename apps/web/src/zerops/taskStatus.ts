@@ -71,13 +71,18 @@ export const isLiveStatus = (status: TaskStatus): boolean =>
 export const isStoppableStatus = (status: TaskStatus): boolean =>
   isLiveStatus(status) && status !== "stopping";
 
-/** Where a task stands by its own record (`HqAppTask`): done with a change is up for review. */
+/**
+ * Where a task stands by its own record (`HqAppTask`): done with a change is up for review, and so
+ * is a task a person took once its Mate linked a change to it (HQ ends it when that merges).
+ */
 export function recordStatus(
-  task: Pick<HqAppTask, "state" | "change" | "pullRequest">,
+  task: Pick<HqAppTask, "state" | "change" | "pullRequest" | "changes">,
 ): TaskStatus {
   switch (task.state) {
     case "assigned":
       return "starting";
+    case "taken":
+      return (task.changes?.length ?? 0) > 0 ? "review" : "taken";
     case "done":
       return task.change !== null || task.pullRequest !== null ? "review" : "done";
     default:

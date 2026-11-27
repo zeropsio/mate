@@ -11,6 +11,7 @@ import {
   defaultInstanceIdForDriver,
   type EnvironmentId,
   type MessageAbout,
+  type TakenTask,
   MessageId,
   ModelSelection,
   ProjectId,
@@ -481,6 +482,11 @@ export interface ComposerSendIds {
    * it works on it while its run is on.
    */
   readonly about?: MessageAbout;
+  /**
+   * A task of the Board the person took for this Mate (`TakenTask`): the words are its brief, the
+   * new conversation's first message, and the conversation is the task's from then on.
+   */
+  readonly taken?: TakenTask;
 }
 
 /** What a surface asked the composer to send: its words, and its ids when it carries some. */
