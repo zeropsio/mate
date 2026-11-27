@@ -679,7 +679,7 @@ it("CD82: A reader's task that reviews another starts only once that task is in 
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.observed.ts | if (event.detail === "resume-failed" && delivery?.text != null) { → if (event.detail === "refused" && delivery?.text != null) {
-it("CD+1: A crewmate's turn whose session could not resume its agent's own thread goes again on a new session, which starts from the crewmate's packet, with nobody pressing anything; when its agent cannot resume twice more in the attempt, the task parks saying so; breaks: one lost thread fails the crewmate's every turn until a person clears its conversation", () => {
+it("CD83: A crewmate's turn whose session could not resume its agent's own thread goes again on a new session, which starts from the crewmate's packet, with nobody pressing anything; when its agent cannot resume twice more in the attempt, the task parks saying so; breaks: one lost thread fails the crewmate's every turn until a person clears its conversation", () => {
   const w = new CrewWorld();
   w.apply(home(lead(), writer("backend")));
   w.press({ _tag: "start", ...OPTIONS }, OTHER);

@@ -221,7 +221,7 @@ it("ED15: A rotation for the budget resumes the same thread in its new session",
 });
 
 // witness: apps/server/src/engine/domain/decide.effects.ts | const facts = resumed ? { detail: "resume-failed" as const } : {}; → const facts = {};
-it("ED+1: A run whose session did not open resuming the agent's own thread ends failed saying its resume failed; one whose fresh session did not open does not say so; breaks: a crewmate whose agent lost its thread fails every turn until a person clears its conversation", () => {
+it("ED144: A run whose session did not open resuming the agent's own thread ends failed saying its resume failed; one whose fresh session did not open does not say so; breaks: a crewmate whose agent lost its thread fails every turn until a person clears its conversation", () => {
   const refused = (resumed: boolean): Command =>
     settled(r(2), "session.open", {
       kind: "failed",
@@ -252,7 +252,7 @@ it("ED+1: A run whose session did not open resuming the agent's own thread ends 
 });
 
 // witness: apps/server/src/engine/domain/decide.effects.ts | const told = [opened.brief, opened.seed] → const told = [opened.brief]
-it("ED+2: A fresh session's seed, from an agent whose session start does not tell it, goes before the next message until a run starts with it, and the record keeps it once, from the rotation; breaks: a crewmate's new session on any agent but Claude starts without its packet", () => {
+it("ED145: A fresh session's seed, from an agent whose session start does not tell it, goes before the next message until a run starts with it, and the record keeps it once, from the rotation; breaks: a crewmate's new session on any agent but Claude starts without its packet", () => {
   const rotation = [...firstTurn, rotate("context", true, PACKET), send("go on"), prepared(2)];
   const seeded = [
     ...rotation,

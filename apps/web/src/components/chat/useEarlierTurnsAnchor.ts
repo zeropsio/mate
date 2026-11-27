@@ -63,6 +63,10 @@ export function useEarlierTurnsAnchor(
     }
     loadEarlier?.onLoadEarlier();
   }, [listRef, loadEarlier, rows]);
+  // What takes the row back while the list places what arrived. It outlives the draw that brought
+  // the earlier turns: the rows change again as what they show is read (a card's runs, a
+  // picture), and a hold let go with that draw left the row 83 px off where it stood.
+  const settlingRef = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const anchor = earlierAnchorRef.current;
     const viewport = listRef.current?.getScrollableNode() as HTMLElement | undefined;
@@ -73,6 +77,7 @@ export function useEarlierTurnsAnchor(
     stopFollowingRef.current?.();
     stopFollowingRef.current = null;
     earlierAnchorRef.current = null;
+    settlingRef.current?.();
     // The list places what arrived in frames of its own: the row is taken
     // back each time it writes a row's place, before the page paints it.
     const settle = () => {
@@ -93,18 +98,24 @@ export function useEarlierTurnsAnchor(
     // then too. The person moving the page takes it over at once.
     viewport.addEventListener("scroll", settle, { passive: true });
     const release = () => {
+      if (settlingRef.current !== release) return;
+      settlingRef.current = null;
+      clearTimeout(done);
       observer.disconnect();
       viewport.removeEventListener("scroll", settle);
       for (const type of GESTURES) viewport.removeEventListener(type, release);
     };
     for (const type of GESTURES) viewport.addEventListener(type, release, { passive: true });
     const done = setTimeout(release, 1000);
-    return () => {
-      clearTimeout(done);
-      release();
-    };
+    settlingRef.current = release;
   }, [listRef, rows]);
-  useLayoutEffect(() => () => stopFollowingRef.current?.(), []);
+  useLayoutEffect(
+    () => () => {
+      stopFollowingRef.current?.();
+      settlingRef.current?.();
+    },
+    [],
+  );
 
   return onLoadEarlier;
 }
