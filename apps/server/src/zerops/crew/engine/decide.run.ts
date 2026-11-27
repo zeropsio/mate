@@ -414,13 +414,6 @@ export const finishRun = (b: Builder, run: RunRecord): void => {
   reportRun(b, run, "finished");
 };
 
-/**
- * A run a crew-run card started tells the card's conversation once, as it ends, which of its
- * tasks landed: as the person who started it, by command, as the crew reaches any conversation.
- * The ending happens once per run, and the delivery's receipt holds it to one across a restart.
- * A run's tasks are those made in it and those it landed; reviews and discarded tasks are not.
- * Never to a conversation of the crew's own: the crew tracks every turn it sends a crewmate.
- */
 /** A pending effect that is a run's report: the one turn the crew sends to no crewmate. */
 export const isRunReport = (pending: PendingEffect): boolean => {
   const payload = pending.payload as CrewEffectPayload;
@@ -429,6 +422,13 @@ export const isRunReport = (pending: PendingEffect): boolean => {
   );
 };
 
+/**
+ * A run a crew-run card started tells the card's conversation once, as it ends, which of its
+ * tasks landed: as the person who started it, by command, as the crew reaches any conversation.
+ * The ending happens once per run, and the delivery's receipt holds it to one across a restart.
+ * A run's tasks are those made in it and those it landed; reviews and discarded tasks are not.
+ * Never to a conversation of the crew's own: the crew tracks every turn it sends a crewmate.
+ */
 const reportRun = (b: Builder, run: RunRecord, ended: "finished" | "stopped"): void => {
   const to = run.from?.conversationId;
   if (

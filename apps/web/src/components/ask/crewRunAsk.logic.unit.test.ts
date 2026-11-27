@@ -55,7 +55,7 @@ it("AK5: A crew run card's Start tells the crew's lead to plan the new goal once
 });
 
 // witness: apps/web/src/components/ask/crewRunAsk.logic.ts | return text.trimStart().slice(CREW_REPORT_OPENER.length).trim(); → return text.trimStart().trim();
-it("AK+1: The crew's report on a run a card started reads as the crew's words alone, its opener left out, and a person's message, one that only mentions the opener included, is no report; breaks: the report shows as the person's own message, or with the crew's bookkeeping in front of its words", () => {
+it("AK6: The crew's report on a run a card started reads as the crew's words alone, its opener left out, and a person's message, one that only mentions the opener included, is no report; breaks: the report shows as the person's own message, or with the crew's bookkeeping in front of its words", () => {
   const words = "The crew's run finished. Landed: “Sign-in form”.";
   expect([
     crewReportOf(`${CREW_REPORT_OPENER}\n${words}`),

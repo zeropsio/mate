@@ -1,4 +1,4 @@
-next: CM63
+next: CM64
 
 - CM1 — A task the lead plans waits as a proposal for the person's Start unless the run lets the lead start tasks; a task from the person or from a message is queued at once, and Start queues a proposal
 - CM2 — A crewmate's turn that fails for infrastructure queues its task again once, as its next attempt; a second such ending parks the task
@@ -62,4 +62,4 @@ next: CM63
 - CM60 — A write to the crew home that changes the crew's name, its goal's title or its goal's text reaches every crewmate; any other write reaches exactly the crewmates whose entry or job it adds, removes or changes, and a home written for the first time is all new
 - CM61 — A writer's packet reads its own copy on its host, and a writer whose copy is not ready yet is told so, never that it has no copy; a reader and the lead have none
 - CM62 — A reader's browser opens only the own app of the writer whose task it reviews: any other port or host is refused, as is the browser for a reader that reviews nothing
-- CM+1 — A run's report names every task that landed together, and every task that did not apart from them; breaks: the Mate ships, or reports as shipped, work that never landed
+- CM63 — A run's report names every task that landed together, and every task that did not apart from them; breaks: the Mate ships, or reports as shipped, work that never landed

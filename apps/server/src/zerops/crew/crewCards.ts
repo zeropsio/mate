@@ -27,7 +27,6 @@
  * conversation opened between turns — are thread activities; their words
  * are here too.
  *
- *
  * @module crewCards
  */
 import type { CrewApplyChoice, CrewTaskSource } from "@t3tools/contracts";
@@ -254,9 +253,7 @@ export const crewRunReport = (run: {
     run.ended === "finished" ? "The crew's run finished." : "The crew's run was stopped.",
     run.landed.length === 0 ? "Nothing landed." : `Landed: ${quoted(run.landed)}.`,
     ...(run.unlanded.length === 0 ? [] : [`Did not land: ${quoted(run.unlanded)}.`]),
-    ...(run.landed.length === 0
-      ? []
-      : ["The landed work is in your tree and waits to ship from this conversation."]),
+    ...(run.landed.length === 0 ? [] : ["The landed work waits to ship from this conversation."]),
   ].join(" ")}`;
 
 /** Why a run's report never reached its conversation, for the person's *Waiting on you* row. */
