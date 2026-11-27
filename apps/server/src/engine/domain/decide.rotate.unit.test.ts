@@ -220,6 +220,67 @@ it("ED15: A rotation for the budget resumes the same thread in its new session",
   expect(bodies(next.log).some((body) => body.kind === "context")).toBe(false);
 });
 
+// witness: apps/server/src/engine/domain/decide.effects.ts | const facts = resumed ? { detail: "resume-failed" as const } : {}; → const facts = {};
+it("ED+1: A run whose session did not open resuming the agent's own thread ends failed saying its resume failed; one whose fresh session did not open does not say so; breaks: a crewmate whose agent lost its thread fails every turn until a person clears its conversation", () => {
+  const refused = (resumed: boolean): Command =>
+    settled(r(2), "session.open", {
+      kind: "failed",
+      reason: "Invalid params",
+      ...(resumed ? { resumed: true } : {}),
+    });
+  const resuming = [...firstTurn, rotate("budget", false, null), send("go on"), prepared(2)];
+  const lost = play([...resuming, closed("s1"), refused(true)]);
+  expect(lost.events).toContainEqual(
+    expect.objectContaining({
+      _tag: "RunEnded",
+      runId: r(2),
+      end: expect.objectContaining({ kind: "failed", reason: "Invalid params" }),
+      detail: "resume-failed",
+    }),
+  );
+  const fresh = play([
+    ...firstTurn,
+    rotate("context", true, PACKET),
+    send("go on"),
+    prepared(2),
+    closed("s1"),
+    refused(false),
+  ]);
+  const end = fresh.events.find((event) => event._tag === "RunEnded");
+  expect(end).toMatchObject({ runId: r(2), end: { kind: "failed" } });
+  expect(end).not.toHaveProperty("detail");
+});
+
+// witness: apps/server/src/engine/domain/decide.effects.ts | const told = [opened.brief, opened.seed] → const told = [opened.brief]
+it("ED+2: A fresh session's seed, from an agent whose session start does not tell it, goes before the next message until a run starts with it, and the record keeps it once, from the rotation; breaks: a crewmate's new session on any agent but Claude starts without its packet", () => {
+  const rotation = [...firstTurn, rotate("context", true, PACKET), send("go on"), prepared(2)];
+  const seeded = [
+    ...rotation,
+    closed("s1"),
+    settled(r(2), "session.open", {
+      kind: "ok",
+      value: {
+        sessionId: "s2",
+        driver: "cursor",
+        model: null,
+        nativeRef: "native-s2",
+        capabilities: { steer: false },
+        seed: PACKET,
+      },
+    }),
+  ];
+  expect(play(seeded).effects).toMatchObject([
+    { kind: "provider.send", payload: { sessionId: "s2", text: `${PACKET}\n\ngo on` } },
+  ]);
+  const later = play([...seeded, sent(2), ended(2, "s2"), send("next"), prepared(3)]);
+  expect(later.effects).toMatchObject([
+    { kind: "provider.send", payload: { sessionId: "s2", text: "next" } },
+  ]);
+  expect(
+    bodies(later.log).filter((body) => body.kind === "context" && body.notes.includes(PACKET)),
+  ).toHaveLength(1);
+});
+
 // witness: apps/server/src/engine/domain/decide.settings.ts |   rotate(b, command.reason, command.fresh, command.seed); →   rotate(b, command.reason, command.fresh, command.seed); const session = b.state.session; if (session !== null) b.effect("session.close", session.id, session.closeAttempts + 1, null, { sessionId: session.id, reason: "closed" });
 it("ED16: A rotation asked during a turn waits for it: the session closes before the next run, never under it", () => {
   const running = [send("task card"), prepared(1), opened(1, "s1"), sent(1)];

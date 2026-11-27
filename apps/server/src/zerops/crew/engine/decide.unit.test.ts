@@ -2,6 +2,7 @@ import { BootId } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 
 import { AGENT_STOPPED_ITSELF } from "../../../engine/MateEngine.ts";
+import { NEVER_RESUMED } from "./decide.step.ts";
 import {
   CrewWorld,
   OPTIONS,
@@ -675,4 +676,36 @@ it("CD82: A reader's task that reviews another starts only once that task is in 
   w.tool("reviewer", { tool: "report", input: { status: "done", summary: "Looks right." } });
   w.end("reviewer");
   expect([early, beforeReport, w.turns("lead")]).toEqual([0, 0, ["review"]]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | if (event.detail === "resume-failed" && delivery?.text != null) { → if (event.detail === "refused" && delivery?.text != null) {
+it("CD+1: A crewmate's turn whose session could not resume its agent's own thread goes again on a new session, which starts from the crewmate's packet, with nobody pressing anything; when its agent cannot resume twice more in the attempt, the task parks saying so; breaks: one lost thread fails the crewmate's every turn until a person clears its conversation", () => {
+  const w = new CrewWorld();
+  w.apply(home(lead(), writer("backend")));
+  w.press({ _tag: "start", ...OPTIONS }, OTHER);
+  w.quiet();
+  newTask(w, "backend", "First");
+  const lost = () => {
+    w.run("backend", false);
+    w.end(
+      "backend",
+      { kind: "failed", reason: "Invalid params", next: null },
+      {
+        detail: "resume-failed",
+      },
+    );
+  };
+  w.settle("crew.lane.reset", "backend", { _tag: "ready", resetTo: null });
+  lost();
+  // Its card never reached the agent: the task has not started yet.
+  expect([w.task(1).state, w.controls("backend").at(-1), w.turns("backend")]).toEqual([
+    "queued",
+    "RotateSession",
+    ["task", "task"],
+  ]);
+  w.quiet();
+  lost();
+  w.quiet();
+  lost();
+  expect([w.task(1).state, w.task(1).wait?.reason]).toEqual(["parked", NEVER_RESUMED]);
 });
