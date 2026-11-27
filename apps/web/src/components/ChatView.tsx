@@ -5419,69 +5419,11 @@ function ConversationView(props: ChatViewProps) {
       );
       return declined("Choose a project first.");
     }
-    // With the queue follow-up behavior, a send during a running turn waits in
-    // the queue. It leaves on the next tool boundary, when the turn ends, or
-    // when the user clicks Send now. Steer sends it straight away; the provider
-    // treats a mid-turn send as a steer of the active turn either way.
-    if (
-      !queuedMessage &&
-      phase === "running" &&
-      activeThreadKey &&
-      settings.followUpBehavior === "queue"
-    ) {
-      const queueRefused = composerRef.current?.validateProviderInput(promptForSend);
-      if (queueRefused) return declined(queueRefused);
-      const queuedContext = turnContextFor(promptForSend);
-      useQueuedMessageStore.getState().enqueue(activeThreadKey, {
-        prompt: promptForSend,
-        images: [...composerImages],
-        files: [...composerFiles],
-        terminalContexts: [...composerTerminalContexts],
-        reviewComments: [...composerReviewComments],
-        agentNotes: [...queuedContext.notes],
-        vaultChanges: [...queuedContext.vaultChanges],
-        submissionIntent,
-        // A requested send keeps its ids, and with them whose it is (`ComposerSendIds.fromPanel`).
-        ...(ids === undefined ? {} : { sendIds: ids }),
-        ...(ids?.fromPanel === true ? { fromPanel: true as const } : {}),
-        ...(ids?.about === undefined ? {} : { about: ids.about }),
-        // What it leaves with if its conversation is not on screen by then.
-        sendSettings: {
-          modelSelection: ctxSelectedModelSelection,
-          runtimeMode,
-          interactionMode: sendInteractionMode,
-          promptEffort: outgoingPromptEffort({
-            provider: ctxSelectedProvider,
-            model: ctxSelectedModel,
-            models: ctxSelectedProviderModels,
-            effort: ctxSelectedPromptEffort,
-          }),
-        },
-        queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
-        createdAt: new Date().toISOString(),
-      });
-      promptRef.current = "";
-      // Attachments move with the message; their uploads stay pending. The
-      // refs clear now too, so a Stop before the composer's sync effect runs
-      // does not restore the moved attachments twice.
-      composerImagesRef.current = [];
-      composerTerminalContextsRef.current = [];
-      clearComposerDraftContent(composerDraftTarget);
-      forgetAskAbout(activeThreadKey);
-      composerRef.current?.resetCursorState();
-      // The person's own send pins the end at once, though the message waits
-      // in the queue; its leaving later moves no one.
-      if (
-        nextTimelineFollow(
-          liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
-          { type: "sent", byPerson: true },
-        )
-      ) {
-        scrollToEnd(false, true);
-      }
-      // Queued, it leaves by itself at the turn's next boundary; its asker hears then.
-      return "queued";
-    }
+    // With the queue follow-up behavior, a send during a running turn waits as the conversation's
+    // next run, held by the Mate: every tab and device sees it and can take it back, and it runs
+    // when the turn ends whether or not this tab is still open. Steer sends it into the turn.
+    const queueBehindTurn =
+      !queuedMessage && phase === "running" && settings.followUpBehavior === "queue";
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
     const baseBranchForWorktree =
@@ -6051,6 +5993,7 @@ function ConversationView(props: ChatViewProps) {
           // A page's ask never names the conversation (`ComposerSendIds.fromPanel`).
           ...(attemptIds?.fromPanel === true ? { fromPanel: true as const } : {}),
           ...(attemptIds?.about === undefined ? {} : { about: attemptIds.about }),
+          ...(queueBehindTurn ? { queued: true as const } : {}),
           createdAt: messageCreatedAt,
         },
       }).finally(() => window.clearTimeout(unconfirmedTimer));

@@ -162,10 +162,11 @@ export const engineStartTurn =
           commandId,
         });
       // Into the run that works, as V1 sends a message into its running turn, its pictures and files
-      // with it where the session's steer carries them; else, and for a plan, as the next run (the
-      // run keeps the mode it began in).
+      // with it where the session's steer carries them; else, for a plan (the run keeps the mode it
+      // began in) and for a message the person queued, as the next run: the conversation holds it
+      // whatever becomes of the tab that queued it.
       const steered =
-        input.interactionMode !== "plan"
+        input.interactionMode !== "plan" && input.queued !== true
           ? engineSteerTarget(readsOfState(host.store.state()), target, attachments.length > 0)
           : null;
       if (steered === null) return yield* send(input.message.messageId);
