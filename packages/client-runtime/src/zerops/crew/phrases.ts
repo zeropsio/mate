@@ -704,14 +704,31 @@ export function crewPlanStartLine(
 export const crewInCodeHeading = (mateName: string): string =>
   `In ${crewPossessive(mateName)} code`;
 
-export const crewNotShippedWords = (mateName: string): string =>
-  `${mateName} hasn't shipped these yet`;
+/**
+ * The list's footer while some of it is not shipped: "these" ("this") only when that is all of it,
+ * else how many of them.
+ */
+export const crewNotShippedWords = (mateName: string, count: number, all: boolean): string => {
+  const which = all
+    ? count === 1
+      ? "this"
+      : "these"
+    : count === 1
+      ? "one of these"
+      : `${count} of these`;
+  return `${mateName} hasn't shipped ${which} yet`;
+};
 
 /** The same at a phone's width, where the section's heading has said whose code. */
-export const CREW_NOT_SHIPPED_SHORT = "Not shipped yet";
+export const crewNotShippedShort = (count: number, all: boolean): string =>
+  all ? "Not shipped yet" : `${count} not shipped yet`;
 
-/** *Ask Fen to ship them*, and what it does. */
-export const crewShipWord = (mateName: string): string => `Ask ${mateName} to ship them`;
+/** A piece of the list that went in and was read as not shipped. */
+export const CREW_NOT_SHIPPED_MARK = "Not shipped";
+
+/** *Ask Fen to ship them*, and what it does; *ship it* where it asks for one piece. */
+export const crewShipWord = (mateName: string, count: number): string =>
+  `Ask ${mateName} to ship ${count === 1 ? "it" : "them"}`;
 export const crewShipLine = (mateName: string): string =>
   `${mateName} ships what the crew added, like its own work.`;
 

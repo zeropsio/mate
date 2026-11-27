@@ -3,9 +3,10 @@
  * first — the crewmate's face at 20 px, what it was, and when — the last
  * three, and *Show all N*, which opens every one (D4: every fold opens). A
  * line opens that work's review. While some of it has not shipped, the list
- * ends in "Fen hasn't shipped these yet · Ask Fen to ship them" — the ask
- * only where Fen's chat is the viewer's to run. Nothing is drawn while nothing
- * went in.
+ * ends in "Fen hasn't shipped these yet · Ask Fen to ship them" — "one of
+ * these" where it is not all of it, each such line marked *Not shipped* — the
+ * ask only where Fen's chat is the viewer's to run. Nothing is drawn while
+ * nothing went in.
  *
  * The engine's board holds each crewmate's newest finished work only: while a
  * crewmate's board is full, more may have gone in past it, so *Show all* is
@@ -13,9 +14,10 @@
  * press reads the rest of those crewmates' finished work, once.
  */
 import {
+  CREW_NOT_SHIPPED_MARK,
   CREW_WHAT_CHANGED,
   crewInCodeHeading,
-  CREW_NOT_SHIPPED_SHORT,
+  crewNotShippedShort,
   crewNotShippedWords,
   crewShipLine,
   crewShipWord,
@@ -32,25 +34,16 @@ import { useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Badge } from "../../ui/badge";
 import { Failure } from "../../ui/failure";
 import { Row } from "../../ui/row";
 import { MateFace } from "../primitives";
 import { readFinishedWork } from "./CrewmateEmptyState.logic";
+import { crewNotShippedWork, crewWorkInCode } from "./CrewInFensCode.logic";
 import { CrewHeading, CrewTextButton, CrewTip } from "./CrewParts";
 
 /** How many pieces of work the list shows before *Show all*. */
 const SHOWN = 3;
-
-/** The work that went in — a commit, not a task closed with nothing of its own — newest first. */
-function crewWorkInCode(tasks: ReadonlyArray<CrewTask>): ReadonlyArray<CrewTask> {
-  return tasks
-    .filter((task) => task.state === "landed" && task.landedCommit !== null)
-    .toSorted(
-      (left, right) =>
-        (right.landedAt ?? right.createdAt).localeCompare(left.landedAt ?? left.createdAt) ||
-        right.number - left.number,
-    );
-}
 
 export function CrewInFensCode({
   tasks,
@@ -98,6 +91,10 @@ export function CrewInFensCode({
   const held = new Set(tasks.map((task) => task.id));
   const work = crewWorkInCode([...tasks, ...(older ?? []).filter((task) => !held.has(task.id))]);
   if (work.length === 0 && !more) return null;
+  // Marked over the board's own work, so *Show all*'s older pieces never take a mark back.
+  const pending = crewNotShippedWork(crewWorkInCode(tasks), notShipped, unread);
+  // "these" only when the count is every line the list holds.
+  const allPending = !more && notShipped === work.length;
   const shown = all ? work : work.slice(0, SHOWN);
   const showAll = () => {
     if (pressed.current) return;
@@ -122,6 +119,7 @@ export function CrewInFensCode({
             <CrewTip key={task.id} tip={CREW_WHAT_CHANGED}>
               <Row
                 data-crew-in-code-task={task.id}
+                badges={pending.has(task.id) ? <Badge>{CREW_NOT_SHIPPED_MARK}</Badge> : undefined}
                 lead={<MateFace size={16} state="idle" tint={owner?.tint ?? "slate"} />}
                 meta={when}
                 pressable
@@ -148,15 +146,19 @@ export function CrewInFensCode({
           {/* A phone's width says it short. Work not read yet is offered, and claims nothing. */}
           {notShipped === 0 ? null : (
             <>
-              <span className="truncate @max-md:hidden">{crewNotShippedWords(mateName)}</span>
-              <span className="hidden @max-md:inline">{CREW_NOT_SHIPPED_SHORT}</span>
+              <span className="truncate @max-md:hidden">
+                {crewNotShippedWords(mateName, notShipped, allPending)}
+              </span>
+              <span className="hidden @max-md:inline">
+                {crewNotShippedShort(notShipped, allPending)}
+              </span>
             </>
           )}
           {onShip === null ? null : (
             <>
               {notShipped === 0 ? null : <span aria-hidden="true">·</span>}
               <CrewTextButton
-                label={crewShipWord(mateName)}
+                label={crewShipWord(mateName, notShipped + unread)}
                 line={crewShipLine(mateName)}
                 onPress={onShip}
               />

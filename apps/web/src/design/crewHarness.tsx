@@ -220,6 +220,7 @@ const LANDED: ReadonlyArray<CrewTask> = [
     state: "landed",
     landedCommit: "c4d9e02",
     landedAt: minutesAgo(27 * 60),
+    delivered: true,
   }),
 ];
 
@@ -476,7 +477,7 @@ const STATES: Readonly<Record<string, CrewState>> = {
     run: null,
     attention: [],
     threads: AT_REST(26 * 60),
-    notShipped: 2,
+    notShipped: 1,
   },
   plan: {
     tasks: [...LANDED, ...planned("proposed")],
@@ -490,7 +491,7 @@ const STATES: Readonly<Record<string, CrewState>> = {
         said: "Three parts, one for each of them. The sky waits for the season clock.",
       },
     },
-    notShipped: 2,
+    notShipped: 1,
   },
   working: {
     tasks: [
@@ -532,7 +533,7 @@ const STATES: Readonly<Record<string, CrewState>> = {
       [SYSTEMS.handle]: { ago: 24, step: command("npm test") },
       [CLIENTS.handle]: { ago: 9, step: edit("/var/www/client/sky/seasonTint.ts") },
     },
-    notShipped: 2,
+    notShipped: 1,
   },
   needs: {
     tasks: [
@@ -574,7 +575,7 @@ const STATES: Readonly<Record<string, CrewState>> = {
       [SYSTEMS.handle]: { ago: 12 },
       [CLIENTS.handle]: { ago: 9, step: edit("/var/www/client/sky/seasonTint.ts") },
     },
-    notShipped: 2,
+    notShipped: 1,
   },
   stuck: {
     tasks: [
@@ -615,7 +616,7 @@ const STATES: Readonly<Record<string, CrewState>> = {
       [SYSTEMS.handle]: { ago: 15 },
       [CLIENTS.handle]: { ago: 3 },
     },
-    notShipped: 2,
+    notShipped: 1,
   },
   outoftime: {
     tasks: [],
