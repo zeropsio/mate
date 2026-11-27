@@ -1,5 +1,6 @@
-next: OP67
+next: OP68
 
+- OP67 — A birth deletion sends its own id, follows its HQ navigation outcome and presents an unconfirmed-setup warning once before acknowledging it, staying ended afterward; breaks: an accepted start is mistaken for completion, another deletion is followed, the warning repeats, or an acknowledged deletion reopens
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
 - OP3 — An accepted operation is reflected and then done only when its owner says it ended, never by a clock

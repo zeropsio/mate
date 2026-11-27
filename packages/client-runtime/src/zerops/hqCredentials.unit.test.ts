@@ -41,7 +41,7 @@ const RELEASE = {
 const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> = [
   (api) => api.mateTicket("p1"),
   (api) => api.updateMate("p1", { face: "sky" }),
-  (api) => api.deleteBirth("b1"),
+  (api) => api.acknowledgeBirthDeletion("op-1"),
   (api) => api.release("app-1", RELEASE),
   (api) => api.rollback("app-1", "v0.1.0", { groupHead: SHA }),
   (api) => api.mergeChange(LINK, SHA),
@@ -59,7 +59,7 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
 ];
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | { method: "POST", body: JSON.stringify(await withAccess({ changes }, true)) }, → { method: "POST", body: JSON.stringify({ changes }) },
-it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
+it("ZV99: HQ's door, creating or deleting a birth, a Mate's hand-over, a Continue and an access change carry the person's Zerops access token; other listed calls carry only HQ's session", async () => {
   const requests: Array<{
     readonly call: string;
     readonly text: string;
@@ -104,6 +104,7 @@ it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a Continue and an
         },
       }),
     (hq: HqApi) => hq.handOver("p1", "user-bob"),
+    (hq: HqApi) => hq.deleteBirth("b1", { id: "op-delete" }),
     (hq: HqApi) => hq.continueOperation("op-2"),
     (hq: HqApi) =>
       hq.startAccessChanges([{ id: "op-3", change: { kind: "remove", userId: "user-bob" } }]),
@@ -116,9 +117,18 @@ it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a Continue and an
     "POST /api/door",
     "POST /api/births",
     "POST /api/mates/p1/hand-over",
+    "DELETE /api/births/b1",
     "POST /api/operations/op-2/continue",
     "POST /api/access-changes",
   ]);
+  const deletion = requests.find((request) => request.call === "DELETE /api/births/b1");
+  expect(deletion?.text).toContain(
+    JSON.stringify({
+      id: "op-delete",
+      accessToken: "person-token",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    }),
+  );
   expect(
     new Set(requests.filter((request) => request.call !== "POST /api/door").map((r) => r.bearer)),
   ).toEqual(new Set(["Bearer session-1"]));

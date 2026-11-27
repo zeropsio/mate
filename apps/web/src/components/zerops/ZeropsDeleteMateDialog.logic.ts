@@ -173,18 +173,15 @@ const LEFT_WORDS: Readonly<Record<HqBirthLeft, string>> = {
     "the Mate settings it wrote to the project's own zcp service, which now refuses that key",
 };
 
-/**
- * The body of an adopted birth's Delete: it stops the setup, deletes nothing in Zerops, and names
- * what HQ's records say the attempt left in the project (`SharedBirth.left`), for the person to
- * remove in Zerops if they want.
- */
+/** The setup's identified key and service are cleaned up; other recorded changes stay. */
 export function adoptedBirthDeleteBody(left: ReadonlyArray<HqBirthLeft> | undefined): string {
-  const stops = "This stops setting up the Mate and deletes nothing in Zerops.";
-  const check =
-    "A step it was in the middle of may have added more, so check the project in Zerops before removing anything.";
+  const stops =
+    "This removes the unfinished setup. HQ deletes its identified Mate key and imported service; the project and its existing services stay.";
+  const check = "Check the project in Zerops for any other changes the setup made.";
   if (left === undefined) return `${stops} HQ no longer holds this setup open. ${check}`;
-  if (left.length === 0) return `${stops} HQ records no change to the existing project. ${check}`;
-  return `${stops} HQ records these in the project, and they stay: ${left.map((thing) => LEFT_WORDS[thing]).join(", ")}. ${check}`;
+  const remaining = left.filter((thing) => thing !== "mate_key" && thing !== "zcp_service");
+  if (remaining.length === 0) return `${stops} ${check}`;
+  return `${stops} HQ records these other changes in the project: ${remaining.map((thing) => LEFT_WORDS[thing]).join(", ")}. ${check}`;
 }
 
 /** What HQ says an open birth left now, by its id; `undefined` once HQ holds it open no more. */

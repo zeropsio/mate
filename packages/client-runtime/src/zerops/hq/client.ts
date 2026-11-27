@@ -338,9 +338,9 @@ export const HqBirthOffer = Schema.Literals(["continue", "end", "delete", "delet
 export type HqBirthOffer = typeof HqBirthOffer.Type;
 
 /**
- * One thing an adopted birth's attempt may have written to the existing project, which its Delete
- * leaves there (navigation, `births[].left`): the `zcp` service its import asked for, the Mate key
- * it minted (HQ refuses that key from then on), the project's `mate` tag, its isolation settings,
+ * One thing an adopted birth's attempt may have written to the existing project (navigation,
+ * `births[].left`): the `zcp` service its import asked for, the Mate key it minted, the project's
+ * `mate` tag, its isolation settings,
  * the `OWNER` grant it asked for a person, and what enabling the project's own zcp service wrote
  * to it (the Mate key and HQ's address as secrets, `ZCP_MATE_ENABLED`, a restart).
  */
@@ -400,6 +400,17 @@ export const HqOperation = Schema.Struct({
   ),
 });
 export type HqOperation = typeof HqOperation.Type;
+
+/** A deletion HQ retains for its maker until its outcome is acknowledged. */
+export const HqBirthDeletion = Schema.Struct({
+  id: Schema.String,
+  birthId: Schema.String,
+  projectId: Schema.optionalKey(Schema.String),
+  operation: HqOperation,
+  outcome: Schema.optionalKey(Schema.String),
+  unconfirmedSetup: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+export type HqBirthDeletion = typeof HqBirthDeletion.Type;
 
 /** Where a project stands, or is moved to: an application (`null`: none) and its kind there. */
 export interface HqPlacementSide {
@@ -867,8 +878,10 @@ export interface HqApi {
    * /api/access-changes/{id}`); one still running is refused (`operation_running`).
    */
   readonly deleteAccessChange: (id: string) => Promise<void>;
-  /** Deletes an unbound birth; HQ rechecks the person's current role. */
-  readonly deleteBirth: (birthId: string) => Promise<void>;
+  /** Starts a birth deletion on the person's token; its outcome is in navigation. */
+  readonly deleteBirth: (birthId: string, start: { readonly id: string }) => Promise<void>;
+  /** Acknowledges the maker's ended birth-deletion outcome. */
+  readonly acknowledgeBirthDeletion: (id: string) => Promise<void>;
   /**
    * Hands a Mate over to `ownerUserId` (`POST /api/mates/:projectId/hand-over`): HQ moves its
    * project's `OWNER` override and replaces its key, with the person's own access token. A stop part
@@ -2126,10 +2139,17 @@ export function makeHqApi(input: {
     deleteAccessChange: async (id) => {
       await authorized(`/api/access-changes/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
     },
-    deleteBirth: async (birthId) => {
+    deleteBirth: async (birthId, start) => {
       await authorized(
         `/api/births/${encodeURIComponent(birthId)}`,
-        { method: "DELETE", body: JSON.stringify({}) },
+        { method: "DELETE", body: JSON.stringify(await withAccess(start, true)) },
+        true,
+      );
+    },
+    acknowledgeBirthDeletion: async (id) => {
+      await authorized(
+        `/api/birth-deletions/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
         true,
       );
     },

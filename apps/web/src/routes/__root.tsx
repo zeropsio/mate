@@ -1,4 +1,5 @@
 import { RecoveryOutcomeStatus } from "../components/zerops/RecoveryOutcomes";
+import { BirthDeletionOutcomes } from "../components/zerops/BirthDeletionOutcomes";
 import { AgentAdmissionComposition } from "../zerops/AgentAdmissionComposition";
 import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
 import { useThreadDetail } from "~/state/entities";
@@ -324,7 +325,14 @@ function SignedInRootRouteView() {
     <AgentAdmissionComposition>
       <ZeropsReviewProvider>
         <CommandPalette>
-          <AppSidebarLayout status={<RecoveryOutcomeStatus />}>
+          <AppSidebarLayout
+            status={
+              <>
+                <RecoveryOutcomeStatus />
+                <BirthDeletionOutcomes />
+              </>
+            }
+          >
             <ConversationOpeningProvider>
               <RouteGateView
                 gate={gate}

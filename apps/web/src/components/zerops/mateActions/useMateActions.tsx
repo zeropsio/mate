@@ -1030,7 +1030,10 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                     const { progress, evidence } = await operations.submit({
                       kind: "continue-operation",
                       orgId,
-                      id: birth.id,
+                      id: birth.deletion?.id ?? birth.id,
+                      ...(birth.deletion !== undefined && birth.projectId !== null
+                        ? { projectId: birth.projectId }
+                        : {}),
                     });
                     const trouble = writeTrouble(progress, evidence);
                     if (trouble !== null) throw new Error(trouble);
@@ -1046,19 +1049,29 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                 label: "End",
                 variant: "destructive" as const,
                 disabled: busyKey === key,
-                onSelect: () =>
+                onSelect: () => {
+                  if (birth.deletion !== undefined && candidate !== undefined) {
+                    setDialog({
+                      kind: "end-operation",
+                      candidate,
+                      id: birth.deletion.id,
+                      operationKind: "birth_deletion",
+                    });
+                    return;
+                  }
                   setEndingBirth({
                     birthId: birth.id,
                     appId: birth.appId,
                     orgId,
                     key,
                     name: birth.intent?.placement.name ?? "Mate",
-                  }),
+                  });
+                },
               },
             ]
           : []),
         // Which request Delete sends is HQ's offer: the birth alone, or its project's deletion.
-        ...(birth.offers.includes("delete")
+        ...(birth.deletion === undefined && birth.offers.includes("delete")
           ? [
               {
                 id: "delete",
@@ -1077,7 +1090,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             ]
           : []),
-        ...(birth.offers.includes("delete_project") && candidate !== undefined
+        ...(birth.deletion === undefined &&
+        birth.offers.includes("delete_project") &&
+        candidate !== undefined
           ? [
               {
                 id: "delete",

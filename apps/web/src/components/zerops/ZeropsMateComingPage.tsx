@@ -260,7 +260,8 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   };
   const presentation = sharedBirthPresentation(birth);
   const { attention } = presentation;
-  const zeropsAnswer = birth.failure === undefined ? null : operationFailureDetails(birth.failure);
+  const failure = birth.deletion === undefined ? birth.failure : birth.deletion.failure;
+  const zeropsAnswer = failure === undefined ? null : operationFailureDetails(failure);
   const birthBelow = (withoutDelete: boolean) => (
     <div className="flex flex-wrap justify-center gap-2">
       {zeropsAnswer === null ? null : (
@@ -268,7 +269,8 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
       )}
       {birth.adopted === true && presentation.actions.includes("delete") ? (
         <p className="w-full">
-          Delete stops setting up the Mate. What the setup already added to the project stays there.
+          Delete removes the identified Mate key and imported service. The project and its existing
+          services stay.
         </p>
       ) : null}
       {!withoutDelete && actions.trouble !== null ? (

@@ -17,7 +17,7 @@ const hqAnswering = (
       observe(url, init);
       return Promise.resolve(Response.json(body, { status }));
     },
-    accessToken: () => Promise.reject(new Error("no door")),
+    accessToken: () => Promise.resolve({ token: "person", expiresAt: "2099-01-01T00:00:00Z" }),
     openSocket: () => {
       throw new Error("no socket");
     },
@@ -181,7 +181,7 @@ it.effect(
       const refusedWith = (body: unknown) =>
         Effect.promise(() =>
           hqAnswering(403, body)
-            .deleteBirth("app")
+            .deleteBirth("app", { id: "deletion" })
             .then(
               () => null,
               (cause: unknown) => cause,
