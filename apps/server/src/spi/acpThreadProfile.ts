@@ -377,6 +377,12 @@ export interface AcpThreadSetup {
    * permission; `undefined` when the profile may read it.
    */
   readonly refuseRead: (path: string) => Effect.Effect<string | undefined>;
+  /**
+   * The thread never changes files (`ThreadToolProfile.readOnly`). An agent that reads some paths
+   * without asking, even in a mode of its own that only reads, is started so that only its
+   * working folder is among them: every other read reaches the gate.
+   */
+  readonly readOnly: boolean;
 }
 
 /** The text a profiled thread's prompts carry after the runtime instructions. */
@@ -418,6 +424,7 @@ export const acpThreadSetup = (
           { toolName: "Read", input: { file_path: path } },
           `client-read:${path}`,
         ),
+      readOnly: profile.readOnly === true,
     };
   });
 

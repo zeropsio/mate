@@ -38,6 +38,8 @@ export interface CursorAcpRuntimeInput extends Omit<
   readonly cursorSettings: CursorAcpRuntimeCursorSettings | null | undefined;
   readonly environment?: NodeJS.ProcessEnv;
   readonly runtimeMode?: RuntimeMode;
+  /** A read-only thread's own Cursor folder ({@link buildCursorAcpSpawnInput}). */
+  readonly readOnlySettings?: string;
 }
 
 export interface CursorAcpModelSelectionErrorContext {
@@ -46,21 +48,65 @@ export interface CursorAcpModelSelectionErrorContext {
   readonly configId?: string;
 }
 
+/**
+ * The settings (`cli-config.json`) of a read-only thread's own Cursor folder: rules that refuse
+ * every read beside the way down to `root` and in `root`'s dot-folders. Cursor reads without
+ * asking, its ask mode included, and a refusal always wins over an allowance, so the rules name
+ * every entry beside the way down; Read's rules hold for its search too (measured, cursor-agent
+ * 2026.10.22).
+ */
+export const cursorReadOnlySettings = <E>(
+  root: string,
+  entriesOf: (directory: string) => Effect.Effect<ReadonlyArray<string>, E>,
+) =>
+  Effect.gen(function* () {
+    const segments = root.split("/").filter((segment) => segment !== "");
+    const beside = yield* Effect.forEach(segments, (kept, depth) => {
+      const directory = `/${segments.slice(0, depth).join("/")}`;
+      return Effect.map(entriesOf(directory), (entries) =>
+        entries
+          .filter((entry) => entry !== kept)
+          .map((entry) => `${directory === "/" ? "" : directory}/${entry}`),
+      );
+    });
+    return {
+      version: 1,
+      permissions: {
+        allow: [] as ReadonlyArray<string>,
+        deny: [...beside.flat(), `${root}/.*`].flatMap((path) => [
+          `Read(${path})`,
+          `Read(${path}/**)`,
+        ]),
+      },
+    };
+  });
+
+/**
+ * `readOnlySettings`: a read-only thread's own Cursor folder ({@link cursorReadOnlySettings}),
+ * with project settings off, so no `.cursor/cli.json` it works below (zcp's lets Zerops tools run
+ * unasked) lets a call past the gate.
+ */
 export function buildCursorAcpSpawnInput(
   cursorSettings: CursorAcpRuntimeCursorSettings | null | undefined,
   cwd: string,
   environment?: NodeJS.ProcessEnv,
   runtimeMode?: RuntimeMode,
+  readOnlySettings?: string,
 ): AcpSessionRuntime.AcpSpawnInput {
+  const env =
+    readOnlySettings === undefined
+      ? environment
+      : { ...environment, CURSOR_CONFIG_DIR: readOnlySettings };
   return {
     command: cursorSettings?.binaryPath || "cursor-agent",
     args: [
       ...(cursorSettings?.apiEndpoint ? (["-e", cursorSettings.apiEndpoint] as const) : []),
       ...cursorAcpPermissionArgs(runtimeMode),
+      ...(readOnlySettings === undefined ? [] : ["--disable-project-configs"]),
       "acp",
     ],
     cwd,
-    ...(environment ? { env: environment } : {}),
+    ...(env ? { env } : {}),
   };
 }
 
@@ -80,6 +126,7 @@ export const makeCursorAcpRuntime = (
           input.cwd,
           input.environment,
           input.runtimeMode,
+          input.readOnlySettings,
         ),
         authMethodId: "cursor_login",
         clientCapabilities: CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES,

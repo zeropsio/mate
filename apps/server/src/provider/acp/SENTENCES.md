@@ -18,3 +18,4 @@ next: AP19
 - AP16 — Antigravity starts with its own approve-everything flag only under full access; supervised, auto-accept-edits and auto start without it, so the person is asked
 - AP17 — An Antigravity session restores the conversation's saved model over the cold-resume default, and a model the account does not offer is refused, never replaced by a fallback
 - AP18 — An Antigravity prompt that cannot carry an attachment (a missing upload, an image over its own size limit or past the message's native budget) is refused whole, never sent without it
+- AP+1 — A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off

@@ -16,7 +16,11 @@ import {
   sanitizeAntigravityToolPayload,
   selectAntigravityPermissionOptionId,
 } from "./AntigravityProtocol.ts";
-import { applyCursorAcpModelSelection, buildCursorAcpSpawnInput } from "./CursorAcpSupport.ts";
+import {
+  applyCursorAcpModelSelection,
+  buildCursorAcpSpawnInput,
+  cursorReadOnlySettings,
+} from "./CursorAcpSupport.ts";
 import { applyGrokAcpModelSelection, grokAcpSpawnArgs } from "./GrokAcpSupport.ts";
 
 const makeGrokRecordingRuntime = () => {
@@ -191,6 +195,54 @@ it("AP2: Cursor starts with `--force` only under full access and with `--auto-re
     });
   }
 });
+
+// witness: apps/server/src/provider/acp/CursorAcpSupport.ts | deny: [...beside.flat(), `${root}/.*`].flatMap((path) => [ → deny: [...beside.flat()].flatMap((path) => [
+it.effect(
+  "AP+1: A read-only thread's Cursor starts with settings of its own that refuse every read beside the way down to its working folder and in that folder's dot-folders, and with project settings off",
+  () =>
+    Effect.gen(function* () {
+      const entries: Readonly<Record<string, ReadonlyArray<string>>> = {
+        "/": ["etc", "home", "tmp", "var"],
+        "/var": ["lib", "www"],
+      };
+      expect(
+        yield* cursorReadOnlySettings("/var/www", (directory) =>
+          Effect.succeed(entries[directory] ?? []),
+        ),
+      ).toEqual({
+        version: 1,
+        permissions: {
+          allow: [],
+          deny: [
+            "Read(/etc)",
+            "Read(/etc/**)",
+            "Read(/home)",
+            "Read(/home/**)",
+            "Read(/tmp)",
+            "Read(/tmp/**)",
+            "Read(/var/lib)",
+            "Read(/var/lib/**)",
+            "Read(/var/www/.*)",
+            "Read(/var/www/.*/**)",
+          ],
+        },
+      });
+      expect(
+        buildCursorAcpSpawnInput(
+          undefined,
+          "/var/www",
+          { HOME: "/home/mate" },
+          "approval-required",
+          "/state/read-only-threads/cursor/thread-1",
+        ),
+      ).toEqual({
+        command: "cursor-agent",
+        args: ["--disable-project-configs", "acp"],
+        cwd: "/var/www",
+        env: { HOME: "/home/mate", CURSOR_CONFIG_DIR: "/state/read-only-threads/cursor/thread-1" },
+      });
+    }),
+);
 
 // witness: apps/server/src/provider/acp/CursorAcpSupport.ts | yield* input.runtime.setModel(resolveCursorAcpBaseModelId(input.model)).pipe( → yield* input.runtime.setModel(input.model ?? "").pipe(
 it.effect(
