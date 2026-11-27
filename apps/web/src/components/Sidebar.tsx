@@ -1,4 +1,5 @@
 import { ownChiefCandidateAtom } from "~/zerops/useZeropsCandidates";
+import { useAnswerPutTask } from "../zerops/useBoardTasks";
 import {
   shownHqMateDirectoryAtom,
   isListedMateEnvironment,
@@ -1034,6 +1035,7 @@ export default function Sidebar() {
   });
   const zeropsListHeld = useZeropsListHeld({ zeropsListLoading });
   // What the Waiting on you list asks of the menu: a Mate's conversation, and its fix request.
+  const answerPutTask = useAnswerPutTask();
   const zeropsWaitingVerbs = useMemo(
     () => ({
       onOpenMate: (projectId: string) => {
@@ -1044,9 +1046,10 @@ export default function Sidebar() {
         const candidate = zeropsCandidates.find((item) => item.project.id === projectId);
         if (candidate !== undefined) onZeropsOpenCrew(candidate, false);
       },
+      onAnswerPut: answerPutTask,
       onAskToFix: onZeropsAskToFix,
     }),
-    [onZeropsAskToFix, onZeropsOpenCrew, onZeropsSelect, zeropsCandidates],
+    [answerPutTask, onZeropsAskToFix, onZeropsOpenCrew, onZeropsSelect, zeropsCandidates],
   );
   // Closed on a desktop, the menu is a rail of tiles: the same projects, in the menu's order.
   const zeropsProjectName = useCallback(

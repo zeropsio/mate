@@ -1,4 +1,4 @@
-next: MN127
+next: MN130
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -119,6 +119,6 @@ next: MN127
 - MN124 — A running crew is at work only while a crewmate's turn runs, its clock running on from when its Mate read it; with no turn running, a task left midway included, it waits on the person when something does, its clock standing; breaks: the Crew tab says the crew works on its own while it waits on the person and its clock stands still
 - MN125 — A crew's faces in the menu stand in one order, the lead first and then the crew's, whoever works or needs the viewer; breaks: the faces reshuffle on every change of state and the person loses track of who is who
 - MN126 — A crewmate past the faces the menu draws whole that needs the viewer marks the "+N" it folds into, and one that does not leaves it plain; breaks: a crew's sixth crewmate asks the person something and nothing in the menu shows it
-- MN+1 — A task the viewer put on the Board that a colleague's automated Mate holds waits on the viewer while it asks, and on nobody else who did not put it; breaks: the person who put the task never hears its question
-- MN+2 — What the viewer set aside stays out of Needs you while its revision is the one set aside, and comes back once it changes; breaks: a new question on a set-aside task stays hidden, or a snooze hides nothing
-- MN+3 — A task a person took stands In progress under their name and their Mate, Up for review once their Mate linked a change, and never with the organization's cost; one put from a chat names who put it, and leads back to that chat only for a reader whose list holds its Mate; breaks: a person's own work is billed to the organization on the Board, or a reader is sent into a Mate they cannot open
+- MN127 — A task the viewer put on the Board that a colleague's automated Mate holds waits on the viewer while it asks, and on nobody else who did not put it; breaks: the person who put the task never hears its question
+- MN128 — What the viewer set aside stays out of Needs you while its revision is the one set aside, and comes back once it changes; breaks: a new question on a set-aside task stays hidden, or a snooze hides nothing
+- MN129 — A task a person took stands In progress under their name and their Mate, Up for review once their Mate linked a change, and never with the organization's cost; one put from a chat names who put it, and leads back to that chat only for a reader whose list holds its Mate; breaks: a person's own work is billed to the organization on the Board, or a reader is sent into a Mate they cannot open

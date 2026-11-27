@@ -113,7 +113,12 @@ function pageViewOf(setup: ChiefSetup): Exclude<ChiefPageView, { kind: "reading"
   };
 }
 
-const VERBS = { onOpenMate: () => {}, onOpenCrew: () => {}, onAskToFix: () => {} };
+const VERBS = {
+  onOpenMate: () => {},
+  onAnswerPut: () => {},
+  onOpenCrew: () => {},
+  onAskToFix: () => {},
+};
 const COUNTS = { running: 2, doneToday: 5 };
 
 function Harness() {

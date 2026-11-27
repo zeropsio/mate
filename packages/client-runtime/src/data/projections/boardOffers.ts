@@ -138,3 +138,21 @@ export const boardRevision: Projection<
   },
   equals: (a, b) => a === b,
 };
+
+/**
+ * The chat a task was put from, by its id, as the application's Board was last read: where its
+ * putter answers its question (their own card there). `null` where the Board was not read, or the
+ * task came from elsewhere.
+ */
+export function putChatOf(
+  read: ProjectionReads,
+  key: { readonly orgId: string; readonly appId: string },
+  taskId: string,
+): { readonly mateProjectId: string; readonly conversationId: string } | null {
+  const tasks = read.fact("hqAppTasks", settingId(key));
+  if (tasks.kind !== "known") return null;
+  const source = tasks.value.find((task) => task.id === taskId)?.source;
+  return source?.kind === "conversation"
+    ? { mateProjectId: source.mateProjectId, conversationId: source.conversationId }
+    : null;
+}

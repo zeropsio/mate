@@ -86,6 +86,11 @@ import { Text } from "~/components/ui/text";
 /** What the list asks of the menu: a Mate's conversation, its crew, the fix request's composer. */
 export interface WaitingVerbs {
   readonly onOpenMate: (projectId: string) => void;
+  /**
+   * A task the viewer put on the Board asks them: where they answer it — their own card in the chat
+   * they put it from, else the Board.
+   */
+  readonly onAnswerPut: (task: { readonly projectId: string; readonly taskId: string }) => void;
   readonly onOpenCrew: (projectId: string) => void;
   readonly onAskToFix: (projectId: string, problem: FixProblem) => void;
 }
@@ -703,7 +708,10 @@ function CrewEntry({
 /** Where the list's crew presses are placed, so their refusal reads back here. */
 const NEEDS_YOU_ORIGIN = "needs-you";
 
-/** An automated Mate's task waits for an answer in its conversation, where its question stands. */
+/**
+ * An automated Mate's task waits for an answer in its conversation, where its question stands; one
+ * the viewer put on the Board, on their own card in the chat they put it from.
+ */
 function TaskEntry({
   item,
   verbs,
@@ -716,7 +724,8 @@ function TaskEntry({
         <Button
           onClick={() => {
             onClose();
-            verbs.onOpenMate(task.projectId);
+            if (task.put === true) verbs.onAnswerPut(task);
+            else verbs.onOpenMate(task.projectId);
           }}
           size="sm"
         >

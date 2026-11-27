@@ -3,9 +3,16 @@
  * (`boardOffers`), whether the application has a Board yet (`boardRevision`), **Take** — HQ's take,
  * then a new conversation in the person's own Mate whose first message is the task's brief, sent
  * as them and linked to the task (`ComposerSendIds.taken`), where it stands until it went
- * (`TakeOpening`) — and the way back to the conversation a task was put from.
+ * (`TakeOpening`) — and the ways back to the conversation a task was put from.
  */
-import { boardOffers, boardRevision, type BoardOffers } from "@t3tools/client-runtime/data";
+import {
+  boardOffers,
+  boardRevision,
+  putChatOf,
+  readsOfState,
+  type BoardOffers,
+} from "@t3tools/client-runtime/data";
+import { useAtomValue } from "@effect/atom-react";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
@@ -26,7 +33,8 @@ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { newCommandId, newMessageId } from "../lib/utils";
 import { readThreadShell, useProjects } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
-import { useAccountOrgId, useProjection } from "./accountData";
+import { hqPlacementsAtom } from "../state/zerops";
+import { useAccountOrgId, useAccountStoreForAdapters, useProjection } from "./accountData";
 import { useOpenMate } from "./useOpenMate";
 import { useBoardTaskWrites } from "./useTaskSourceSettings";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "./useZeropsCandidates";
@@ -246,4 +254,33 @@ export function useMateFaces(): ReadonlyMap<string, BoardFace> {
       }),
     );
   }, [rows]);
+}
+
+/**
+ * Where the person who put a task on the Board answers its question: their own card in the chat they
+ * put it from, where the Board read says which; else the application's Board, on its page.
+ */
+export function useAnswerPutTask() {
+  const store = useAccountStoreForAdapters();
+  const orgId = useAccountOrgId();
+  const placements = useAtomValue(hqPlacementsAtom);
+  const openConversation = useOpenTaskConversation();
+  const router = useRouter();
+  return useCallback(
+    (task: { readonly projectId: string; readonly taskId: string }) => {
+      const appId = placements?.get(task.projectId)?.appId ?? null;
+      if (appId === null || orgId === null) return;
+      const chat =
+        store === null
+          ? null
+          : putChatOf(readsOfState(store.state()), { orgId, appId }, task.taskId);
+      if (chat !== null) return openConversation(chat);
+      void router.navigate({
+        to: "/group/$groupId/flow",
+        params: { groupId: appId },
+        hash: "automation",
+      });
+    },
+    [openConversation, orgId, placements, router, store],
+  );
 }

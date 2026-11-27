@@ -1,4 +1,4 @@
-next: SH16
+next: SH20
 
 - SH1 — A link frame from a newer HQ or Mate is read by the keys this build knows, a frame of an unknown type is passed by, and a known type whose body does not decode is refused
 - SH2 — Projects may be created by Zerops' own flag on the account or by an owner's or admin's role, and by no other role
@@ -14,7 +14,7 @@ next: SH16
 - SH13 — A crew drafted before the Mate's dev services are read keeps every crewmate, and its builder is placed on the only dev service, sharing the database it reaches, before Apply admits it; breaks: a crew card pressed on a Mate with a new dev service saves nobody, or a builder starts with nowhere for its copy
 - SH14 — Among several dev services and dev pools a crew's builder is placed only where its crew card or the person named it, a named pool as a pool, and never by itself: it stays unplaced until the person picks; breaks: a builder starts on a service nobody chose, or a card's pool is taken for a service
 - SH15 — A crewmate its crew home gives no tint wears the first of the crew's tints no other crewmate wears, named or given before it, never its Mate's, in the crew's order, and one that names a tint keeps it; breaks: a hand-written crew's crewmates share a colour or their Mate's, or wear one in the top bar and another in the editor
-- SH+1 — A task still on the Board is offered Stop by an owner or admin, by the person who put it and by the person who took it, and by no other member, and no task off the Board is; breaks: a putter cannot stop their own task, or any member stops another's
-- SH+2 — Take is offered on a queued task only to a person with a Mate of their own in the application, never for an automated Mate or another person's, and never on a task already taken or at work; breaks: a person's Take spends a colleague's Mate or the pool's
-- SH+3 — A task a person took whose every linked change closed unmerged is still theirs to release, finish or stop, though HQ shows it closed; a task that ended closed offers none of them; breaks: a taken task whose changes all closed is stranded on the Board, or an ended task is released back to the queue
-- SH+4 — One card's Put on board names the same request on every send, from any tab or device, and no other card or chat shares it; breaks: a put sent again after a lost answer makes a second task, or a second card's put answers the first card's task
+- SH16 — A task still on the Board is offered Stop by an owner or admin, by the person who put it and by the person who took it, and by no other member, and no task off the Board is; breaks: a putter cannot stop their own task, or any member stops another's
+- SH17 — Take is offered on a queued task only to a person with a Mate of their own in the application, never for an automated Mate or another person's, and never on a task already taken or at work; breaks: a person's Take spends a colleague's Mate or the pool's
+- SH18 — A task a person took whose every linked change closed unmerged is still theirs to release, finish or stop, though HQ shows it closed; a task that ended closed offers none of them; breaks: a taken task whose changes all closed is stranded on the Board, or an ended task is released back to the queue
+- SH19 — One card's Put on board names the same request on every send, from any tab or device, and no other card or chat shares it; breaks: a put sent again after a lost answer makes a second task, or a second card's put answers the first card's task

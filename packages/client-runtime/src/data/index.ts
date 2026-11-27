@@ -703,6 +703,7 @@ export { makeDraftPreviewWire } from "./adapters/draftPreview.ts";
 export {
   boardOffers,
   boardRevision,
+  putChatOf,
   type BoardOffers,
   type BoardTaskOffer,
 } from "./projections/boardOffers.ts";

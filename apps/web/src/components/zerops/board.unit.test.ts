@@ -50,7 +50,7 @@ const linked = task({
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | lane === "queued" || holder?.kind === "person" → lane === "queued"
-it("MN+3: A task a person took stands In progress under their name and their Mate, Up for review once their Mate linked a change, and never with the organization's cost; one put from a chat names who put it, and leads back to that chat only for a reader whose list holds its Mate; breaks: a person's own work is billed to the organization on the Board, or a reader is sent into a Mate they cannot open", () => {
+it("MN129: A task a person took stands In progress under their name and their Mate, Up for review once their Mate linked a change, and never with the organization's cost; one put from a chat names who put it, and leads back to that chat only for a reader whose list holds its Mate; breaks: a person's own work is billed to the organization on the Board, or a reader is sent into a Mate they cannot open", () => {
   const { lanes } = boardOf([taken, linked], NOW, {
     appId: "shop",
     viewerId: "u-mara",

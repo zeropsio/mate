@@ -33,7 +33,7 @@ const zcpCall = (answer: unknown, toolName = "zerops_board_propose"): ItemBody =
 });
 
 // witness: apps/server/src/engine/pump/boardAsk.ts | if (said.title === "" || said.brief === "") return null; → if (said.title === "") return null;
-it("ED+1: A zcp call proposes work for the Board only from `zerops_board_propose` answering a title and a brief, both trimmed and cut to what HQ takes; an answer missing either, or any other tool's, asks nothing", () => {
+it("ED146: A zcp call proposes work for the Board only from `zerops_board_propose` answering a title and a brief, both trimmed and cut to what HQ takes; an answer missing either, or any other tool's, asks nothing", () => {
   const proposed = (board: Record<string, unknown>) => ({
     proposed: { board },
     nextActions: "Say it in one sentence.",
@@ -123,7 +123,7 @@ const links = (effects: ReadonlyArray<EffectDraft>) =>
   effects.filter((effect) => effect.kind === "task.change").map((effect) => effect.payload);
 
 // witness: apps/server/src/engine/domain/decide.send.ts | (b.state.lastPersonSeq > 0 || b.state.takenTask !== undefined) → b.state.takenTask !== undefined
-it("ED+2: A conversation opened with a task the person took from the Board links each change it opens to that task, and a conversation no task was taken for links none; a taken task's brief into a conversation under way is refused; breaks: a person's taken task never ends when its change merges, or another conversation's change is attached to it", () => {
+it("ED147: A conversation opened with a task the person took from the Board links each change it opens to that task, and a conversation no task was taken for links none; a taken task's brief into a conversation under way is refused; breaks: a person's taken task never ends when its change merges, or another conversation's change is attached to it", () => {
   const taken = opening(ConversationId.make("ana-take"), {
     _tag: "Send",
     text: "The menu reads every visit; cache it.",
@@ -148,7 +148,7 @@ it("ED+2: A conversation opened with a task the person took from the Board links
 });
 
 // witness: apps/server/src/engine/pump/changeOpened.ts | if (matched === null || Number(matched[2]) !== number) return null; → if (matched === null) return null;
-it("ED+3: A change the agent opened is read off zcp's `open-change` answer as the repository its address names and the number it answers, only where both agree; any other answer or tool names no change", () => {
+it("ED148: A change the agent opened is read off zcp's `open-change` answer as the repository its address names and the number it answers, only where both agree; any other answer or tool names no change", () => {
   const opened = (pullRequest: unknown, pullRequestUrl: unknown) => ({
     service: "appdev",
     branch: "menu-cache",
@@ -170,7 +170,7 @@ it("ED+3: A change the agent opened is read off zcp's `open-change` answer as th
     expect(changeOpenedOfCall(body, { action: "open-change" })).toEqual(change);
 });
 // witness: apps/server/src/engine/pump/changeOpened.ts | if (args.action !== CHANGE_OPEN_ACTION) return null; → if (args.action === "close-change") return null;
-it("ED+4: Only the agent's `open-change` call links a change to a taken task: its `describe-change`, a call without its action, or any other action naming the same change in the same fields links nothing; breaks: describing or closing a change links it to the task again, or a closed change is linked as if opened", () => {
+it("ED149: Only the agent's `open-change` call links a change to a taken task: its `describe-change`, a call without its action, or any other action naming the same change in the same fields links nothing; breaks: describing or closing a change links it to the task again, or a closed change is linked as if opened", () => {
   const answer = {
     service: "appdev",
     branch: "menu-cache",

@@ -136,7 +136,7 @@ const POOL_TASK = {
 } as const;
 
 // witness: apps/web/src/zerops/waiting.logic.ts | (mate.mine || (input.viewer !== undefined && task.putBy === input.viewer)) → mate.mine
-it("MN+1: A task the viewer put on the Board that a colleague's automated Mate holds waits on the viewer while it asks, and on nobody else who did not put it; breaks: the person who put the task never hears its question", () => {
+it("MN127: A task the viewer put on the Board that a colleague's automated Mate holds waits on the viewer while it asks, and on nobody else who did not put it; breaks: the person who put the task never hears its question", () => {
   const pool = mate({ projectId: "pool-1", name: "Pool", mine: false, task: POOL_TASK });
   const keysFor = (viewer: string) =>
     needsYou({ mates: [pool], order: [], releases: [], dayStart: DAY, viewer }).items.map(
@@ -149,7 +149,7 @@ it("MN+1: A task the viewer put on the Board that a colleague's automated Mate h
 });
 
 // witness: apps/web/src/zerops/waiting.logic.ts | return snooze === null || aside.get(snooze.item) !== snooze.revision; → return snooze === null || !aside.has(snooze.item);
-it("MN+2: What the viewer set aside stays out of Needs you while its revision is the one set aside, and comes back once it changes; breaks: a new question on a set-aside task stays hidden, or a snooze hides nothing", () => {
+it("MN128: What the viewer set aside stays out of Needs you while its revision is the one set aside, and comes back once it changes; breaks: a new question on a set-aside task stays hidden, or a snooze hides nothing", () => {
   const pool = (askedAt: string) =>
     mate({ projectId: "pool-1", name: "Pool", mine: false, task: { ...POOL_TASK, askedAt } });
   const snoozes = [{ item: "task:task-9", revision: "2026-11-27T09:00:00Z" }];

@@ -126,6 +126,11 @@ export interface WaitingTask {
   readonly url: string | null;
   /** When it last asked (`HqNavigationMateTask.askedAt`): a new question is a new revision. */
   readonly askedAt?: string | undefined;
+  /**
+   * The viewer put it on the Board from a chat: they answer it on their own card there (or on the
+   * Board), not in the pool Mate's conversation.
+   */
+  readonly put?: true | undefined;
 }
 
 export type WaitingItem =
@@ -471,6 +476,9 @@ export function needsYou(input: {
           title: task.title,
           url: task.url,
           ...(task.askedAt === undefined ? {} : { askedAt: task.askedAt }),
+          ...(input.viewer !== undefined && task.putBy === input.viewer
+            ? { put: true as const }
+            : {}),
         },
       });
     if (!mate.mine) continue;

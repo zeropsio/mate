@@ -632,7 +632,7 @@ const boardMember = (userId: string, roleCode: string): PermissionFacts => ({
 });
 
 // witness: packages/shared/src/zeropsPermissions.ts | if (!writer(member) && !puts(member, task) && !takes(member, task)) → if (!writer(member) && !takes(member, task))
-it("SH+1: A task still on the Board is offered Stop by an owner or admin, by the person who put it and by the person who took it, and by no other member, and no task off the Board is; breaks: a putter cannot stop their own task, or any member stops another's", () => {
+it("SH16: A task still on the Board is offered Stop by an owner or admin, by the person who put it and by the person who took it, and by no other member, and no task off the Board is; breaks: a putter cannot stop their own task, or any member stops another's", () => {
   const task = (state: string): BoardTask => ({
     stored: state,
     putBy: "ana",
@@ -676,7 +676,7 @@ it("SH+1: A task still on the Board is offered Stop by an owner or admin, by the
 });
 
 // witness: packages/shared/src/zeropsPermissions.ts | !mate.automated && → (mate.automated || true) &&
-it("SH+2: Take is offered on a queued task only to a person with a Mate of their own in the application, never for an automated Mate or another person's, and never on a task already taken or at work; breaks: a person's Take spends a colleague's Mate or the pool's", () => {
+it("SH17: Take is offered on a queued task only to a person with a Mate of their own in the application, never for an automated Mate or another person's, and never on a task already taken or at work; breaks: a person's Take spends a colleague's Mate or the pool's", () => {
   const mates = [
     { projectId: "mate-ana", ownerUserId: "ana", automated: false, takesBoard: true },
     { projectId: "mate-ben", ownerUserId: "ben", automated: false, takesBoard: true },
@@ -707,7 +707,7 @@ it("SH+2: Take is offered on a queued task only to a person with a Mate of their
 });
 
 // witness: packages/shared/src/hqIntake.ts | task.state === "closed" && task.taker?.kind === "person" && task.takenAt != null → false
-it("SH+3: A task a person took whose every linked change closed unmerged is still theirs to release, finish or stop, though HQ shows it closed; a task that ended closed offers none of them; breaks: a taken task whose changes all closed is stranded on the Board, or an ended task is released back to the queue", () => {
+it("SH18: A task a person took whose every linked change closed unmerged is still theirs to release, finish or stop, though HQ shows it closed; a task that ended closed offers none of them; breaks: a taken task whose changes all closed is stranded on the Board, or an ended task is released back to the queue", () => {
   const record = (patch: Partial<HqAppTask>): HqAppTask => ({
     id: "t-1",
     title: "Cache the menu",
@@ -752,7 +752,7 @@ it("SH+3: A task a person took whose every linked change closed unmerged is stil
 });
 
 // witness: packages/shared/src/hqIntake.ts | `${from.mateProjectId}\n${from.conversationId}\n${card}` → `${from.mateProjectId}\n${from.conversationId}`
-it("SH+4: One card's Put on board names the same request on every send, from any tab or device, and no other card or chat shares it; breaks: a put sent again after a lost answer makes a second task, or a second card's put answers the first card's task", () => {
+it("SH19: One card's Put on board names the same request on every send, from any tab or device, and no other card or chat shares it; breaks: a put sent again after a lost answer makes a second task, or a second card's put answers the first card's task", () => {
   const ana = { mateProjectId: "mate-ana", conversationId: "chat-1" };
   const first = boardPutRequestId(ana, "request-1");
   expect({

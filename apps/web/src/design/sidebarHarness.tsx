@@ -1412,6 +1412,9 @@ function SidebarFrame({
                     menuActions.push(`open ${projectId}`);
                     setOpen(projectId);
                   },
+                  onAnswerPut: (task: { readonly projectId: string }) => {
+                    menuActions.push(`answer ${task.projectId}`);
+                  },
                   onOpenCrew: (projectId: string) => {
                     menuActions.push(`crew ${projectId}`);
                     setOpen(projectId);
@@ -1871,6 +1874,9 @@ function RailFrame({
   const verbs = {
     onOpenMate: (projectId: string) => {
       setOpen(projectId);
+    },
+    onAnswerPut: (task: { readonly projectId: string }) => {
+      menuActions.push(`answer ${task.projectId}`);
     },
     onOpenCrew: (projectId: string) => {
       setOpen(projectId);
