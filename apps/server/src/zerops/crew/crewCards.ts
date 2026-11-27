@@ -258,3 +258,7 @@ export const crewRunReport = (run: {
       ? []
       : ["The landed work is in your tree and waits to ship from this conversation."]),
   ].join(" ")}`;
+
+/** Why a run's report never reached its conversation, for the person's *Waiting on you* row. */
+export const crewRunReportFailed = (reason: string): string =>
+  `The crew couldn't tell the conversation that started its run what it finished: ${reason}`;

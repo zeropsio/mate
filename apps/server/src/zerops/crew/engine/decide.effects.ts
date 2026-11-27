@@ -5,6 +5,7 @@
  */
 import { type EffectId } from "@t3tools/contracts";
 import { CHECKED_STATES, EDITED_AFTER_CHECK, MOVED_AFTER_CHECK } from "../crewMachines.ts";
+import { crewRunReportFailed } from "../crewCards.ts";
 import { taskCard } from "./cards.ts";
 import { type CrewEffectPayload, type CrewEffectValues, type CrewInput } from "./command.ts";
 import { openTaskOf, type MemberRecord, type PendingEffect, type TaskRecord } from "./state.ts";
@@ -23,6 +24,7 @@ import { seam, mergeIn, checkPassed } from "./decide.land.ts";
 import { claimRead } from "./decide.claims.ts";
 import { type Ending, turnEnded } from "./decide.observed.ts";
 import { frozenWords, timingOf, recovering, recover, thaw } from "./decide.host.ts";
+import { isRunReport } from "./decide.run.ts";
 
 const valueOf = <K extends keyof CrewEffectValues>(_kind: K, value: unknown): CrewEffectValues[K] =>
   value as CrewEffectValues[K];
@@ -480,7 +482,9 @@ const failedForGood = (
       id: effectId,
       handle: pending.handle,
       taskId: pending.taskId,
-      text: `${pending.kind.replace(/^crew\./u, "")} failed: ${reason}`,
+      text: isRunReport(pending)
+        ? crewRunReportFailed(reason)
+        : `${pending.kind.replace(/^crew\./u, "")} failed: ${reason}`,
       at: b.now,
     },
   });

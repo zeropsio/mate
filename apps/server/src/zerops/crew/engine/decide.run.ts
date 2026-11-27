@@ -14,6 +14,7 @@ import {
 import { crewRunReport } from "../crewCards.ts";
 import { runTransition } from "../crewMachines.ts";
 import { answerCard, questionCard, reviewCard, type SentCard } from "./cards.ts";
+import { type CrewEffectPayload } from "./command.ts";
 import {
   isFree,
   isWorking,
@@ -31,6 +32,7 @@ import {
   type CrewState,
   type LeadWake,
   type MemberRecord,
+  type PendingEffect,
   type RunRecord,
 } from "./state.ts";
 import { wrongState, type Builder, userOf, crewAs, dispatchPrincipal } from "./decide.step.ts";
@@ -419,6 +421,14 @@ export const finishRun = (b: Builder, run: RunRecord): void => {
  * A run's tasks are those made in it and those it landed; reviews and discarded tasks are not.
  * Never to a conversation of the crew's own: the crew tracks every turn it sends a crewmate.
  */
+/** A pending effect that is a run's report: the one turn the crew sends to no crewmate. */
+export const isRunReport = (pending: PendingEffect): boolean => {
+  const payload = pending.payload as CrewEffectPayload;
+  return (
+    payload.kind === "crew.deliver" && payload.handle === null && payload.command._tag === "Send"
+  );
+};
+
 const reportRun = (b: Builder, run: RunRecord, ended: "finished" | "stopped"): void => {
   const to = run.from?.conversationId;
   if (
