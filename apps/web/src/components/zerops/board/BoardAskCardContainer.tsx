@@ -1,29 +1,42 @@
 /**
- * A board ask as the conversation draws it: the work the Mate proposed for its application's
- * Board, its title and brief editable while it waits, with **Put on board** — the person's own
- * write to HQ (`useBoardTaskWrites`), after which the engine hears the task's id — and Not now.
- * Done, it reads "On the board". The card's state is the engine's record and this card's put
- * (`appTaskPut`); a minimal face the Board's interface replaces.
+ * A board ask as the conversation draws it (`BoardAskCardView`): the work the Mate proposed for its
+ * application's Board, its title and brief editable while it waits, with **Put on board** — the
+ * person's own write to HQ (`useBoardTaskWrites`), after which the engine hears the task's id — and
+ * Not now. Once put, the card follows the task the engine recorded it became (its answer's
+ * `taskId`, or this tab's put before the engine said so) on the Board as HQ answers it, re-read on
+ * the application's Board revision: its state on the done line, who has it, its change, and a pool
+ * Mate's question with the answer field for its putter (`answerTaskPermission`).
  */
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { BOARD_BRIEF_MAX, BOARD_TITLE_MAX } from "@t3tools/shared/hqIntake";
+import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
+import { useAtomValue } from "@effect/atom-react";
+import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
+import { hqPlacementsAtom } from "~/state/zerops";
 import { useThreadDetail } from "~/state/entities";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
-import { useAppTaskPut, useBoardTaskWrites } from "~/zerops/useTaskSourceSettings";
+import { useBoardOffers, useMateFaces } from "~/zerops/useBoardTasks";
+import { useNowMs } from "~/zerops/useNowMs";
+import {
+  useAppTaskPut,
+  useAppTaskSource,
+  useAppTaskStops,
+  useBoardTaskWrites,
+} from "~/zerops/useTaskSourceSettings";
 import { useKnownMate } from "~/zerops/useZeropsMates";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
-import { AskCard, AskFooter } from "../../ask/AskCard";
-import { Button } from "../../ui/button";
-import { Input } from "../../ui/input";
-import { Textarea } from "../../ui/textarea";
+import { boardOf } from "../projectAutomation/taskBoard.logic";
+import { BoardAskCardView } from "./BoardAskCard";
+import type { BoardAnswerState } from "./BoardTaskRow";
 import { boardAskFromKey, boardAskKey, boardAskState } from "./boardAsk.logic";
 
 export function BoardAskCardContainer({
@@ -63,7 +76,8 @@ function BoardAsk({
   const mateName = mate?.name ?? "Your Mate";
   const location = useMateOfEnvironment(environmentId);
   const mateProjectId = location?.projectId ?? mate?.projectId;
-  const appId = useApplicationOfProject(mateProjectId)?.id ?? null;
+  const app = useApplicationOfProject(mateProjectId);
+  const appId = app?.id ?? null;
   const writes = useBoardTaskWrites(appId);
   const put = useAppTaskPut(appId, requestId);
   const answerBoardAsk = useAtomCommand(threadEnvironment.answerBoardAsk, {
@@ -74,6 +88,8 @@ function BoardAsk({
   const [refusal, setRefusal] = useState<string | null>(null);
   // The task this card put, until the engine took it: a Try again tells the engine, never puts again.
   const [putTaskId, setPutTaskId] = useState<string | null>(null);
+  const taskId = ask.taskId ?? putTaskId;
+  const task = useFollowedTask(appId, taskId);
 
   const tell = async (said: { outcome: "put"; taskId: string } | { outcome: "declined" }) => {
     setRefusal(null);
@@ -88,67 +104,107 @@ function BoardAsk({
   const putOnBoard = async () => {
     if (putTaskId !== null) return tell({ outcome: "put", taskId: putTaskId });
     if (writes === null || mateProjectId === undefined) return;
-    const task = await writes.put(requestId, {
+    const made = await writes.put(requestId, {
       title: title.trim(),
       brief: brief.trim(),
       from: { mateProjectId, conversationId: threadRef.threadId },
     });
-    if (task === null) return;
-    setPutTaskId(task.id);
-    await tell({ outcome: "put", taskId: task.id });
+    if (made === null) return;
+    setPutTaskId(made.id);
+    await tell({ outcome: "put", taskId: made.id });
   };
 
-  const state = boardAskState({ state: ask.state, put, refusal, by: null, at: null });
-  const editable = putTaskId === null && (state.kind === "waiting" || state.kind === "failed");
+  const state = boardAskState({
+    state: ask.state,
+    put,
+    refusal,
+    by: null,
+    at: null,
+    task: task?.row ?? null,
+  });
   const ready =
     writes !== null && mateProjectId !== undefined && title.trim() !== "" && brief.trim() !== "";
   return (
-    <div data-board-request={requestId} data-board-request-face={state.kind}>
-      <AskCard
-        askId={requestId}
-        density="full"
-        footer={
-          <AskFooter
-            action={
-              state.kind === "failed" ? (
-                <Button onClick={() => void putOnBoard()} size="md" variant="secondary">
-                  Try again
-                </Button>
-              ) : undefined
-            }
-            density="full"
-            main={{
-              label: "Put on board",
-              onPress: () => void putOnBoard(),
-              disabled: !ready,
-            }}
-            onNotNow={() => void tell({ outcome: "declined" })}
-            state={state}
-          />
-        }
-        kind="board"
-        state={state.kind}
-        title={title.trim() === "" ? ask.title : title}
-        where={{ scope: "project", detail: null }}
-        why={{ who: mateName, words: "Proposed for the Board, for whoever takes it." }}
-      >
-        {editable ? (
-          <div className="grid gap-2">
-            <Input
-              aria-label="Title"
-              maxLength={BOARD_TITLE_MAX}
-              onChange={(event) => setTitle(event.target.value)}
-              value={title}
-            />
-            <Textarea
-              aria-label="Brief"
-              maxLength={BOARD_BRIEF_MAX}
-              onChange={(event) => setBrief(event.target.value)}
-              value={brief}
-            />
-          </div>
-        ) : null}
-      </AskCard>
-    </div>
+    <BoardAskCardView
+      appName={app?.name ?? null}
+      brief={brief}
+      editable={
+        putTaskId === null &&
+        (state.kind === "waiting" || state.kind === "failed" || state.kind === "working")
+      }
+      mateName={mateName}
+      onBrief={setBrief}
+      onNotNow={() => void tell({ outcome: "declined" })}
+      onPut={() => void putOnBoard()}
+      onTitle={setTitle}
+      ready={ready}
+      requestId={requestId}
+      state={state}
+      task={task}
+      title={title.trim() === "" ? ask.title : title}
+    />
   );
+}
+
+/**
+ * The task a card put, as the Board reads it, in its row's words: who has it, its change, and the
+ * question a pool Mate asks its putter with the field to answer it, offered by the one rule. `null`
+ * while none is named, or the Board has not answered it.
+ */
+function useFollowedTask(appId: string | null, taskId: string | null) {
+  const board = useAppTaskSource("hqAppTasks", taskId === null ? null : appId);
+  const setting = board.read.setting;
+  const record =
+    taskId === null || setting.state !== "known"
+      ? undefined
+      : setting.held.find((each) => each.id === taskId);
+  const session = useZeropsSessionOptional();
+  const personName = useHqPersonNames(session?.activeOrganization?.id);
+  const faces = useMateFaces();
+  const placements = useAtomValue(hqPlacementsAtom);
+  const nowMs = useNowMs(record !== undefined);
+  const offers = useBoardOffers(appId);
+  const writes = useBoardTaskWrites(appId);
+  const asked = useAppTaskStops(appId, taskId === null ? [] : [taskId]);
+  const navigate = useNavigate();
+  // What navigation says of it now, while a pool Mate is on it: its question, its stop.
+  let live: HqNavigationMateTask | undefined;
+  if (placements !== null)
+    for (const placement of placements.values())
+      if (placement.mate?.task?.id === taskId) live = placement.mate.task ?? undefined;
+  if (record === undefined || taskId === null) return null;
+  const row = boardOf([record], nowMs, {
+    ...(appId === null ? {} : { appId }),
+    live: live === undefined ? new Map() : new Map([[taskId, live]]),
+    viewerId: session?.user?.id,
+    personName,
+    mateName: (projectId) => faces.get(projectId)?.name,
+  }).lanes;
+  const shown = row.queued[0] ?? row.progress[0] ?? row.waiting[0] ?? row.review[0] ?? row.done[0];
+  if (shown === undefined) return null;
+  const write = asked.stops[taskId];
+  const answerState: BoardAnswerState =
+    write === undefined || write.kind === "idle"
+      ? { kind: "idle" }
+      : write.kind === "working"
+        ? write.verb === "task-message"
+          ? { kind: "sending" }
+          : { kind: "idle" }
+        : write.kind === "done"
+          ? write.verb === "task-message"
+            ? { kind: "sent" }
+            : { kind: "idle" }
+          : { kind: "refused", words: write.words };
+  return {
+    row: shown,
+    face: shown.holder === null ? undefined : faces.get(shown.holder.projectId),
+    question: shown.lane === "waiting" ? record.detail : null,
+    answer:
+      offers?.tasks[taskId]?.answer === true && writes !== null
+        ? { state: answerState, onSend: (text: string) => writes.answer(taskId, text) }
+        : undefined,
+    onOpenChange: (href: string) => {
+      void navigate({ href });
+    },
+  };
 }

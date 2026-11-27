@@ -55,8 +55,10 @@ import {
 import {
   useBoardOffers,
   useBoardRevision,
+  useMateFaces,
   useOpenTaskConversation,
   useTakeTask,
+  type BoardFace,
 } from "~/zerops/useBoardTasks";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import type { BoardTaskOffer } from "@t3tools/client-runtime/data";
@@ -256,8 +258,9 @@ export function useAutomationStanding(groupId: string): boolean {
 function useTakenCount(groupId: string): number {
   const placements = useAtomValue(hqPlacementsAtom);
   let count = 0;
-  for (const placement of placements?.values() ?? [])
-    if (placement.appId === groupId) count += placement.mate?.taken?.length ?? 0;
+  if (placements !== null)
+    for (const placement of placements.values())
+      if (placement.appId === groupId) count += placement.mate?.taken?.length ?? 0;
   return count;
 }
 
@@ -487,38 +490,6 @@ function useTaskBoard(
             },
           },
   };
-}
-
-/** A Mate's face as the Board draws it: its name, colour and shape. */
-export interface BoardFace {
-  readonly name: string;
-  readonly tint: MateTintId;
-  readonly shape: MateShapeId | undefined;
-}
-
-/**
- * Each Mate the reader's list holds, by its project: its name and face — what the Board names a
- * person's Mate by, and whether a task's conversation opens for them.
- */
-function useMateFaces(): ReadonlyMap<string, BoardFace> {
-  const { listing } = useZeropsCandidates();
-  const rows = useMemo(() => heldCandidates(listing).rows, [listing]);
-  return useMemo(() => {
-    const tints = assignCandidateMateTints(rows);
-    return new Map(
-      rows.map((candidate) => {
-        const tint = tints.get(candidate.project.id) ?? "slate";
-        return [
-          candidate.project.id,
-          {
-            name: projectNameInApp(candidate.project),
-            tint,
-            shape: mateShapeOf(candidate.project, tint),
-          },
-        ] as const;
-      }),
-    );
-  }, [rows]);
 }
 
 /** *Add an automated Mate*: the New Mate dialog over the page, Automated chosen. */
@@ -1305,17 +1276,12 @@ function OriginWords({
         onClick={() => {
           onOpenConversation(conversation);
         }}
-        title={origin.full}
         tone="muted"
       >
         <span className="truncate">{origin.words}</span>
       </InlineButton>
     );
-  return (
-    <span className="truncate" title={origin.full === origin.words ? undefined : origin.full}>
-      {origin.words}
-    </span>
-  );
+  return <span className="truncate">{origin.words}</span>;
 }
 
 /** One task of the Board, in the ledger's columns, its verbs as the rules offer them. */

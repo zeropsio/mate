@@ -11,7 +11,10 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 
+import { TASK_STATUS_WORDS } from "~/zerops/taskStatus";
+
 import { type AskState, notNowWords } from "../../ask/ask.logic";
+import type { BoardRow } from "../projectAutomation/taskBoard.logic";
 
 /** Where a board ask stands in the timeline: the run card it was asked in. */
 export interface BoardAskPlace {
@@ -68,6 +71,25 @@ export const boardAskFromKey = (key: string): BoardAskActivityPayload | null =>
 export const ON_THE_BOARD = "On the board";
 
 /**
+ * Where a task put from this conversation stands, in a word or two after the done line: Queued, In
+ * progress, Taken, Asks you, Up for review, then how it ended.
+ */
+export function boardTaskStateWords(row: BoardRow): string {
+  switch (row.lane) {
+    case "queued":
+      return TASK_STATUS_WORDS.queued;
+    case "progress":
+      return row.holder?.kind === "person" ? TASK_STATUS_WORDS.taken : "In progress";
+    case "waiting":
+      return row.state ?? "Asks you";
+    case "review":
+      return TASK_STATUS_WORDS.review;
+    case "done":
+      return TASK_STATUS_WORDS[row.status];
+  }
+}
+
+/**
  * The card's state: the engine's record first (put, declined, closed), else this card's put to
  * HQ as it stands — working, refused (its words), or answered with the engine not told yet.
  */
@@ -79,10 +101,19 @@ export function boardAskState(input: {
   /** Who answered and when, in the reader's words; `null` where unknown. */
   readonly by: string | null;
   readonly at: string | null;
+  /** The task it put, as the Board reads it; `null` while not read, or not known. */
+  readonly task?: BoardRow | null;
 }): AskState {
   switch (input.state) {
-    case "put":
-      return { kind: "done", words: ON_THE_BOARD, told: null };
+    case "put": {
+      const task = input.task ?? null;
+      if (task === null) return { kind: "done", words: ON_THE_BOARD, told: null };
+      const words = `${ON_THE_BOARD} · ${boardTaskStateWords(task)}`;
+      // Stopped or failed: off the Board's way, said quietly; else it moves on as it should.
+      return task.status === "failed" || task.status === "stopped"
+        ? { kind: "replaced", words }
+        : { kind: "done", words, told: null };
+    }
     case "declined":
       return { kind: "notNow", words: notNowWords(input.by, input.at) };
     case "closed":

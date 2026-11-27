@@ -23,7 +23,6 @@ import {
   ProjectAutomationView,
   SourceDialog,
   type AutomationControls,
-  type BoardFace,
   type BoardVerbs,
   type BoardView,
   type PoolMate,
@@ -53,6 +52,7 @@ import {
 } from "~/components/zerops/projectAutomation/sourceForms";
 
 import type { TaskSession } from "~/zerops/taskSession.logic";
+import type { BoardFace } from "~/zerops/useBoardTasks";
 import { MergingHarness } from "./projectMergingFixtures";
 import "../index.css";
 import { Card } from "~/components/ui/card";

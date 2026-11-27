@@ -7,7 +7,13 @@
  */
 import { boardOffers, boardRevision, type BoardOffers } from "@t3tools/client-runtime/data";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { findCandidate } from "@t3tools/client-runtime/zerops/projections";
+import {
+  assignCandidateMateTints,
+  mateShapeOf,
+  projectNameInApp,
+} from "@t3tools/client-runtime/zerops";
+import { findCandidate, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { useRouter } from "@tanstack/react-router";
@@ -22,7 +28,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { useAccountOrgId, useProjection } from "./accountData";
 import { useOpenMate } from "./useOpenMate";
 import { useBoardTaskWrites } from "./useTaskSourceSettings";
-import { useZeropsDetailCandidates } from "./useZeropsCandidates";
+import { useZeropsCandidates, useZeropsDetailCandidates } from "./useZeropsCandidates";
 
 const NO_OFFERS = Atom.make<BoardOffers | undefined>(undefined);
 const NO_REVISION = Atom.make<number | undefined>(undefined);
@@ -134,4 +140,36 @@ export function useOpenTaskConversation() {
     },
     [listing, openMate, router],
   );
+}
+
+/** A Mate's face as the Board draws it: its name, colour and shape. */
+export interface BoardFace {
+  readonly name: string;
+  readonly tint: MateTintId;
+  readonly shape: MateShapeId | undefined;
+}
+
+/**
+ * Each Mate the reader's list holds, by its project: its name and face — what the Board names a
+ * person's Mate by, and whether a task's chat opens for them.
+ */
+export function useMateFaces(): ReadonlyMap<string, BoardFace> {
+  const { listing } = useZeropsCandidates();
+  const rows = useMemo(() => heldCandidates(listing).rows, [listing]);
+  return useMemo(() => {
+    const tints = assignCandidateMateTints(rows);
+    return new Map(
+      rows.map((candidate) => {
+        const tint = tints.get(candidate.project.id) ?? "slate";
+        return [
+          candidate.project.id,
+          {
+            name: projectNameInApp(candidate.project),
+            tint,
+            shape: mateShapeOf(candidate.project, tint),
+          },
+        ] as const;
+      }),
+    );
+  }, [rows]);
 }

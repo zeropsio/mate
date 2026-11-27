@@ -18,6 +18,7 @@ import {
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import type { TaskSourceWrite, TaskWriteAction } from "@t3tools/client-runtime/data";
+import type { ConversationSource } from "@t3tools/contracts";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
 import {
@@ -85,7 +86,7 @@ export type BoardHolder =
 /** Where a task came from, as its row says it, and the way there where there is one. */
 export interface BoardOrigin {
   readonly words: string;
-  /** Said in full where the row has room only for `words`: whose chat a Put on board came from. */
+  /** Said in full where there is room, and to a screen reader: whose chat a Put on board came from. */
   readonly full: string;
   /** Its address outside Mate (an issue, a webhook's page). */
   readonly url: string | null;
@@ -208,7 +209,7 @@ function liveStatus(task: HqAppTask, live: HqNavigationMateTask | undefined): Ta
 
 /** What the Board reads besides HQ's tasks: the names it says and what HQ's navigation says now. */
 export interface BoardContext {
-  readonly appId: string;
+  readonly appId?: string;
   /** What navigation says of the tasks the pool is on now, by id. */
   readonly live?: ReadonlyMap<string, HqNavigationMateTask>;
   /** Whether HQ holds a Mate, by its project, on its open change (`heldOnItsChange`). */
@@ -238,6 +239,11 @@ export function originOf(task: HqAppTask, context: BoardContext): BoardOrigin {
   const source = task.source;
   if (source?.kind !== "conversation")
     return { words: task.label, full: task.label, url: task.url, conversation: null };
+  return putOrigin(source, context);
+}
+
+/** A person's Put on board, as every surface says where the task came from (`originOf`). */
+export function putOrigin(source: ConversationSource, context: BoardContext): BoardOrigin {
   const words = `Put on board by ${personWords(source.putBy, context)}`;
   const mate = (context.mateName ?? nobody)(source.mateProjectId);
   return {
@@ -349,7 +355,7 @@ export function boardOf(
     const status = liveStatus(task, now);
     const lane = laneOf(status);
     const holder = holderOf(task, context);
-    const change = changeLink(task, context.appId);
+    const change = changeLink(task, context.appId ?? "");
     const workedMs = now?.workedMs ?? task.workedMs;
     const time =
       lane === "queued"
