@@ -46,6 +46,8 @@
   a **lead** plans and reviews the crew's work without writing.
 - A **goal** is the crew's shared intent. A **job** is a crewmate's continuing purpose. A **task**
   is a piece of work assigned to a crewmate.
+- A **hand-off** is a task a person's conversation gives a writer; that conversation hears of it
+  each time it comes to rest.
 - A **stint** is one session of a crewmate's conversation.
 
 The shared runtime terms — project, thread, turn and provider — live in the
