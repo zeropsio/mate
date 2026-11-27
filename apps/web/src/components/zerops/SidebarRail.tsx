@@ -72,7 +72,12 @@ import {
   type RailTileMate,
 } from "./SidebarRail.logic";
 import { SidebarWaitingCount, type WaitingVerbs } from "./SidebarWaiting";
-import { isMateWait, type WaitingItem, type WaitingMateItem } from "~/zerops/waiting.logic";
+import {
+  isMateWait,
+  type NeedsYouCounts,
+  type WaitingItem,
+  type WaitingMateItem,
+} from "~/zerops/waiting.logic";
 import { Button } from "../ui/button";
 import { Text } from "~/components/ui/text";
 
@@ -639,6 +644,7 @@ export function SidebarRail({
   overviewCurrent,
   headline,
   waiting,
+  waitingCounts,
   verbs,
   account,
   showMark,
@@ -661,6 +667,8 @@ export function SidebarRail({
   readonly overviewCurrent: boolean;
   readonly headline: string;
   readonly waiting: ReadonlyArray<WaitingItem>;
+  /** What runs for the viewer and what they got today, under the list (`needsYou`). */
+  readonly waitingCounts: NeedsYouCounts;
   readonly verbs: WaitingVerbs;
   /** The viewer's photo, opening the account menu (`SidebarZeropsAccountRow`, collapsed). */
   readonly account: ReactNode;
@@ -698,7 +706,7 @@ export function SidebarRail({
           </TooltipPopup>
         </Tooltip>
         {waiting.length === 0 ? null : (
-          <SidebarWaitingCount seat="rail" items={waiting} verbs={verbs} />
+          <SidebarWaitingCount counts={waitingCounts} seat="rail" items={waiting} verbs={verbs} />
         )}
       </div>
       {create}

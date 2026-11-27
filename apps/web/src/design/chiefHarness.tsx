@@ -113,7 +113,8 @@ function pageViewOf(setup: ChiefSetup): Exclude<ChiefPageView, { kind: "reading"
   };
 }
 
-const VERBS = { onOpenMate: () => {}, onAskToFix: () => {} };
+const VERBS = { onOpenMate: () => {}, onOpenCrew: () => {}, onAskToFix: () => {} };
+const COUNTS = { running: 2, doneToday: 5 };
 
 function Harness() {
   const [setup, setSetup] = useState<ChiefSetup>(() => setupOf(PAGE));
@@ -141,7 +142,9 @@ function Harness() {
           brand={
             <>
               <SidebarOverviewLink current={false} />
-              {WAITING ? <SidebarWaitingCount items={ITEMS} seat="head" verbs={VERBS} /> : null}
+              {WAITING ? (
+                <SidebarWaitingCount counts={COUNTS} items={ITEMS} seat="head" verbs={VERBS} />
+              ) : null}
             </>
           }
           actions={

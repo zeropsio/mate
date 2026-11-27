@@ -1040,9 +1040,13 @@ export default function Sidebar() {
         const candidate = zeropsCandidates.find((item) => item.project.id === projectId);
         if (candidate !== undefined) onZeropsSelect(candidate);
       },
+      onOpenCrew: (projectId: string) => {
+        const candidate = zeropsCandidates.find((item) => item.project.id === projectId);
+        if (candidate !== undefined) onZeropsOpenCrew(candidate, false);
+      },
       onAskToFix: onZeropsAskToFix,
     }),
-    [onZeropsAskToFix, onZeropsSelect, zeropsCandidates],
+    [onZeropsAskToFix, onZeropsOpenCrew, onZeropsSelect, zeropsCandidates],
   );
   // Closed on a desktop, the menu is a rail of tiles: the same projects, in the menu's order.
   const zeropsProjectName = useCallback(
@@ -1785,6 +1789,7 @@ export default function Sidebar() {
       verbs={zeropsWaitingVerbs}
       // Counted on the rail's Overview; the open menu counts it in its headline.
       waiting={zeropsListHeld ? [] : zeropsWaiting.items}
+      waitingCounts={zeropsWaiting.counts}
     />
   );
   return (
@@ -1801,6 +1806,7 @@ export default function Sidebar() {
               zeropsWaiting.items.length === 0 ? null : (
                 <SidebarWaitingCount
                   seat="head"
+                  counts={zeropsWaiting.counts}
                   items={zeropsWaiting.items}
                   verbs={zeropsWaitingVerbs}
                 />

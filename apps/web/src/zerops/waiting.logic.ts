@@ -481,9 +481,44 @@ export function waitingSummary(items: ReadonlyArray<WaitingItem>): {
   return { words: shown.map(waitingPhrase).join(" · "), more: items.length - shown.length };
 }
 
+/** The list's name, wherever it is named: its title, its count's tooltip. */
+export const NEEDS_YOU_TITLE = "Needs you";
+
+/** What the list holds, under its title. */
+export const NEEDS_YOU_LINE = "Everything waiting on you, from every conversation and the crew";
+
+/** The quiet line under the list: what runs for the person, and what they got today. */
+export function needsYouCountsLine(counts: NeedsYouCounts): string {
+  return `Running ${String(counts.running)} · Done today ${String(counts.doneToday)}`;
+}
+
+/** The press, and the field it opens, that steers what waits with a message. */
+export const needsYouTellLabel = (name: string): string => `Tell ${name}…`;
+
+/** An automated Mate's task, under its name: what it is on, waiting for an answer. */
+export const needsYouTaskLine = (title: string): string => `${title} · waiting for your answer`;
+
+/** A Mate's changes for the person's review, under its name, where there are several. */
+export const needsYouChangesLine = (count: number): string =>
+  `${String(count)} changes waiting for you`;
+
+/** A crewmate's finished work, under its name, and whether a review already passed it. */
+export const needsYouReadyLine = (title: string, reviewed: boolean): string =>
+  reviewed ? `${title} · ready, reviewed` : `${title} · ready for your review`;
+
+/** Whose crew a crewmate is on, beside its name. */
+export const needsYouCrewOf = (mateName: string): string => `${crewPossessive(mateName)} crew`;
+
+/** What a crewmate needs, under its name, before its crew is read: its digest's kind in words. */
+export function needsYouCrewLine(need: WaitingCrewNeed): string {
+  if (need.kind === "ready") return "Its work is ready";
+  if (need.kind === "chat" || need.row === "question") return "It asks you something.";
+  return need.row === "plan" ? "The lead has a plan." : "Needs you.";
+}
+
 /**
  * What a bare count of the waiting things says it counts — its accessible name, and the line its
- * tooltip carries under "Waiting on you" — so a number never stands without its noun.
+ * tooltip carries under its name (`NEEDS_YOU_TITLE`) — so a number never stands without its noun.
  */
 export function waitingCountWords(items: ReadonlyArray<WaitingItem>): {
   readonly label: string;
@@ -491,7 +526,7 @@ export function waitingCountWords(items: ReadonlyArray<WaitingItem>): {
 } {
   const { words, more } = waitingSummary(items);
   return {
-    label: `${String(items.length)} waiting on you: ${words}${more > 0 ? `, ${String(more)} more` : ""}`,
+    label: `${NEEDS_YOU_TITLE}, ${String(items.length)}: ${words}${more > 0 ? `, ${String(more)} more` : ""}`,
     line: `${words}${more > 0 ? ` · ${String(more)} more` : ""}`,
   };
 }

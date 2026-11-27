@@ -1405,10 +1405,15 @@ function SidebarFrame({
             {(WAIT_ALL ?? waiting.items).length === 0 ? null : (
               <SidebarWaitingCount
                 seat="head"
+                counts={WAIT_ALL === null ? waiting.counts : WAIT_ALL_COUNTS}
                 items={WAIT_ALL ?? waiting.items}
                 verbs={{
                   onOpenMate: (projectId: string) => {
                     menuActions.push(`open ${projectId}`);
+                    setOpen(projectId);
+                  },
+                  onOpenCrew: (projectId: string) => {
+                    menuActions.push(`crew ${projectId}`);
                     setOpen(projectId);
                   },
                   onAskToFix: (projectId: string, problem: { readonly what: string }) => {
@@ -1564,7 +1569,8 @@ function harnessWaits(input: {
 
 /**
  * `?wait=all`: one of each thing that waits on the viewer, as the board drew them — a Mate of
- * theirs stopped on an error, a plan, a question, a change, a release. None has a conversation
+ * theirs stopped on an error, a plan, a question, a change, a crewmate's finished work and its
+ * question, an automated Mate's task, a release. None has a conversation
  * here, so a question offers its conversation and a plan waits for its read.
  */
 const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
@@ -1579,6 +1585,8 @@ const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
             face: "idle",
             kind: "failed",
             text: "The stage build failed: EXPO_TOKEN is missing.",
+            environmentId: "env-fen",
+            threadId: "t-fen",
           },
           {
             projectId: "wren",
@@ -1614,9 +1622,51 @@ const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
             },
           },
         ],
+        crews: [
+          {
+            projectId: "fen",
+            mateName: "Fen",
+            environmentId: "env-fen",
+            crewmate: {
+              handle: "sol",
+              name: "Sol",
+              tint: "sky",
+              shape: "squircle",
+              threadId: null,
+            },
+            need: { kind: "ready", taskId: "t-upload" },
+          },
+          {
+            projectId: "fen",
+            mateName: "Fen",
+            environmentId: "env-fen",
+            crewmate: {
+              handle: "fable",
+              name: "Fable",
+              tint: "violet",
+              shape: "seal",
+              threadId: null,
+            },
+            need: { kind: "row", rowId: "a-bucket", row: "question" },
+          },
+        ],
+        tasks: [
+          {
+            projectId: "noibit",
+            name: "Noibit",
+            tint: "olive",
+            shape: "hexagon",
+            taskId: "k-12",
+            title: "Fix the invoice total on refunds",
+            url: null,
+          },
+        ],
         releases: [{ groupId: "tea", name: "Tea Shop", ahead: 3 }],
       })
     : null;
+
+/** `?wait=all`'s quiet line: what runs for the viewer, and what they got today. */
+const WAIT_ALL_COUNTS = { running: 4, doneToday: 11 };
 
 const JUMP_KEY = isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K";
 
@@ -1822,6 +1872,9 @@ function RailFrame({
     onOpenMate: (projectId: string) => {
       setOpen(projectId);
     },
+    onOpenCrew: (projectId: string) => {
+      setOpen(projectId);
+    },
     onAskToFix: (projectId: string) => {
       menuActions.push(`ask ${projectId}`);
     },
@@ -1876,6 +1929,7 @@ function RailFrame({
       tiles={rail.tiles}
       verbs={verbs}
       waiting={items}
+      waitingCounts={WAIT_ALL === null ? waiting.counts : WAIT_ALL_COUNTS}
     />
   );
 }
