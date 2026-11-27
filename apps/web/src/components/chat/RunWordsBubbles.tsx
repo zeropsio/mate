@@ -26,6 +26,7 @@ function NoteWords({ message }: { readonly message: ChatMessage }) {
     <ChangeChipMomentContext value={message.createdAt}>
       <ChatMarkdown
         className="text-foreground"
+        linkChangeNumbers
         cwd={ctx.markdownCwd}
         headingLevelOffset={MESSAGE_HEADING_LEVEL}
         isStreaming={Boolean(message.streaming)}
