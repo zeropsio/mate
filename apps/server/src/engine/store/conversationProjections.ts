@@ -113,6 +113,8 @@ const projectWith = (
             by: event.by,
             at: event.at,
             summary: event.summary,
+            // The run whose message carries it: where the asking run's work goes on (`goesOnIn`).
+            ...(event.bySend === undefined ? {} : { bySend: event.bySend }),
             ...(event.answers === undefined ? {} : { answers: event.answers }),
             ...(event.attachmentsByQuestionId === undefined
               ? {}

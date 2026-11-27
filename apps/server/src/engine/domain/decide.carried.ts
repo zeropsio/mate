@@ -40,7 +40,7 @@ export const reopenCarried = (b: StepBuilder, carried: OpenRequest, reason: stri
 };
 
 /** The ends that take the session a question waits in, not the person's or the agent's choice. */
-const SESSION_ENDS: ReadonlySet<RunEnd["kind"]> = new Set(["cut-by-restart", "crashed"]);
+export const SESSION_ENDS: ReadonlySet<RunEnd["kind"]> = new Set(["cut-by-restart", "crashed"]);
 
 /**
  * A question whose turn waited on it, cut with its session (a restart, a crash): the session

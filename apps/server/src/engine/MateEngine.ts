@@ -246,7 +246,9 @@ export interface MateEngineService {
   /**
    * The latest run a wake started, the one a provider turn belongs to, a task's latest in its
    * conversation (a person may have run more there since), or the latest a Mate's message started
-   * there (a continuation of it included), ended or not.
+   * there (a continuation of it included), ended or not. A Mate message's work goes on past a run
+   * a session's end cut (`goesOnIn`): its restart's continuation, or the run its person's answer
+   * to the question it asked again by message starts, is its run then.
    */
   readonly runOf: (
     find:
@@ -277,6 +279,11 @@ export interface MateEngineService {
          * the agent.
          */
         readonly message?: { readonly opened: boolean; readonly reached: boolean };
+        /**
+         * A Mate message's runs only: a session's end cut it while it waited on a question, asked
+         * again by message, that still waits for its person: their answer's run carries it on.
+         */
+        readonly awaitsAnswer?: true;
       }
     | undefined
   >;

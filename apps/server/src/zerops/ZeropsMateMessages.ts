@@ -35,12 +35,15 @@
  *   where the conversation refuses the message for good (archived, an empty message), and after
  *   {@link TAKEN_BACK_WAIT_MS} of sends taken back for now since it was taken; a refusal for
  *   background work is sent again only once that work ended or the session changed.
- * - **Ended:** once the run it started has ended and nothing of it is still to come (a restart's
- *   continuation, a usage wake's resume, the agent's own turn on its finished work, background
- *   work its run left alive, for at most {@link BACKGROUND_WAIT_MS}): `answered` when it completed,
- *   `stopped` when the person's Stop or a restart cut it or its conversation is gone, `failed`
- *   otherwise, a usage limit nothing resumes any more included. An ask's end carries the agent's
- *   last words in its runs, cut to `MATE_MESSAGE_ANSWER_MAX`.
+ * - **Ended:** once the run its work is on has ended and nothing of it is still to come (a
+ *   restart's continuation, a usage wake's resume, the agent's own turn on its finished work,
+ *   background work its run left alive, for at most {@link BACKGROUND_WAIT_MS}, a question a
+ *   restart or crash asked again by message while it waits for its person): `answered` when it
+ *   completed, `stopped` when the person's Stop or a restart cut it or its conversation is gone,
+ *   `failed` otherwise, a usage limit nothing resumes any more included. Its work is on the run it
+ *   started, then on the run its person's answer to that question starts (`runOf`), as without a
+ *   restart the run waits on them and the sender with it. An ask's end carries the agent's last
+ *   words in those runs, cut to `MATE_MESSAGE_ANSWER_MAX`.
  * - **Told:** each end is kept until HQ's `message-ack`, and told on every link once it applied
  *   HQ's `signers`, then each new one as it comes. A restart reads the ledger again, so neither a
  *   message waiting nor an end unheard is lost.
@@ -685,10 +688,11 @@ export const make = Effect.gen(function* () {
       const run = yield* engine.runOf({ conversationId, messageId: id });
       if (run === undefined) return;
       if (run.end === null) {
-        // Its owner moved before its run started: it is not theirs to run any more.
+        // Its owner moved before its run started: it is not theirs to run any more. A run its
+        // person's answer started is theirs.
         const now = yield* owner.owner;
         const queued = view.queued.some((queuedRun) => queuedRun.id === run.runId);
-        if (now !== undefined && now !== ownerUserId && queued) {
+        if (now !== undefined && now !== ownerUserId && queued && run.principal.kind === "mate") {
           yield* engine.deliver(
             conversationId,
             { _tag: "Stop", runId: run.runId },
@@ -742,6 +746,8 @@ export const make = Effect.gen(function* () {
         if (run.end?.kind === "usage-limit" && verdict.kind === "wait") return;
       }
       if (run.end === null) return;
+      // Its question waits for its person, asked again by message: their answer carries it on.
+      if (run.awaitsAnswer === true) return;
       // Admission refused the run it opened before any run of it reached the agent (its owner's
       // sign-in moved, or the door could not say in time): it waits again, for its while.
       if (
