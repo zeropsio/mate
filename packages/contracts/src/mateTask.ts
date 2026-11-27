@@ -106,6 +106,13 @@ export const MateTaskSource = Schema.Union([
 export type MateTaskSource = typeof MateTaskSource.Type;
 
 /**
+ * The protocol a Mate that takes a task put on the Board from a conversation (`ConversationSource`)
+ * advertises in its overview (`identity.board`): HQ hands such a task only to an automated Mate
+ * that says it.
+ */
+export const MATE_BOARD_PROTOCOL = 1;
+
+/**
  * A task of the Board a person took for one of their own Mates, as its conversation's first message
  * carries it: HQ's id of the task and where it came from. The message is its brief, sent as the
  * person, and the conversation is the task's from then on.
@@ -220,7 +227,7 @@ export type MateTaskMessage = typeof MateTaskMessage.Type;
 
 /**
  * Where a task came from, in people's words: "acme/tea-shop#12", "#support on Slack", "#dev on
- * Discord", "the Sentry webhook", "the Weekly upkeep schedule", "a conversation in Mate" (who put
+ * Discord", "the Sentry webhook", "the Weekly upkeep schedule", "a conversation" (who put
  * it and whose Mate it was are names the reader's client knows, never the source).
  */
 export function mateTaskSourceLabel(source: MateTaskSource): string {
@@ -236,7 +243,7 @@ export function mateTaskSourceLabel(source: MateTaskSource): string {
     case "schedule":
       return `the ${source.name} schedule`;
     case "conversation":
-      return "a conversation in Mate";
+      return "a conversation";
   }
 }
 

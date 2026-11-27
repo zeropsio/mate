@@ -150,6 +150,7 @@ import { ZeropsMateMessages } from "./ZeropsMateMessages.ts";
 import { makeLinkCommands } from "./zeropsLinkCommand.ts";
 import {
   MATE_MESSAGES_PROTOCOL,
+  MATE_BOARD_PROTOCOL,
   type MateTaskReport,
   type SessionSubject,
   TrimmedNonEmptyString,
@@ -1167,6 +1168,8 @@ interface OverviewSources {
   readonly command?: { readonly protocol: number };
   /** That it takes its person's other Mates' messages (`MATE_MESSAGES_PROTOCOL`); none where it cannot. */
   readonly messages?: { readonly protocol: number };
+  /** That it takes a task put on the Board from a conversation (`MATE_BOARD_PROTOCOL`). */
+  readonly board?: { readonly protocol: number };
 }
 
 /**
@@ -1201,6 +1204,7 @@ const mateOverviewFeed = (
           ...(sources.setupMarker === undefined ? {} : { setupMarker: yield* sources.setupMarker }),
           ...(sources.command === undefined ? {} : { command: sources.command }),
           ...(sources.messages === undefined ? {} : { messages: sources.messages }),
+          ...(sources.board === undefined ? {} : { board: sources.board }),
           ...(sources.providers === undefined
             ? {}
             : {
@@ -1327,6 +1331,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         // Here `runExecCommand` runs: the link exists only in a Zerops environment.
         command: { protocol: LINK_COMMAND_PROTOCOL },
         messages: { protocol: MATE_MESSAGES_PROTOCOL },
+        board: { protocol: MATE_BOARD_PROTOCOL },
       });
       const mateState =
         zerops.mateStateFile === undefined

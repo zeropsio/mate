@@ -133,6 +133,11 @@ export const OverviewIdentity = Schema.Struct({
    * (`MATE_MESSAGES_PROTOCOL`); absent: HQ sends none.
    */
   messages: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
+  /**
+   * That it takes a task put on the Board from a conversation, by its protocol
+   * (`MATE_BOARD_PROTOCOL`); absent: HQ hands it none.
+   */
+  board: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
 });
 export type OverviewIdentity = typeof OverviewIdentity.Type;
 
