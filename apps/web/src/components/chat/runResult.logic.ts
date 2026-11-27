@@ -13,7 +13,7 @@
  * deploys, starts or stops the same service, pushes to the same change,
  * works the same crew task or checks the same page takes the row over; the
  * person writing again answers what waited on them. From outside the run:
- * the change merged leaves its row and the worked line says "merged as #2";
+ * the change merged leaves its row and the worked line says "added to your app";
  * a service the platform says stopped or failed comes back in red with its
  * fix; one removed, or deployed past by someone else since, leaves.
  *
@@ -853,12 +853,6 @@ const EFFORT_WORDS: Readonly<Record<ActivityKind, (count: number) => string>> = 
   helpers: (count) => (count === 1 ? "1 helper" : `${count} helpers`),
 };
 
-/** "#2", "#2 and #3", "#2, #3 and #5". */
-function numbersWords(numbers: ReadonlyArray<number>): string {
-  const said = numbers.map((number) => `#${number}`);
-  return said.length <= 1 ? (said[0] ?? "") : `${said.slice(0, -1).join(", ")} and ${said.at(-1)!}`;
-}
-
 /**
  * The changes of a run that were merged: its own change once the forge says
  * so, and — for a run that pushed no change of its own — what landed while it
@@ -880,7 +874,7 @@ function mergedNumbers(outcome: OutcomeModel, facts: ResultFacts): ReadonlyArray
  * 1 file read" (K6). Checks and deploys are result rows and never calls; its
  * edits are its change's whenever it has one (a change it pushed, one that
  * landed), and are counted only when nothing else holds them. A change of its
- * that was merged is said once, first: "merged as #2 · 2 commands". Null
+ * that was merged is said once, first: "added to your app · 2 commands". Null
  * while there is nothing left to count.
  */
 export function runEffortWords(
@@ -900,7 +894,8 @@ function effortParts(
   const merged = mergedNumbers(outcome, facts);
   const changed = outcome.change !== null || outcome.landed.length > 0;
   return [
-    ...(merged.length > 0 ? [{ words: `merged as ${numbersWords(merged)}`, changed: true }] : []),
+    // A change goes by its title, never its number; a merge is the person's Add to your app.
+    ...(merged.length > 0 ? [{ words: "added to your app", changed: true }] : []),
     ...outcome.activity.flatMap((activity) =>
       activity.count <= 0 || (activity.kind === "edit" && changed)
         ? []

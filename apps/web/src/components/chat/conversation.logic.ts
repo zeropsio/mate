@@ -2357,7 +2357,7 @@ export interface OutcomeModel {
   /** The turn it reports on. */
   readonly turnKey: string;
   readonly live: ReadonlyArray<OutcomeService>;
-  /** Changes that landed while it ran: "merged as #54". */
+  /** Changes that landed while it ran: "added to your app". */
   readonly landed: ReadonlyArray<{
     readonly key: string;
     readonly repository: string;

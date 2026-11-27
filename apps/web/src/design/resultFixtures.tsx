@@ -544,7 +544,7 @@ const STATES: ReadonlyArray<ResultState> = [
   },
   {
     label: "After you merge #2",
-    note: "The change left the result once it was merged; in the app, the line says merged as #2.",
+    note: "The change left the result once it was merged; in the app, the line says added to your app.",
     outcome: NOVA,
     facts: { changes: forge([], [STATUS_PAGE]), services: new Map([["appdev", running]]) },
     minutes: 1.34,
