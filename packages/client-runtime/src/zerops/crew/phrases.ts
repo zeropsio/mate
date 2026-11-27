@@ -97,15 +97,25 @@ export const CREW_WORKING_WITH_YOU = "Working with you · finished work waits fo
 /** The mode line while a run ends. */
 export const CREW_WRAPPING_UP = "Wrapping up";
 
-/** "Working on its own · $6.40 of $20 · 1 h 12 m of 8 h": the run as it goes. */
+/**
+ * A run as it goes, by what it is at: "Working on its own · $6.40 of $20 · 1 h 12 m of 8 h"
+ * while a crewmate works, "Waiting on you · …" while nobody does and something waits on the
+ * person, "On its own · …" between turns. The time is the time the crew worked (`elapsedMs`).
+ */
 export function crewOnItsOwnWords(
-  run: Pick<CrewRun, "spentUsd" | "elapsedMs" | "options">,
+  run: Pick<CrewRun, "spentUsd" | "options">,
+  at: "working" | "waiting-on-you" | "between",
+  elapsedMs: number,
 ): string {
   const { budgetUsd, timeLimitHours } = run.options;
   const spent = dollars(run.spentUsd, true);
-  const time = formatCrewDuration(run.elapsedMs);
+  const time = formatCrewDuration(elapsedMs);
   return [
-    "Working on its own",
+    at === "working"
+      ? "Working on its own"
+      : at === "waiting-on-you"
+        ? "Waiting on you"
+        : "On its own",
     budgetUsd === "unlimited" ? `${spent} spent` : `${spent} of ${dollars(budgetUsd)}`,
     timeLimitHours === "unlimited" ? time : `${time} of ${timeLimitHours} h`,
   ].join(" · ");

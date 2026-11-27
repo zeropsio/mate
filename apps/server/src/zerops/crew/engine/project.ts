@@ -401,6 +401,7 @@ const toRun = (state: CrewState, nowMs: number): CrewRun | null => {
     startedBy: run.startedBy,
     startedAt: iso(run.startedAt),
     elapsedMs: runElapsedMs(run, nowMs),
+    countingFrom: run.since === null ? null : iso(nowMs),
     spentUsd: run.spentUsd,
     usagePercent: usagePercentOf(state),
     options: run.options,

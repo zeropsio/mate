@@ -408,6 +408,11 @@ export const CrewRun = Schema.Struct({
    * included; a client reads either the same way.
    */
   elapsedMs: NonNegativeInt,
+  /**
+   * While a crew turn runs, when `elapsedMs` was read: the clock runs on from there. `null` while
+   * it stands (nobody works); absent from a Mate that does not say, read as standing.
+   */
+  countingFrom: Schema.optionalKey(Schema.NullOr(IsoDateTime)),
   spentUsd: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
   /** The usage window's current use; `null` when the login reports none. */
   usagePercent: Schema.NullOr(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100 }))),
