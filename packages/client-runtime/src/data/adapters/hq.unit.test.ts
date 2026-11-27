@@ -97,6 +97,103 @@ it.effect(
     }),
 );
 
+// witness: packages/client-runtime/src/data/adapters/hq.ts | if (open === null) readingNavigation.add(waiting); → if (open === null) queuedNavigation.add(waiting);
+it.effect(
+  "AD94: A navigation read waiting when HQ's stream closes, or asked while it is closed, is answered by the reopened stream's first navigation snapshot and by nothing before it, and keeps waiting while HQ fails the navigation transiently; it ends otherwise only by HQ's refusal, the link's stop or the reader leaving, and a read left asks HQ nothing; breaks: a project deletion HQ accepted shows the dropped stream as its error and never lands",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const link = hqNavigationLink({ orgId: "v9", wire: fixture.wire, store });
+      const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+      const fiber = yield* Effect.forkChild(supervisor.run);
+      yield* settle;
+      const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
+      const ready = recorded("scope-ready", "mate-hq/navigation.scope-ready");
+      yield* fixture.send(reset);
+      yield* fixture.send(ready);
+      yield* settle;
+      const read = () => Effect.forkChild(link.readNavigation());
+      const drop = Effect.andThen(fixture.drop(classifyHqClose(1006)), settle);
+      // The link's next attempt is due within the backoff's base after a live socket drops.
+      const reopen = Effect.gen(function* () {
+        const opens = fixture.opens();
+        yield* TestClock.adjust(STREAM_POLICY.backoffBaseMs);
+        yield* settle;
+        expect(fixture.opens()).toBe(opens + 1);
+      });
+
+      // One read HQ was asked the navigation whole for, one queued behind it: the drop, the
+      // reopening and the reopened stream's reset answer neither; its first snapshot both.
+      const asked = yield* read();
+      yield* settle;
+      const queued = yield* read();
+      yield* settle;
+      yield* drop;
+      yield* reopen;
+      yield* fixture.send(reset);
+      yield* settle;
+      expect([asked.pollUnsafe(), queued.pollUnsafe()]).toEqual([undefined, undefined]);
+      yield* fixture.send(ready);
+      yield* settle;
+      expect([asked.pollUnsafe()?._tag, queued.pollUnsafe()?._tag]).toEqual(["Success", "Success"]);
+
+      // A read asked while the stream is closed; one asked on the reopened stream leaves before
+      // its first snapshot, which answers the first and asks HQ nothing for the one that left.
+      yield* drop;
+      const closed = yield* read();
+      yield* settle;
+      yield* reopen;
+      const left = yield* read();
+      yield* settle;
+      yield* Fiber.interrupt(left);
+      expect(closed.pollUnsafe()).toBeUndefined();
+      const sent = fixture.sent.length;
+      yield* fixture.send(ready);
+      yield* settle;
+      expect(closed.pollUnsafe()?._tag).toBe("Success");
+      expect(fixture.sent.slice(sent)).toEqual([]);
+
+      // HQ failing the navigation for a moment answers no read: its retry's snapshot does.
+      const retried = yield* read();
+      yield* settle;
+      yield* fixture.send({
+        type: "scope-error",
+        scope: { kind: "navigation" },
+        code: "unavailable",
+        reason: "v1",
+        disposition: "transient",
+      });
+      yield* settle;
+      expect(retried.pollUnsafe()).toBeUndefined();
+      yield* TestClock.adjust(STREAM_POLICY.backoffBaseMs);
+      yield* settle;
+      yield* fixture.send(reset);
+      yield* fixture.send(ready);
+      yield* settle;
+      expect(retried.pollUnsafe()?._tag).toBe("Success");
+
+      // HQ refusing the stream outright ends a read with HQ's refusal.
+      const refused = yield* read();
+      yield* settle;
+      yield* fixture.drop(classifyHqClose(4403));
+      yield* settle;
+      expect(refused.pollUnsafe()?._tag).toBe("Failure");
+      expect(yield* Effect.flip(Fiber.join(refused))).toEqual(classifyHqClose(4403));
+
+      // The link's stop ends a read waiting for the retried stream's first snapshot.
+      yield* supervisor.signal("manual-retry");
+      yield* settle;
+      const stopping = yield* read();
+      yield* settle;
+      link.stop();
+      yield* settle;
+      expect(stopping.pollUnsafe()?._tag).toBe("Failure");
+
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
 // witness: packages/client-runtime/src/data/adapters/hq.ts | message.type === "scope-reset" || → message.type === "scope-values" ||
 it.effect(
   "AD1: Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each placed project, the update policy and the persona templates; none is dropped",

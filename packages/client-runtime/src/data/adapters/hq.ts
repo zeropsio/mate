@@ -132,6 +132,9 @@ const ON_THE_SOCKET: StreamEvent = {
 /** The link's socket exists; its upgrade is waited for. */
 const SOCKET_CREATED: StreamEvent = { kind: "socket-created" };
 
+/** What a navigation read says once the link stopped: no next socket answers it. */
+const STOPPED: StreamFault = { outcome: "transient", message: "HQ's stream stopped." };
+
 const protocolIdentity = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 
@@ -172,7 +175,11 @@ export function hqNavigationLink(options: {
   readonly store: AccountStore;
 }): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
   readonly retryDetail: (demand: DetailDemand) => void;
-  /** Reads navigation after this ask, resolving only once HQ's new snapshot is committed. */
+  /**
+   * Reads navigation after this ask, resolving only once HQ's new snapshot is committed: one asked
+   * on the open socket, or, when that socket closes or none is open, the next socket's first. It
+   * fails only on HQ's refusal and on the link's stop; the caller ends it by interrupting it.
+   */
   readonly readNavigation: () => Effect.Effect<void, StreamFault>;
   /**
    * The person's access moved in the client's own Zerops data (`data/accountRuntime/accessChanges.ts`)
@@ -353,8 +360,17 @@ export function hqNavigationLink(options: {
     });
   /** The asks sent on the open socket that HQ has not answered yet, by request id. */
   const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
+  /** Navigation reads waiting on the open socket for HQ to be asked the navigation whole. */
   const queuedNavigation = new Set<Deferred.Deferred<void, StreamFault>>();
+  /** Navigation reads the next navigation snapshot answers: one asked after them on any socket. */
   const readingNavigation = new Set<Deferred.Deferred<void, StreamFault>>();
+  /** Ends every navigation read: HQ refused, or the link stopped, so no snapshot answers them. */
+  const endNavigationReads = (fault: StreamFault) => {
+    for (const waiting of [...queuedNavigation, ...readingNavigation])
+      Deferred.doneUnsafe(waiting, Effect.fail(fault));
+    queuedNavigation.clear();
+    readingNavigation.clear();
+  };
   let requests = 0;
   /**
    * The scopes to ask again on a new registration in the attempt under way, if one is: the
@@ -656,7 +672,8 @@ export function hqNavigationLink(options: {
                 message: message.reason ?? `HQ could not read this (${message.code}).`,
                 code: message.code,
               };
-              if (message.scope.kind === "navigation")
+              // HQ failing the navigation for a moment answers no read: its retry's snapshot does.
+              if (message.scope.kind === "navigation" && fault.outcome !== "transient")
                 navigationAnswer = { readers: [...readingNavigation, ...queuedNavigation], fault };
               if (message.disposition === "refused") refused.add(scopeKey);
               const jitter = yield* Random.next;
@@ -829,20 +846,12 @@ export function hqNavigationLink(options: {
         Effect.sync(() => {
           stopListening();
           if (wakeAttempt === wake) wakeAttempt = null;
-          open = null;
           for (const waiting of pendingOffers.values())
             Deferred.doneUnsafe(
               waiting,
               Effect.fail({ outcome: "transient", message: "HQ's stream closed." }),
             );
           pendingOffers.clear();
-          for (const waiting of [...queuedNavigation, ...readingNavigation])
-            Deferred.doneUnsafe(
-              waiting,
-              Effect.fail({ outcome: "transient", message: "HQ's stream closed." }),
-            );
-          queuedNavigation.clear();
-          readingNavigation.clear();
         }),
       );
 
@@ -861,6 +870,15 @@ export function hqNavigationLink(options: {
                     ),
                   );
             open = opened;
+            // However the segment ends, its socket answers nothing more: a navigation read it did
+            // not answer is answered by the next socket's first snapshot, asked after the read.
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                open = null;
+                for (const waiting of queuedNavigation) readingNavigation.add(waiting);
+                queuedNavigation.clear();
+              }),
+            );
             if (first) yield* signal(key, ON_THE_SOCKET);
             const reading = yield* Effect.forkScoped(
               Stream.runForEachArray(opened.messages, onMessages),
@@ -895,7 +913,6 @@ export function hqNavigationLink(options: {
             // The segment's end, as planned or by its fault, ends the look at the details too.
             heardAt = yield* Clock.currentTimeMillis;
             yield* Effect.raceAllFirst([Fiber.join(reading), watching, silence]);
-            open = null;
           }),
         );
 
@@ -905,6 +922,8 @@ export function hqNavigationLink(options: {
         Effect.tapError((fault) =>
           Effect.sync(() => {
             if (accessEnded(fault) !== null) deny([...scopes, ...demands.scopes().flatMap(fedBy)]);
+            // HQ refused the stream outright: no next socket comes by itself to answer a read.
+            if (fault.outcome !== "transient") endNavigationReads(fault);
           }),
         ),
       );
@@ -939,19 +958,19 @@ export function hqNavigationLink(options: {
     childMoved: () => wakeAttempt?.(),
     readNavigation: () =>
       Effect.suspend(() => {
-        if (open === null || stopped)
-          return Effect.fail<StreamFault>({
-            outcome: "transient",
-            message: "HQ's stream is not open.",
-          });
+        if (stopped) return Effect.fail(STOPPED);
         if (streamOf(store.state(), nav.families[0]!.scope).phase === "refused")
           return Effect.fail<StreamFault>({
             outcome: "definitive-refusal",
             message: "HQ refused to read this organization.",
           });
         const waiting = Deferred.makeUnsafe<void, StreamFault>();
-        queuedNavigation.add(waiting);
-        wakeAttempt?.();
+        // No socket is open: the next one's first snapshot is asked after this read.
+        if (open === null) readingNavigation.add(waiting);
+        else {
+          queuedNavigation.add(waiting);
+          wakeAttempt?.();
+        }
         return Deferred.await(waiting).pipe(
           Effect.ensuring(
             Effect.sync(() => {
@@ -1046,6 +1065,7 @@ export function hqNavigationLink(options: {
     stop: () => {
       if (stopped) return;
       stopped = true;
+      endNavigationReads(STOPPED);
       stopHolding?.();
       stopHolding = null;
       for (const release of mateHolds.values()) release();
