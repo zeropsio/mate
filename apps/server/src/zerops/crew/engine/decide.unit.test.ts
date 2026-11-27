@@ -676,3 +676,37 @@ it("CD82: A reader's task that reviews another starts only once that task is in 
   w.end("reviewer");
   expect([early, beforeReport, w.turns("lead")]).toEqual([0, 0, ["review"]]);
 });
+
+// witness: apps/server/src/zerops/crew/engine/decide.land.ts | if (review.state !== "blocked") continue; → if (review.state !== "working") continue;
+it("CD+1: A reader blocked while the task it reviews went back to its builder goes on with its review, unasked, once that task is back in review", () => {
+  const w = underReview();
+  // The lead's wake for #1 waits for the reader's verdict.
+  w.run("lead");
+  w.end("lead");
+  asks(w, "reviewer", "The app does not answer. Is it running?");
+  w.end("reviewer");
+  for (const wake of w.armed("lead-wake")) {
+    w.advance(wake.dueAt - w.now);
+    w.fire("lead-wake", wake.key);
+  }
+  // The lead sends #1 back and passes the question on: only #1's rework answers it.
+  w.run("lead");
+  w.tool("lead", {
+    tool: "review",
+    input: { task: 1, verdict: "reject", note: "Make it answer." },
+  });
+  w.tool("lead", {
+    tool: "report",
+    input: { status: "blocked", summary: "?", question: "Resume the review once #1 is back." },
+  });
+  w.end("lead");
+  const waiting = w.task(2).state;
+  w.run("backend");
+  finish(w, "backend");
+  expect([waiting, w.task(1).state, w.task(2).state, w.turns("reviewer")]).toEqual([
+    "blocked",
+    "review",
+    "working",
+    ["task", "continue"],
+  ]);
+});
