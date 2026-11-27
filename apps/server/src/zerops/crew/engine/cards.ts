@@ -8,7 +8,7 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { CrewCard, CrewTaskSource } from "@t3tools/contracts";
 
 import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "../crewShowOnDev.ts";
-import { reviewsOf, type CrewState, type TaskRecord } from "./state.ts";
+import { opensApp, reviewsOf, type CrewState, type TaskRecord } from "./state.ts";
 
 export interface SentCard {
   readonly text: string;
@@ -44,23 +44,27 @@ const lines = (head: string, body: ReadonlyArray<string>): string =>
   [CREW_CARD_OPENER, head, ...body].join("\n");
 
 /** A task's first turn: the whole brief, never a summary. */
-/** What a reader's task reviews: the writer's task, and where that writer's own app answers. */
+/** What a reader's task reviews: the writer's task, and how that writer's own app opens. */
 export interface ReviewedWork {
   readonly number: number;
   readonly title: string;
   readonly owner: string;
+  /** The writer runs its app on a crew port (`opensApp`). */
+  readonly opens: boolean;
+  /** Where a browser reaches that app inside the project (`appAddressOf`). */
   readonly app: string | null;
 }
 
 const reviewLines = (work: ReviewedWork): ReadonlyArray<string> => [
   `You review #${work.number} ${work.title}, @${work.owner}'s work: read its changes with ` +
     `crew_diff (handle ${work.owner}), then give your verdict on #${work.number} with crew_review.`,
-  ...(work.app === null
-    ? []
-    : [
-        `@${work.owner}'s own app runs from its copy at ${work.app} while it runs: open it there ` +
-          "with zerops_browser.",
-      ]),
+  ...(work.opens
+    ? [
+        `@${work.owner} runs its own app from its copy while it works: open its pages with ` +
+          `crew_open_app (handle ${work.owner})` +
+          (work.app === null ? "." : `, or at ${work.app} with zerops_browser where you have it.`),
+      ]
+    : []),
 ];
 
 export const taskCard = (
@@ -162,10 +166,12 @@ export const reviewCard = (state: CrewState, task: TaskRecord): SentCard => {
   const verdicts = reviewsOf(state, task).flatMap((reader) =>
     reader.verdict === undefined ? [] : [verdictLine(reader, task)],
   );
+  const owner = state.members[task.owner];
   const read =
-    state.members[task.owner]?.kind === "writer"
-      ? `Read its changes with crew_diff (handle ${task.owner}) and give your verdict on ` +
-        `#${task.number} with crew_review.`
+    owner?.kind === "writer"
+      ? `Read its changes with crew_diff (handle ${task.owner})` +
+        (opensApp(owner) ? `, open its app with crew_open_app (handle ${task.owner}),` : "") +
+        ` and give your verdict on #${task.number} with crew_review.`
       : `It changed no files: give your verdict on #${task.number} with crew_review.`;
   return {
     text: lines(`#${task.number} ${task.title} · review @${task.owner}'s work`, [

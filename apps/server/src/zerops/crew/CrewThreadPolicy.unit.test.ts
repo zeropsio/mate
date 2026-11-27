@@ -79,6 +79,7 @@ const makeHost = (calls: Ref.Ref<ReadonlyArray<HostCall>>) => {
     report: answer("report"),
     board: answer("board"),
     diff: answer("diff"),
+    openApp: answer("openApp"),
     showOnDev: answer("showOnDev"),
     propose: answer("propose"),
     review: answer("review"),
@@ -247,24 +248,40 @@ it.effect(
 
 // witness: apps/server/src/zerops/crew/CrewTools.ts | ? [...CREW_TOOLS_BY_KIND[crewmate.kind], "crew_memory"] → ? [...CREW_TOOLS_BY_KIND.lead, "crew_memory"]
 it.effect(
-  "CM54: A crewmate's tools follow its kind: a writer's Show on dev, a reader's review, the lead's propose, review and finish, and crew_memory only while the crew keeps memory",
+  "CM54: A crewmate's tools follow its kind: a writer's Show on dev, a reader's open app and review, the lead's open app, propose, review and finish, and crew_memory only while the crew keeps memory",
   () =>
     Effect.gen(function* () {
       const host = makeHost(yield* Ref.make<ReadonlyArray<HostCall>>([]));
       for (const [kind, memory, names] of [
         ["writer", false, ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev"]],
-        ["reader", false, ["crew_report", "crew_board", "crew_diff", "crew_review"]],
+        [
+          "reader",
+          false,
+          ["crew_report", "crew_board", "crew_diff", "crew_open_app", "crew_review"],
+        ],
         [
           "lead",
           false,
-          ["crew_report", "crew_board", "crew_diff", "crew_propose", "crew_review", "crew_finish"],
+          [
+            "crew_report",
+            "crew_board",
+            "crew_diff",
+            "crew_open_app",
+            "crew_propose",
+            "crew_review",
+            "crew_finish",
+          ],
         ],
         [
           "writer",
           true,
           ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev", "crew_memory"],
         ],
-        ["reader", true, ["crew_report", "crew_board", "crew_diff", "crew_review", "crew_memory"]],
+        [
+          "reader",
+          true,
+          ["crew_report", "crew_board", "crew_diff", "crew_open_app", "crew_review", "crew_memory"],
+        ],
       ] as const) {
         const tools = crewThreadTools({ kind, memory }, host, Effect.succeedSome(backend));
         expect(tools.map((tool) => tool.name)).toEqual(names);

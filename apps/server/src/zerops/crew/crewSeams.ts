@@ -118,6 +118,11 @@ export class CrewToolHost extends Context.Service<
       member: CrewThreadMember,
       input: { readonly handle?: string; readonly path?: string },
     ) => Effect.Effect<CrewToolText>;
+    /** A page of a writer's own app: a reader's, of the writer its task reviews; the lead's, any. */
+    readonly openApp: (
+      member: CrewThreadMember,
+      input: { readonly handle: string; readonly path?: string },
+    ) => Effect.Effect<CrewToolText>;
     readonly showOnDev: (
       member: CrewThreadMember,
       input: { readonly reason: string },

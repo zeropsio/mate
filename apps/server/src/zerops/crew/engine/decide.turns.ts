@@ -17,6 +17,7 @@ import { carriedCard, taskCard, type SentCard } from "./cards.ts";
 import { type DeliverCommand, taskAssignment } from "./command.ts";
 import {
   appAddressOf,
+  opensApp,
   isTurnPurpose,
   openTaskOf,
   reviewedWorkOf,
@@ -297,6 +298,7 @@ export const startTask = (
           number: reviewed.task.number,
           title: reviewed.task.title,
           owner: reviewed.owner.handle,
+          opens: opensApp(reviewed.owner),
           app: appAddressOf(reviewed.owner),
         };
   sendTurn(b, member, taskCard(started, null, reviews), principal, "task", task.id, attachments);

@@ -44,6 +44,7 @@ import type { CrewInput, CrewToolCall } from "./command.ts";
 import type { CrewAccepted } from "./CrewOwner.ts";
 import {
   appAddressOf,
+  appToOpen,
   isOpenTask,
   membersInOrder,
   openTaskOf,
@@ -90,8 +91,11 @@ export interface EngineCrewDirectoryInputs {
     principal: Principal,
   ) => Effect.Effect<CrewAccepted, CrewCommandError>;
   readonly memory: CrewMemoryService;
-  readonly reads: Pick<CrewReadsService, "diff">;
+  readonly reads: Pick<CrewReadsService, "diff" | "openApp">;
 }
+
+/** A path on an app: from its root, one line, no spaces. */
+const APP_PATH = /^\/[^\s]*$/u;
 
 const THREAD_GENERATION = /\/s\/(\d+)$/u;
 
@@ -326,6 +330,23 @@ export const makeEngineCrewDirectory = (inputs: EngineCrewDirectoryInputs) => {
         return text(
           changes.trim() === "" ? `@${handle} has no changes against your tree.` : changes,
         );
+      }).pipe(Effect.catch((failure) => Effect.succeed(error(failure.message)))),
+    openApp: (member, input) =>
+      Effect.gen(function* () {
+        const handle = input.handle.replace(/^@/u, "");
+        const path = input.path ?? "/";
+        const app = appToOpen(yield* inputs.state, member, handle);
+        if ("refusal" in app) return error(app.refusal);
+        if (!APP_PATH.test(path)) return error(`${path}: give a path from the app's root, like /.`);
+        const page = yield* inputs.reads.openApp(app.host, app.port, path);
+        if (page.failure === "curl") return error(`${app.host} has no curl to open the app with.`);
+        if (page.status === null) {
+          return error(
+            `Nothing answers on port ${app.port} in @${handle}'s copy on ${app.host}` +
+              `${page.failure === "" ? "" : ` (${page.failure})`}: its app answers only while @${handle} runs it.`,
+          );
+        }
+        return text(`GET ${path} → ${page.status} ${page.contentType}\n\n${page.body}`.trimEnd());
       }).pipe(Effect.catch((failure) => Effect.succeed(error(failure.message)))),
     showOnDev: (member, input) => tool(member, { tool: "show-on-dev", reason: input.reason }),
     propose: (member, plan) => tool(member, { tool: "propose", plan }),

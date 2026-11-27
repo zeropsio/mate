@@ -1,7 +1,7 @@
 /**
  * CrewTools — the crew's in-process tools (CONCEPT §5, PRD §5.4): what a
- * crewmate calls to report, read the board and the crew's changes, ask for
- * Show on dev, and — the lead — plan, review and finish.
+ * crewmate calls to report, read the board and the crew's changes, open a
+ * writer's app, ask for Show on dev, and — the lead — plan, review and finish.
  *
  * Each tool decodes its input with a Schema and hands it to `CrewToolHost`
  * as the calling crewmate. The caller is resolved at every call, not when
@@ -32,17 +32,29 @@ export type CrewToolName =
   | "crew_report"
   | "crew_board"
   | "crew_diff"
+  | "crew_open_app"
   | "crew_show_on_dev"
   | "crew_propose"
   | "crew_review"
   | "crew_finish"
   | "crew_memory";
 
-/** The board is read-only, so every kind reads it; only the lead plans and finishes. */
+/**
+ * The board is read-only, so every kind reads it; only the lead plans and finishes. Those who
+ * review open the app a writer runs from its copy.
+ */
 export const CREW_TOOLS_BY_KIND: Readonly<Record<CrewMemberKind, ReadonlyArray<CrewToolName>>> = {
   writer: ["crew_report", "crew_board", "crew_diff", "crew_show_on_dev"],
-  reader: ["crew_report", "crew_board", "crew_diff", "crew_review"],
-  lead: ["crew_report", "crew_board", "crew_diff", "crew_propose", "crew_review", "crew_finish"],
+  reader: ["crew_report", "crew_board", "crew_diff", "crew_open_app", "crew_review"],
+  lead: [
+    "crew_report",
+    "crew_board",
+    "crew_diff",
+    "crew_open_app",
+    "crew_propose",
+    "crew_review",
+    "crew_finish",
+  ],
 };
 
 type Host = CrewToolHost["Service"];
@@ -126,6 +138,25 @@ const diff: CrewToolDefinition<typeof DiffInput.Type> = {
   run: (host, member, input) => host.diff(member, input),
 };
 
+const OpenAppInput = Schema.Struct({
+  handle: Schema.String.annotate({
+    description:
+      "The writer whose app to open, without the @. A reader opens only the app of the writer whose task its task reviews.",
+  }),
+  path: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "The page to open, from the app's root, such as / or /api/entries. Default /.",
+    }),
+  ),
+});
+const openApp: CrewToolDefinition<typeof OpenAppInput.Type> = {
+  name: "crew_open_app",
+  description:
+    "Open a page of the app a writer runs from its copy, on its crew port: its status, type and body as the writer's own service fetches it. It answers while the writer runs its app.",
+  input: OpenAppInput,
+  run: (host, member, input) => host.openApp(member, input),
+};
+
 const ShowOnDevInput = Schema.Struct({
   reason: Schema.String.annotate({
     description: "What the person should look at, and why on the dev service's own URL.",
@@ -159,7 +190,7 @@ const ProposedTask = Schema.Struct({
   reviews: Schema.optionalKey(
     Schema.String.annotate({
       description:
-        "For a reader's task: the writer's task it reviews, a title in this plan or #N on the board. It starts once that task is in review, and the reader's verdict comes to you before yours.",
+        "Required for a reader's task: the writer's task it reviews, a title in this plan or #N on the board, or \"none\" for a reader's task that reviews no task. A review starts once that task is in review, opens that writer's app, and its verdict comes to you before yours.",
     }),
   ),
 });
@@ -347,6 +378,7 @@ const TOOLS: Readonly<Record<CrewToolName, CrewToolBinding>> = {
   crew_report: prepare(reportTool(ReportInput)),
   crew_board: prepare(board),
   crew_diff: prepare(diff),
+  crew_open_app: prepare(openApp),
   crew_show_on_dev: prepare(showOnDev),
   crew_propose: prepare(propose),
   crew_review: prepare(review),

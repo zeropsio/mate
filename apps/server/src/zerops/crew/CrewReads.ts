@@ -14,6 +14,7 @@
  * - **Your tree**: its dirty paths (*Deliver*'s draft names them) and which
  *   landing commits a remote branch already holds (delivered).
  * - **A crewmate's changes** for `crew_diff`, cut to what a tool answer carries.
+ * - **A page of a writer's own app** for `crew_open_app`, fetched on the writer's service.
  *
  * @module CrewReads
  */
@@ -25,13 +26,14 @@ import * as Layer from "effect/Layer";
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { laneBranch, laneDirectory } from "./crewLanes.ts";
 import {
+  CrewGitError,
   CrewShell,
   field,
+  fields,
   fieldsOf,
   git,
   runFields,
   script,
-  type CrewGitError,
   type CrewShellError,
 } from "./CrewShell.ts";
 
@@ -55,6 +57,23 @@ export interface LaneStats {
 
 /** What a `crew_diff` answer carries at most. */
 export const DIFF_MAX_CHARS = 40_000;
+
+/** What a `crew_open_app` answer carries of a page at most. */
+export const PAGE_MAX_CHARS = 40_000;
+
+/** A page of a writer's own app, as its service fetched it from the app's port. */
+export interface AppPage {
+  /** Its HTTP status; `null` when nothing answered. */
+  readonly status: number | null;
+  readonly contentType: string;
+  /** Its body, cut at {@link PAGE_MAX_CHARS}. */
+  readonly body: string;
+  /** Why nothing answered, in curl's words; `"curl"` when the service has no curl. */
+  readonly failure: string;
+}
+
+/** The line between a page's fields and its body. */
+const PAGE_BODY = "\n--- page ---\n";
 
 /**
  * Names and values that mean the service's environment reaches a database:
@@ -93,6 +112,15 @@ export interface CrewReadsService {
   ) => Effect.Effect<string, CrewReadError>;
   /** A hash of the lockfiles in a lane, so a merge-in that moves one reruns setup. */
   readonly lockfileHash: (host: string, handle: string) => Effect.Effect<string, CrewReadError>;
+  /**
+   * A page of the app a writer runs from its copy, fetched on its own service from the app's port,
+   * so it answers wherever the copy lives: a dev service or a pool's lease.
+   */
+  readonly openApp: (
+    host: string,
+    port: number,
+    path: string,
+  ) => Effect.Effect<AppPage, CrewReadError>;
 }
 
 export class CrewReads extends Context.Service<CrewReads, CrewReadsService>()(
@@ -234,7 +262,50 @@ export const make = Effect.gen(function* () {
         `printf 'hash\\t%s\\n' "$(${git({ lane: handle }, ["ls-files", "-s", "--", ...LOCKFILE_PATHSPECS])} | cksum | cut -d' ' -f1)"\n`,
     ).pipe(Effect.map((out) => field(out, "hash") ?? ""));
 
+  const openApp: CrewReadsService["openApp"] = (host, port, path) =>
+    shell
+      .run(
+        host,
+        script(
+          `command -v curl >/dev/null 2>&1 || { printf 'failure\\tcurl\\n'; exit 0; }\n` +
+            `page=$(mktemp) && err=$(mktemp) || exit 1\n` +
+            `curl -sS --max-time 20 -o "$page" -w 'status\\t%{http_code}\\ncontent\\t%{content_type}\\n' ${shellQuote(`http://127.0.0.1:${port}${path}`)} 2>"$err"\n` +
+            `printf 'failure\\t%s' "$(head -n 1 "$err" | tr '\\t' ' ')"\n` +
+            `printf ${shellQuote(PAGE_BODY.replaceAll("\n", "\\n"))}\n` +
+            `head -c ${PAGE_MAX_CHARS + 1} "$page"\n` +
+            `rm -f "$page" "$err"\n`,
+        ),
+        { timeout: READ_TIMEOUT },
+      )
+      .pipe(
+        Effect.flatMap((result) => {
+          if (result.code !== 0) {
+            return Effect.fail(
+              new CrewGitError({
+                host,
+                operation: "openApp",
+                detail: result.stderr.trim() || `exit ${result.code}`,
+              }),
+            );
+          }
+          const split = result.stdout.indexOf(PAGE_BODY);
+          const head = fields(split === -1 ? result.stdout : result.stdout.slice(0, split));
+          const body = split === -1 ? "" : result.stdout.slice(split + PAGE_BODY.length);
+          const status = Number(field(head, "status") ?? 0);
+          return Effect.succeed({
+            status: status > 0 ? status : null,
+            contentType: field(head, "content") ?? "",
+            body:
+              body.length > PAGE_MAX_CHARS
+                ? `${body.slice(0, PAGE_MAX_CHARS)}\n… cut at ${PAGE_MAX_CHARS} characters.`
+                : body,
+            failure: field(head, "failure") ?? "",
+          });
+        }),
+      );
+
   return CrewReads.of({
+    openApp,
     zeropsYaml,
     reachesDatabase,
     integration,
