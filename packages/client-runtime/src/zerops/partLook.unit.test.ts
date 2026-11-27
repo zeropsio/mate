@@ -71,7 +71,7 @@ const classic = {
 };
 
 // witness: packages/client-runtime/src/zerops/partLook.ts | part.devService === input.repository && !part.pooled → !part.pooled
-it("ZV+1: Try it for a change offers only its own repository's part: Your app is that part's stage and the Draft that part's working copy, never another part's stage or dev; breaks: a change in a two-part project opens the other part's app or dev", () => {
+it("ZV214: Try it for a change offers only its own repository's part: Your app is that part's stage and the Draft that part's working copy, never another part's stage or dev; breaks: a change in a two-part project opens the other part's app or dev", () => {
   expect(partLook(pooled)).toEqual({
     app: [{ service: "tinystage", url: "https://tiny.example" }],
     draft: {
@@ -86,7 +86,7 @@ it("ZV+1: Try it for a change offers only its own repository's part: Your app is
 });
 
 // witness: packages/client-runtime/src/zerops/draftLook.ts | ...withState(lease.copyState), → ...withState(undefined),
-it("ZV+2: A change's Draft carries the state zcp last wrote for its copy, and a state this build does not know draws as none; breaks: a person sees a stopped, failed or lost Draft as if it ran", () => {
+it("ZV215: A change's Draft carries the state zcp last wrote for its copy, and a state this build does not know draws as none; breaks: a person sees a stopped, failed or lost Draft as if it ran", () => {
   const cases = [
     ["parked", "parked"],
     ["starting", "starting"],

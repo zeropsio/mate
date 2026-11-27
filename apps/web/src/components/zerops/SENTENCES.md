@@ -1,4 +1,4 @@
-next: MN132
+next: MN133
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -111,7 +111,7 @@ next: MN132
 - MN115 — A Mate's row whose latest ask is another Mate's message leads it with that Mate's name alone, never with the person as its asker, while the person's own ask is still led by them; breaks: the row reads "You: <Mate>: …" as if the person had written another Mate's words
 - MN123 — Opening a draft holds one request per act and shows only zcp's answer; an ended draft returns to availability instead of keeping its frame; breaks: a late answer shows an old copy or two openings overlap.
 - MN116 — A delivered check notice names which checks failed and that the Mate is fixing them, whether the change has a title or only a number; breaks: a Review build failure looks like a GitHub failure
-- MN+1 — A Mate's bold Open draft or Add to your app is a press of the one change its paragraph names, in any case, and stays words where the paragraph names none or two; breaks: a person opens another change's draft or review from the chat
+- MN132 — A Mate's bold Open draft or Add to your app is a press of the one change its paragraph names, in any case, and stays words where the paragraph names none or two; breaks: a person opens another change's draft or review from the chat
 - MN118 — A Mate's bare change number links to the one change carrying it in its application, while unknown or repository-ambiguous numbers stay text; breaks: a person opens the wrong review or a number that names no held change.
 - MN119 — A crewmate's question on the viewer's own Mate stands as its own item beside the Mate's own question, and a colleague's Mate's crew asks nothing of the viewer; breaks: the person never hears their crew is blocked, or is asked to answer for a colleague's crew
 - MN120 — Finished crew work waits on the viewer once per task, only where the viewer adds it to the Mate's code themselves and may review it, and never again as the crew's ready row; breaks: the person is asked to add work the crew adds itself, or the same work twice

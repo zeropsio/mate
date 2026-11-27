@@ -108,12 +108,14 @@ export function DraftLookStage() {
       <div className="overflow-auto border bg-background p-4">
         <h1 className="mb-6 font-semibold">{title}</h1>
         <ReviewTry draft={look} onOpenDraft={noop} />
+        <ReviewTry draft={{ ...look, state: "stopped" }} onOpenDraft={noop} />
+        <ReviewTry draft={{ ...look, state: "unknown" }} onOpenDraft={noop} />
         <ReviewTry draft={{ kind: "unavailable" }} onOpenDraft={noop} />
       </div>
       <div className="overflow-hidden border">
         <DraftPaneView
           title={title}
-          look={look}
+          look={{ ...look, state: "starting" }}
           state={{ kind: "opening", copy }}
           onReload={noop}
           onRetry={noop}

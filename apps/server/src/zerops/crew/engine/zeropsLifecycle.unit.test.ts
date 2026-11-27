@@ -961,7 +961,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsLifecycle.ts | const lease = { ...read, ...copyStateOf(state, stateAt) }; → const lease = { ...read };
 it.effect(
-  "CD+1: A copy's state from zcp's status file reaches the Mate's copy feed beside its lease's own state, and a later envelope read of that lease keeps it; breaks: a Draft shows no state, or its lease stops reading as held",
+  "CD93: A copy's state from zcp's status file reaches the Mate's copy feed beside its lease's own state, and a later envelope read of that lease keeps it; breaks: a Draft shows no state, or its lease stops reading as held",
   () =>
     withLifecycle((lifecycle) =>
       Effect.gen(function* () {

@@ -30,7 +30,7 @@ it("MN118: A Mate's bare change number links to the one change carrying it in it
 });
 
 // witness: apps/web/src/components/zerops/BareChangeNumber.logic.ts | return named.size === 1 ? [...named.values()][0] : undefined; → return [...named.values()][0];
-it("MN+1: A Mate's bold Open draft or Add to your app is a press of the one change its paragraph names, in any case, and stays words where the paragraph names none or two; breaks: a person opens another change's draft or review from the chat", () => {
+it("MN132: A Mate's bold Open draft or Add to your app is a press of the one change its paragraph names, in any case, and stays words where the paragraph names none or two; breaks: a person opens another change's draft or review from the chat", () => {
   const seven = { repo: "site", number: 7 };
   const changes = indexChangeNumbers([seven, { repo: "site", number: 9 }]);
   const said = "Návrh #7 je v Mate pod Open draft. Add to your app návrh zkontroluje.";

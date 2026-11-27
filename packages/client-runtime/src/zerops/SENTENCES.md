@@ -1,4 +1,4 @@
-next: ZV214
+next: ZV216
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -177,6 +177,6 @@ next: ZV214
 - ZV209 — A newly accepted addition waits for its own result when the change stream still holds the previous one; breaks: an old failure is reported for the new attempt.
 - ZV210 — A page a run publishes again under its title shows once, as its newest publish, where that publish stands; breaks: a corrected page shows twice, or its first draft stands in place of the correction
 - ZV211 — Rows read in above where a conversation began when it was shown, its first message and never a day's seam that moves up with its day, are its history; breaks: earlier turns read in open their cards as if they arrived, drawn over the rows the person reads
-- ZV+1 — Try it for a change offers only its own repository's part: Your app is that part's stage and the Draft that part's working copy, never another part's stage or dev; breaks: a change in a two-part project opens the other part's app or dev
-- ZV+2 — A change's Draft carries the state zcp last wrote for its copy, and a state this build does not know draws as none; breaks: a person sees a stopped, failed or lost Draft as if it ran
+- ZV214 — Try it for a change offers only its own repository's part: Your app is that part's stage and the Draft that part's working copy, never another part's stage or dev; breaks: a change in a two-part project opens the other part's app or dev
+- ZV215 — A change's Draft carries the state zcp last wrote for its copy, and a state this build does not know draws as none; breaks: a person sees a stopped, failed or lost Draft as if it ran
 - ZV213 — A take-over list body of at most 1 MiB is sent and a larger UTF-8 body is refused before any HQ request; breaks: HQ receives a request it cannot accept
