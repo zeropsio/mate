@@ -4,6 +4,9 @@
  *
  * - Another Mate's message, or its answer, wears that Mate's hue: its face and name in it, its
  *   words drawn as a message's are, folded past a message's length behind Show more.
+ * - This Mate's own answer to another Mate's message is framed in that Mate's edge under "To Fen":
+ *   the words went to Fen, not to the person (the owner, 2026-11-27: "without any wrapper that
+ *   makes it obvious this is the reply sent to Fia, not something for the user").
  * - While this Mate waits for an answer, the asked Mate stands at the conversation's bottom, as work
  *   that runs on elsewhere does: its face live, what was asked and since when, its conversation a
  *   press away. A bare line there said nothing of whether anyone was at it.
@@ -19,6 +22,7 @@ import {
 import { cn } from "~/lib/utils";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  type MateMessageFrom,
   type MateMessageItem,
   mateMessageNoticeHeading,
   mateMessageSenderName,
@@ -133,6 +137,39 @@ export function MateMessageRow({
             </Button>
           </div>
         ) : null}
+      </div>
+    </MessageBubble>
+  );
+}
+
+/**
+ * The Mate's words that went back as its answer to another Mate's message: framed in that Mate's
+ * edge, under its face and "To" its name, so the person reads them as said to it.
+ */
+export function MateAnswerFrame({
+  to,
+  children,
+}: {
+  readonly to: MateMessageFrom;
+  readonly children: ReactNode;
+}) {
+  const look = useMateLook(to.projectId);
+  return (
+    <MessageBubble
+      data-zerops-surface="mate-answer"
+      render={<article />}
+      speaker="to-another-mate"
+      tint={look.tint}
+    >
+      <div className="flex min-w-0 flex-col gap-2">
+        <header className="flex min-w-0 items-center gap-2 text-line">
+          <MateFace size={24} state="idle" {...look} />
+          <span className="min-w-0 truncate">
+            <span className="text-muted-foreground">To </span>
+            <span className="font-semibold text-mate-ink">{mateMessageSenderName(to)}</span>
+          </span>
+        </header>
+        <div className="min-w-0">{children}</div>
       </div>
     </MessageBubble>
   );

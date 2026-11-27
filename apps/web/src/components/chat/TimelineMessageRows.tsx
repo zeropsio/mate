@@ -34,6 +34,7 @@ import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../times
 import { TimelineRowCtx } from "./timelineContext";
 import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
+import { MateAnswerFrame } from "../zerops/MateMessageRow";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
 import { Text } from "~/components/ui/text";
 import { MessageBubble } from "~/components/ui/message-bubble";
@@ -466,14 +467,26 @@ function MateProse({
     showCopyButton: showMeta,
     streaming: Boolean(message.streaming),
   });
+  const words = (
+    <MateProseWords
+      at={message.createdAt}
+      streaming={Boolean(message.streaming)}
+      text={messageText}
+    />
+  );
   return (
     <div className="min-w-0">
       <div ref={wordsRef}>
-        <MateProseWords
-          at={message.createdAt}
-          streaming={Boolean(message.streaming)}
-          text={messageText}
-        />
+        {/* Its answer to another Mate's message went to that Mate, not to the person: the frame
+            stands out by its edge and padding, its words on the prose's edge, its own edge on the
+            column's, as the asking Mate's message above it. */}
+        {message.mateAnswerTo === undefined ? (
+          words
+        ) : (
+          <div className="-mx-[17px]">
+            <MateAnswerFrame to={message.mateAnswerTo}>{words}</MateAnswerFrame>
+          </div>
+        )}
       </div>
       {showMeta ? (
         <div

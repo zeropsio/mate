@@ -36,7 +36,7 @@
  *   thread's send, whose message and card the engine writes a moment after
  *   it); `?long=<n>` for that many turns above any script's run, the list long and virtual;
  * - `?script=mate-ask` a run another Mate of the person's started with its message, opened by
- *   that Mate's row; `mate-sent` the person's run that asks another Mate, its call naming whom,
+ *   that Mate's row, its answer framed as said to that Mate once the run ends; `mate-sent` the person's run that asks another Mate, its call naming whom,
  *   then the quiet line its answer is awaited on; `mate-answer` that ask settled above, and the
  *   answer's row opening the run it woke;
  * - `?script=failures` a run holding failures nothing undid — a listing that
@@ -1974,14 +1974,19 @@ function entriesAt(t: number): TimelineEntry[] {
   }
   if (t >= RUN.write && !STOPPED) {
     const shown = Math.min(1, (t - RUN.write) / Math.max(0.1, RUN.end - RUN.write));
+    const answer = message(
+      "answer",
+      "assistant",
+      RUN.write,
+      RUN.answer.slice(0, Math.max(1, Math.round(RUN.answer.length * shown))),
+      t < RUN.end,
+    );
+    // An ask's answer went back to the Mate that asked: marked once its run ended.
+    const to = RUN.askFrom?.kind === "ask" && t >= RUN.end ? RUN.askFrom.from : undefined;
     entries.push(
-      message(
-        "answer",
-        "assistant",
-        RUN.write,
-        RUN.answer.slice(0, Math.max(1, Math.round(RUN.answer.length * shown))),
-        t < RUN.end,
-      ),
+      to === undefined || answer.kind !== "message"
+        ? answer
+        : { ...answer, message: { ...answer.message, mateAnswerTo: to } },
     );
   }
   return entries.toSorted(

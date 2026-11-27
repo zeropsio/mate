@@ -8,6 +8,7 @@ import { DisclosureButton, OpensMark, OpensWhole, useDisclosure } from "./RunDis
 import type { ChatMessage } from "../../types";
 import ChatMarkdown, { MESSAGE_HEADING_LEVEL } from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
+import { MateAnswerFrame } from "../zerops/MateMessageRow";
 import { shouldPreserveAssistantLineBreaks, thoughtParagraphs } from "./MessagesTimeline.logic";
 import { noteText, thinkingLine } from "./runCard.logic";
 import { useEngineLiveMessage, useEngineLiveMessages } from "./useEngineLiveMessage";
@@ -99,13 +100,20 @@ export function QuestionBubble({ questions }: { readonly questions: ReadonlyArra
 export function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
   const message = useEngineLiveMessage(recorded);
   const inSlot = use(InSlotContext);
-  const bubble = (
-    <Bubble kind="note" tone="speech">
-      <OpensWhole follows={Boolean(message.streaming)} stood={message.id} what="message" words>
-        <NoteWords message={message} />
-      </OpensWhole>
-    </Bubble>
+  const words = (
+    <OpensWhole follows={Boolean(message.streaming)} stood={message.id} what="message" words>
+      <NoteWords message={message} />
+    </OpensWhole>
   );
+  // Its answer to another Mate's message went to that Mate: framed as said to it, not the person.
+  const bubble =
+    message.mateAnswerTo === undefined ? (
+      <Bubble kind="note" tone="speech">
+        {words}
+      </Bubble>
+    ) : (
+      <MateAnswerFrame to={message.mateAnswerTo}>{words}</MateAnswerFrame>
+    );
   if (!inSlot) return bubble;
   // Words still being written say so beside their last line, outside the bubble: the dots follow
   // the words as they do after "Writing", on no text and no edge. Their seat is held while the

@@ -119,6 +119,14 @@ const handle = (b: StepBuilder, command: Command): void => {
       )
         b.emit({ _tag: "MateAnswerHeard", messageId: command.messageId });
       return;
+    case "MarkMateAnswer":
+      return recordLoose(b, {
+        kind: "marker",
+        marker: {
+          kind: "mate.answer",
+          answer: { messageId: command.messageId, item: command.itemId, to: command.to },
+        },
+      });
     case "BindLease":
       // Its first lease is where it works: another the agent acquires is only a container it uses.
       if (b.state.lease === null) b.emit({ _tag: "LeaseBound", lease: command.lease });

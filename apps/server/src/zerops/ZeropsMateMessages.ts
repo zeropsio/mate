@@ -54,9 +54,11 @@ import {
   CommandId,
   type ConversationAgent,
   ConversationId,
+  type ItemId,
   MATE_MESSAGE_ANSWER_MAX,
   type MateMessage,
   type MateMessageEnd,
+  type MateMessageFrom,
   type MateMessageNotAdmittedReason,
   agentIdForDriverKind,
   agentIdForProviderInstance,
@@ -256,6 +258,41 @@ export const make = Effect.gen(function* () {
     messageId: id,
     ownerUserId,
   });
+
+  /**
+   * Marks the note that goes back as the answer to an ask, so every client draws it as addressed to
+   * the asking Mate. Under the ask's id, so a mark told again is recorded once; one that could not
+   * be recorded leaves the answer unmarked, never held back.
+   */
+  const markAnswer = (
+    conversationId: ConversationId,
+    messageId: string,
+    itemId: ItemId,
+    to: MateMessageFrom,
+    ownerUserId: string,
+  ) =>
+    engine
+      .deliver(
+        conversationId,
+        { _tag: "MarkMateAnswer", messageId, itemId, to },
+        CommandId.make(`mate-answer:${messageId}`),
+        principalOf(messageId, ownerUserId),
+      )
+      .pipe(
+        Effect.flatMap((result) =>
+          result._tag === "Rejected"
+            ? Effect.logWarning("zerops mate messages: the conversation refused an answer's mark", {
+                reason: result.rejection.reason,
+              })
+            : Effect.void,
+        ),
+        Effect.catchTags({
+          DeliveryUnrecorded: (error) =>
+            Effect.logWarning("zerops mate messages: an answer's mark could not be recorded", {
+              reason: error.message,
+            }),
+        }),
+      );
 
   /** Keeps the message's end, and tells it on every link; none when it could not be kept. */
   const settle = (
@@ -792,12 +829,12 @@ export const make = Effect.gen(function* () {
             : ("failed" as const)
           : endOf(run.end);
       if (end === undefined) return;
-      // An ask's end carries what its agent last said; an answer's carries nothing.
-      const words =
-        entry.message?.kind === "ask" && run.lastWords !== undefined
-          ? answerWordsOf(run.lastWords)
-          : undefined;
-      yield* settle(id, end, words);
+      // An ask's end carries what its agent last said, its note marked as gone to the asking Mate
+      // first; an answer's carries nothing.
+      const said = entry.message?.kind === "ask" ? run.lastWords : undefined;
+      if (said !== undefined && entry.message?.kind === "ask")
+        yield* markAnswer(conversationId, id, said.itemId, entry.message.from, ownerUserId);
+      yield* settle(id, end, said === undefined ? undefined : answerWordsOf(said.text));
     }).pipe(
       Effect.catchTags({
         ViewUnreadable: () => Effect.void,

@@ -23,8 +23,10 @@ const allowedDuringUpdate = (tag: CommandTag): boolean => {
     case "Recovered":
     case "BindLease":
     case "UnbindLease":
-    // An answer to another Mate's message heard elsewhere: bookkeeping, never new work.
+    // An answer to another Mate's message heard elsewhere, or the mark on one sent: bookkeeping,
+    // never new work.
     case "ForgetMateAnswer":
+    case "MarkMateAnswer":
       return true;
     default:
       return false;

@@ -24,7 +24,9 @@ import type {
   EffectOutcome,
   ItemActor,
   ItemBody,
+  ItemId,
   KnownEngineEvent,
+  MateMessageFrom,
   MateMessageItem,
   MateTaskMessage,
   MateTaskSource,
@@ -358,6 +360,16 @@ export type Command =
    * where it did not open here (`MateAnswerHeard`); nothing where it no longer waits on it.
    */
   | { readonly _tag: "ForgetMateAnswer"; readonly messageId: string }
+  /**
+   * The Zerops side's: the note that went back as the answer to another Mate's message, and that
+   * Mate: a `mate.answer` marker, so every client draws the note as addressed to it.
+   */
+  | {
+      readonly _tag: "MarkMateAnswer";
+      readonly messageId: string;
+      readonly itemId: ItemId;
+      readonly to: MateMessageFrom;
+    }
   /**
    * A lease ended — released, lost, no longer held, or acquired again by another conversation: the
    * conversation's is unbound when it is `ended`.
