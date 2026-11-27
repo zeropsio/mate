@@ -18,12 +18,14 @@ function PopoverTrigger({ className, children, ...props }: PopoverPrimitive.Trig
 }
 
 // Popovers hold prose and forms, so a width is fixed rather than a minimum,
-// and every width is capped to the viewport.
+// and every width is capped to the viewport. `xl` holds a list of rows that each end in an
+// action (the menu's Needs you), whose words need the room beside it.
 const popoverPopupWidthClassName = {
   auto: "",
   sm: "w-64",
   md: "w-80",
   lg: "w-96",
+  xl: "w-112",
 } as const;
 
 // The inset around the content. "compact" suits dense content (a list, a code excerpt, a
