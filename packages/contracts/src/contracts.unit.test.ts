@@ -242,7 +242,7 @@ it("CT6: A usage identity with an unpaired surrogate is refused, so HQ is never 
 });
 
 // witness: packages/contracts/src/engine.ts | task: Schema.optionalKey(ItemTaskSource), → task: Schema.optionalKey(MateTaskSource),
-it("CT+1: A person's message carrying a task whose source kind a newer build added is read with that task as unknown, while a known source with a broken payload drops the message alone; breaks: an older tab drops a task's whole message, the person's words with it", () => {
+it("CT8: A person's message carrying a task whose source kind a newer build added is read with that task as unknown, while a known source with a broken payload drops the message alone; breaks: an older tab drops a task's whole message, the person's words with it", () => {
   const decode = Schema.decodeUnknownExit(EngineConversationFrame);
   const person = (n: number, task: unknown) => ({
     id: itemId(run, n),

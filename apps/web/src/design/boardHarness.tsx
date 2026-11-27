@@ -2,7 +2,8 @@
  * The Board in a conversation: Send's split with **Put on board**, the board ask card from the
  * proposal to the task it becomes (its row following the task: queued, in progress by the pool or
  * a person's Mate, asking its putter with the answer field, up for review, merged, stopped), and a
- * taken task's own chat — its header with Done and Release, and its card saying where it came from.
+ * taken task's own chat — its header with Done and Release, and its card saying where it came from
+ * (a conversation, or the Board itself).
  *
  * Served by the dev server at `/design-board.html` (`?theme=dark`; `?state=<name>` draws one state
  * alone). Open it at the owner's 1786 × 1000; the column is the conversation's 760 px.
@@ -264,6 +265,8 @@ const TAKEN_SESSION: TaskSession = {
   pullRequest: null,
 };
 const TAKEN_SOURCE: MateTaskSource = { ...SOURCE, putBy: "u-rhea", mateProjectId: "p-moss" };
+/** A task Rhea put on the Board itself (New task): no conversation behind it. */
+const TAKEN_FROM_BOARD: MateTaskSource = { kind: "board", putBy: "u-rhea", title: TITLE };
 
 function Composer({ board }: { readonly board: boolean }) {
   return (
@@ -321,6 +324,23 @@ const STATES: ReadonlyArray<{
           origin={{ words: "Put on board by Rhea in Moss’s chat", onOpen: nothing }}
           session={TAKEN_SESSION}
           task={TAKEN_SOURCE}
+          text={`${TITLE}\n\n${BRIEF}`}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "taken-board",
+    title: "A taken task put on the Board itself: who put it, and no chat to go back to",
+    view: (
+      <div className="grid gap-3">
+        <div className="flex justify-end">
+          <MateTaskStatusView onDone={nothing} onRelease={nothing} session={TAKEN_SESSION} />
+        </div>
+        <MateTaskCardView
+          origin={{ words: "Put on board by Rhea" }}
+          session={TAKEN_SESSION}
+          task={TAKEN_FROM_BOARD}
           text={`${TITLE}\n\n${BRIEF}`}
         />
       </div>

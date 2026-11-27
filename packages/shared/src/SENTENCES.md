@@ -1,4 +1,4 @@
-next: SH20
+next: SH23
 
 - SH1 — A link frame from a newer HQ or Mate is read by the keys this build knows, a frame of an unknown type is passed by, and a known type whose body does not decode is refused
 - SH2 — Projects may be created by Zerops' own flag on the account or by an owner's or admin's role, and by no other role
@@ -18,6 +18,6 @@ next: SH20
 - SH17 — Take is offered on a queued task only to a person with a Mate of their own in the application, never for an automated Mate or another person's, and never on a task already taken or at work; breaks: a person's Take spends a colleague's Mate or the pool's
 - SH18 — A task a person took whose every linked change closed unmerged is still theirs to release, finish or stop, though HQ shows it closed; a task that ended closed offers none of them; breaks: a taken task whose changes all closed is stranded on the Board, or an ended task is released back to the queue
 - SH19 — One card's Put on board names the same request on every send, from any tab or device, and no other card or chat shares it; breaks: a put sent again after a lost answer makes a second task, or a second card's put answers the first card's task
-- SH+1 — Take of a task put on the Board directly is offered only into a person's own Mate whose server reads such a task, while a task put from a conversation is offered into any of theirs that takes the Board; breaks: a Take sends a New task to an older Mate that drops it, or every Mate not yet updated loses Take
-- SH+2 — The person who put a task on the Board directly may stop it and answer it while a pool Mate holds it, as one who put it from a conversation may; breaks: a New task's putter can neither stop nor answer their own task
-- SH+3 — A New task on the Board names one request per draft, the same on every send of it, and no other draft or card shares it; breaks: a second New task is answered with the first one's task, or a draft sent again after a lost answer makes a second task
+- SH20 — Take of a task put on the Board directly is offered only into a person's own Mate whose server reads such a task, while a task put from a conversation is offered into any of theirs that takes the Board; breaks: a Take sends a New task to an older Mate that drops it, or every Mate not yet updated loses Take
+- SH21 — The person who put a task on the Board directly may stop it and answer it while a pool Mate holds it, as one who put it from a conversation may; breaks: a New task's putter can neither stop nor answer their own task
+- SH22 — A New task on the Board names one request per draft, the same on every send of it, and no other draft or card shares it; breaks: a second New task is answered with the first one's task, or a draft sent again after a lost answer makes a second task

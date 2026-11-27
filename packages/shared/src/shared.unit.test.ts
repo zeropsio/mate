@@ -787,7 +787,7 @@ const boardRecord = (patch: Partial<HqAppTask>): HqAppTask => ({
 });
 
 // witness: packages/shared/src/zeropsPermissions.ts | mate.boardProtocol >= task.protocol && → mate.boardProtocol >= 1 &&
-it("SH+1: Take of a task put on the Board directly is offered only into a person's own Mate whose server reads such a task, while a task put from a conversation is offered into any of theirs that takes the Board; breaks: a Take sends a New task to an older Mate that drops it, or every Mate not yet updated loses Take", () => {
+it("SH20: Take of a task put on the Board directly is offered only into a person's own Mate whose server reads such a task, while a task put from a conversation is offered into any of theirs that takes the Board; breaks: a Take sends a New task to an older Mate that drops it, or every Mate not yet updated loses Take", () => {
   const mates = [
     { projectId: "mate-old", ownerUserId: "ana", automated: false, boardProtocol: 1 },
     { projectId: "mate-new", ownerUserId: "ana", automated: false, boardProtocol: 2 },
@@ -826,7 +826,7 @@ it("SH+1: Take of a task put on the Board directly is offered only into a person
 });
 
 // witness: packages/shared/src/hqIntake.ts | task.source?.kind === "conversation" || task.source?.kind === "board" → task.source?.kind === "conversation"
-it("SH+2: The person who put a task on the Board directly may stop it and answer it while a pool Mate holds it, as one who put it from a conversation may; breaks: a New task's putter can neither stop nor answer their own task", () => {
+it("SH21: The person who put a task on the Board directly may stop it and answer it while a pool Mate holds it, as one who put it from a conversation may; breaks: a New task's putter can neither stop nor answer their own task", () => {
   const task = boardTaskOf(
     boardRecord({
       state: "waiting",
@@ -848,7 +848,7 @@ it("SH+2: The person who put a task on the Board directly may stop it and answer
 });
 
 // witness: packages/shared/src/hqIntake.ts | ? `board\n${card}` → ? "board"
-it("SH+3: A New task on the Board names one request per draft, the same on every send of it, and no other draft or card shares it; breaks: a second New task is answered with the first one's task, or a draft sent again after a lost answer makes a second task", () => {
+it("SH22: A New task on the Board names one request per draft, the same on every send of it, and no other draft or card shares it; breaks: a second New task is answered with the first one's task, or a draft sent again after a lost answer makes a second task", () => {
   const first = boardPutRequestId(undefined, "draft-1");
   expect({
     again: boardPutRequestId(undefined, "draft-1") === first,

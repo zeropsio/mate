@@ -28,6 +28,7 @@ import {
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
 import { boardOf, type BoardContext } from "~/components/zerops/projectAutomation/taskBoard.logic";
+import { NewBoardTaskView } from "~/components/zerops/projectAutomation/NewBoardTask";
 import { boardTaskOffer, type BoardTaskOffer } from "@t3tools/client-runtime/data";
 import { boardTaskOf, type HqAppTask } from "@t3tools/shared/hqIntake";
 import type { BoardMate, PermissionFacts } from "@t3tools/shared/zeropsPermissions";
@@ -414,6 +415,57 @@ const WISHLIST = task({
   takenAt: ago(DAY),
   changes: [{ repo: "shop", number: 47 }],
 });
+/** Tasks people put on the Board itself (New task): who put them, and no conversation behind. */
+const putOnBoard = (putBy: string, title: string) => ({
+  label: "the Board",
+  url: null,
+  requestedBy: null,
+  source: { kind: "board" as const, putBy, title },
+});
+const LABELS = task({
+  id: "60",
+  title: "Print care labels for every pot",
+  state: "queued",
+  position: 1,
+  createdAt: ago(6),
+  link: null,
+  ...putOnBoard(RHEA, "Print care labels for every pot"),
+  taker: null,
+});
+const PICKUP = task({
+  id: "61",
+  title: "Let people pick their order up at the greenhouse",
+  state: "waiting",
+  mate: by(SOL),
+  startedAt: ago(26),
+  spentUsd: 0.38,
+  workedMs: 9 * 60_000,
+  detail: "Should pick-up orders be paid at checkout, or at the greenhouse?",
+  ...putOnBoard(ME, "Let people pick their order up at the greenhouse"),
+  taker: { kind: "pool", mateProjectId: SOL.projectId },
+});
+const RETURNS = task({
+  id: "62",
+  title: "Explain the returns policy on the checkout page",
+  state: "taken",
+  createdAt: ago(2 * DAY),
+  link: null,
+  ...putOnBoard(ME, "Explain the returns policy on the checkout page"),
+  taker: { kind: "person", userId: RHEA, mateProjectId: "p-moss" },
+  takenAt: ago(5 * HOUR),
+});
+/** A Board holding tasks put on it directly beside one put from a conversation. */
+const DIRECT_TASKS: ReadonlyArray<HqAppTask> = [
+  LABELS,
+  { ...GIFT_WRAP, position: 2 },
+  RETURNS,
+  PICKUP,
+  PRICE,
+];
+const DIRECT_LIVE = new Map([
+  ["61", { id: "61", title: PICKUP.title, url: null, waiting: true as const }],
+]);
+
 /** The whole Board: a task in every lane, put from conversations and taken by people. */
 const BOARD_TASKS: ReadonlyArray<HqAppTask> = [
   GIFT_WRAP,
@@ -502,11 +554,31 @@ const STATES: ReadonlyArray<{
   readonly title: string;
   readonly view: ReactNode;
 }> = [
+  ...(["rest", "open", "putting", "refused"] as const).map((state) => ({
+    id: state === "rest" ? "new-task" : `new-task-${state}`,
+    title: {
+      rest: "An empty Board: New task first, then the automated Mates and where tasks come from",
+      open: "New task focused: its brief and Put on board opened in place",
+      putting: "New task put: HQ asked, the field held until the Board holds the task",
+      refused: "New task refused: said in place, the draft kept",
+    }[state],
+    view: (
+      <Automation
+        admin={ADMIN}
+        board={board([], "$0.00 of $50")}
+        newTask={<NewTask state={state} />}
+        onOpenMate={nothing}
+        pool={[]}
+        sources={SOURCES(0)}
+        workingOf={working()}
+      />
+    ),
+  })),
   {
     id: "board",
     title: "The Board: put from conversations, taken by people, every lane (Mara, an Owner, reads)",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board(BOARD_TASKS, "$9.12 of $50", { live: BOARD_LIVE })}
         onOpenMate={nothing}
@@ -517,10 +589,39 @@ const STATES: ReadonlyArray<{
     ),
   },
   {
+    id: "board-direct",
+    title:
+      "Tasks put on the Board itself: by whom, no way back; Take only into Lark, whose server reads them",
+    view: (
+      <Automation
+        admin={ADMIN}
+        board={board(DIRECT_TASKS, "$4.20 of $50", { live: DIRECT_LIVE })}
+        onOpenMate={nothing}
+        pool={[on(SOL, PICKUP.title, true), PIM]}
+        sources={SOURCES(0)}
+        workingOf={working()}
+      />
+    ),
+  },
+  {
+    id: "board-answer",
+    title: "A direct put waiting on you: its question and your answer in its row",
+    view: (
+      <Automation
+        admin={ADMIN}
+        board={board([LABELS, PICKUP], "$4.20 of $50", { live: DIRECT_LIVE })}
+        onOpenMate={nothing}
+        pool={[on(SOL, PICKUP.title, true), PIM]}
+        sources={SOURCES(0)}
+        workingOf={working()}
+      />
+    ),
+  },
+  {
     id: "board-member",
     title: "The Board as a member reads it: Take into her one Mate, Stop only on her own",
     view: (
-      <ProjectAutomationView
+      <Automation
         board={board(BOARD_TASKS, "$9.12 of $50", {
           live: BOARD_LIVE,
           role: "BASIC_USER",
@@ -537,7 +638,7 @@ const STATES: ReadonlyArray<{
     id: "board-presses",
     title: "Presses: a Take under way, a Take whose conversation did not open, a Stop asking",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board(BOARD_TASKS, "$9.12 of $50", {
           live: BOARD_LIVE,
@@ -562,7 +663,7 @@ const STATES: ReadonlyArray<{
     id: "board-no-pool",
     title: "A Board with no automated Mates: people put and take its tasks",
     view: (
-      <ProjectAutomationView
+      <Automation
         board={board([GIFT_WRAP, REPOT, STALE, WISHLIST], "$0.00 of $50", {
           live: new Map(),
           role: "BASIC_USER",
@@ -578,7 +679,7 @@ const STATES: ReadonlyArray<{
     id: "idle",
     title: "Idle: nothing queued, a few finished",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board([SORT, IMAGES, GUIDES], "$6.44 of $50")}
         onOpenMate={nothing}
@@ -592,7 +693,7 @@ const STATES: ReadonlyArray<{
     id: "busy",
     title: "At work: one Mate working, one asking, two tasks queued",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board(BUSY_TASKS, "$7.94 of $50")}
         onOpenMate={nothing}
@@ -606,7 +707,7 @@ const STATES: ReadonlyArray<{
     id: "failed",
     title: "A failure: one task failed, one was stopped, one is up for review",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board([SORT, CATALOGUE, PRICE, RENAME, GUIDES], "$9.74 of $50")}
         onOpenMate={nothing}
@@ -620,7 +721,7 @@ const STATES: ReadonlyArray<{
     id: "long",
     title: "A long list: fourteen finished, five shown until the rest are opened",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board([SEARCH, ...FOURTEEN], "$21.40 of $50")}
         onOpenMate={nothing}
@@ -634,7 +735,7 @@ const STATES: ReadonlyArray<{
     id: "first",
     title: "First run: one Mate, no source yet",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board([], "$0.00 of $50")}
         onOpenMate={nothing}
@@ -648,7 +749,7 @@ const STATES: ReadonlyArray<{
     id: "sources",
     title: "Several sources: seven, one not connected",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board([SORT, IMAGES], "$6.44 of $50")}
         onOpenMate={nothing}
@@ -662,7 +763,7 @@ const STATES: ReadonlyArray<{
     id: "asking",
     title: "Stop pressed: it asks in the row",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board(BUSY_TASKS, "$7.94 of $50", {
           pressOf: (id) => (id === DATES.id ? { kind: "asking" } : { kind: "idle" }),
@@ -678,7 +779,7 @@ const STATES: ReadonlyArray<{
     id: "stopping",
     title: "A task stopping, a queued task's Stop refused",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board(
           BUSY_TASKS.map((each) => (each === DATES ? { ...each, state: "stopping" } : each)),
@@ -701,7 +802,7 @@ const STATES: ReadonlyArray<{
     id: "held",
     title: "A Mate held by its change: HQ gives Wren no task until it is merged or closed",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={board([PRICE, SORT, GUIDES], "$6.71 of $50", {
           live: new Map([["40", { id: "40", title: PRICE.title, url: null, done: true as const }]]),
@@ -718,7 +819,7 @@ const STATES: ReadonlyArray<{
     id: "reading",
     title: "The board while it reads",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={{
           ...board([], "$7.94 of $50"),
@@ -738,7 +839,7 @@ const STATES: ReadonlyArray<{
     id: "unread",
     title: "The board's read failed",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         board={{
           ...board([], "$7.94 of $50"),
@@ -758,7 +859,7 @@ const STATES: ReadonlyArray<{
     id: "empty",
     title: "Nothing set up yet",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         onOpenMate={nothing}
         pool={[]}
@@ -771,7 +872,7 @@ const STATES: ReadonlyArray<{
     id: "disconnected",
     title: "Slack not connected, a source's read failed",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         onOpenMate={nothing}
         pool={[WREN, BO]}
@@ -784,7 +885,7 @@ const STATES: ReadonlyArray<{
     id: "sources-reading",
     title: "Its sources still read",
     view: (
-      <ProjectAutomationView
+      <Automation
         admin={ADMIN}
         onOpenMate={nothing}
         pool={[SOL]}
@@ -797,7 +898,7 @@ const STATES: ReadonlyArray<{
     id: "member",
     title: "A member reads it",
     view: (
-      <ProjectAutomationView
+      <Automation
         board={board(BUSY_TASKS, "$7.94 of $50", {
           role: "BASIC_USER",
           mates: MATES.filter((mate) => mate.ownerUserId !== ME),
@@ -962,6 +1063,41 @@ function DialogFor({ kind }: { readonly kind: SourceKind }) {
         <AppSchedulesView controls={controls(known([SCHEDULE]))} name="Tea Shop" />
       )}
     </SourceDialog>
+  );
+}
+
+/** The section as the product draws it: New task at rest leads it, unless a state draws its own. */
+function Automation(props: Parameters<typeof ProjectAutomationView>[0]) {
+  return <ProjectAutomationView newTask={<NewTask state="rest" />} {...props} />;
+}
+
+/** New task, the Board's first line, in each state it is looked at in. */
+type NewTaskState = "rest" | "open" | "putting" | "refused";
+function NewTask({ state }: { readonly state: NewTaskState }) {
+  const drafted = state === "putting" || state === "refused";
+  return (
+    <NewBoardTaskView
+      brief={
+        drafted
+          ? "Let a shopper choose pick-up at the greenhouse at checkout, with no delivery fee.\n\nIt's done when the choice shows under the delivery options, the order confirmation names the greenhouse's address and opening hours, and the order export marks pick-up orders."
+          : ""
+      }
+      onBrief={nothing}
+      onCancel={nothing}
+      onLeave={nothing}
+      onOpen={nothing}
+      onPut={nothing}
+      onTitle={nothing}
+      open={state !== "rest"}
+      put={
+        state === "putting"
+          ? { kind: "working", verb: "task-put" }
+          : state === "refused"
+            ? { kind: "failed", words: "HQ is not answering right now." }
+            : { kind: "idle" }
+      }
+      title={state === "rest" ? "" : "Let people pick their order up at the greenhouse"}
+    />
   );
 }
 

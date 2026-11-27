@@ -20,13 +20,14 @@ import { releaseNotCreatedWords } from "@t3tools/client-runtime/zerops/flow";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
   ProjectAutomationView,
   type AutomationControls,
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
+import { NewBoardTaskView } from "~/components/zerops/projectAutomation/NewBoardTask";
 import type { SourceRow } from "~/components/zerops/projectAutomation/projectAutomation.logic";
 import { boardOf, boardWaitingCount } from "~/components/zerops/projectAutomation/taskBoard.logic";
 import type { AccessTableView } from "~/components/zerops/projects/accessTable.logic";
@@ -888,11 +889,44 @@ function PageAccess() {
   );
 }
 
-/** The project's whole Automation section, as its row's *Manage* opens it. */
+/** The Board's New task, its draft kept in the page: nothing is put. */
+function PageNewTask() {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [brief, setBrief] = useState("");
+  return (
+    <NewBoardTaskView
+      brief={brief}
+      onBrief={setBrief}
+      onCancel={() => {
+        setTitle("");
+        setBrief("");
+        setOpen(false);
+      }}
+      onLeave={() => {
+        setOpen(false);
+      }}
+      onOpen={() => {
+        setOpen(true);
+      }}
+      onPut={nothing}
+      onTitle={(typed) => {
+        setTitle(typed);
+        setOpen(true);
+      }}
+      open={open}
+      put={{ kind: "idle" }}
+      title={title}
+    />
+  );
+}
+
+/** The project's Board section, as its page draws it: New task first. */
 function PageAutomation({ groupId }: { readonly groupId: string }) {
   return (
     <ProjectAutomationView
       admin={ADMIN}
+      newTask={<PageNewTask />}
       board={
         groupId === "acme-store"
           ? {
