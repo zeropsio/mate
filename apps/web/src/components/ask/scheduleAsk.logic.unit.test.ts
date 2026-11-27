@@ -16,7 +16,7 @@ const requestOf = (fields: Record<string, unknown>) => {
 };
 
 // witness: apps/web/src/components/ask/scheduleAsk.logic.ts | `${match[1]!.padStart(2, "0")}:${match[2]!}` → `${match[1]!}:${match[2]!}`
-it("AK+1: A schedule ask proposes the schedule its fence names, its weekday and its clock as HQ counts them and its zone the Mate's or else the person's, and a fence with no brief, a cadence HQ has not, a week with no day or a time off the clock proposes none; breaks: the card offers a schedule HQ refuses, or makes one on another day or at another time than the Mate proposed", () => {
+it("AK1: A schedule ask proposes the schedule its fence names, its weekday and its clock as HQ counts them and its zone the Mate's or else the person's, and a fence with no brief, a cadence HQ has not, a week with no day or a time off the clock proposes none; breaks: the card offers a schedule HQ refuses, or makes one on another day or at another time than the Mate proposed", () => {
   expect(requestOf({ every: "day", at: "3:00" })).toEqual({
     name: "Nightly dependency update",
     brief: "Update the dependencies, run the tests, and open a change when they pass.",
