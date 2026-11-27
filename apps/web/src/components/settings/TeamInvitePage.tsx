@@ -4,13 +4,12 @@
  * where it has none); their role, each card saying what it can do; the projects they get — the one
  * the invitation was opened from, or the organization's only one, already picked — at Full or Read,
  * asked only once a project is picked; then *Invite*. A press has the person confirm it's them in
- * Zerops where their session needs it, asks Zerops who the address is and starts the invitation at
- * HQ, which sends it whatever becomes of this tab, saying a refusal beside it; once HQ took it the
+ * Zerops where their session needs it, then starts the invitation at HQ, which checks the address
+ * and sends it whatever becomes of this tab, saying a refusal beside it; once HQ took it the
  * page goes back to the team, where a toast says it is on its way and their row grows in — the name
  * typed kept for that row until they join.
  */
 import { useRouter, useSearch } from "@tanstack/react-router";
-import type { InviteeCheck } from "@t3tools/client-runtime/data";
 import { presetMembership, type OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
 import { useEffect, useId, useState } from "react";
 
@@ -34,12 +33,12 @@ import {
   addressProblem,
   INVITE_UNCONFIRMED,
   inviteGrants,
+  invitationChange,
   inviteLevels,
   invitePreselect,
   inviteReachLine,
   nameProblem,
   noPickLine,
-  teamInviteStep,
   type InviteLevel,
   type InviteProject,
 } from "./teamMember.logic";
@@ -50,13 +49,12 @@ import { SectionHeader } from "../ui/section";
 export interface TeamInviteActions {
   /** Zerops' confirmation that it's them, which an invitation needs; run first, from the press. */
   readonly confirm: () => Promise<"confirmed" | "cancelled">;
-  readonly check: (email: string) => Promise<InviteeCheck>;
   readonly send: (input: {
     readonly email: string;
     /** The name typed, as the team shows them until they join. */
     readonly name: string;
     /** The names Zerops makes an account with, for an address that has none. */
-    readonly names?: { readonly firstName: string; readonly lastName: string };
+    readonly names: { readonly firstName: string; readonly lastName: string };
     readonly membership: OrgMembership;
     readonly grants: ReturnType<typeof inviteGrants>;
   }) => Promise<void>;
@@ -134,19 +132,10 @@ export function TeamInviteView({
         setTrouble(INVITE_UNCONFIRMED);
         return;
       }
-      // Who the address is decides only how Zerops is asked; the page says nothing of it.
-      const known = await actions.check(address);
-      const step = teamInviteStep(address, known, organizationName);
-      if ("problem" in step) {
-        setAddressTrouble(step.problem);
-        return;
-      }
       await actions.send({
         email: address,
         name: `${first.trim()} ${last.trim()}`,
-        ...(known.kind === "existing"
-          ? {}
-          : { names: { firstName: first.trim(), lastName: last.trim() } }),
+        names: { firstName: first.trim(), lastName: last.trim() },
         membership,
         grants: level === null ? [] : inviteGrants({ projects, picked, level }),
       });
@@ -320,23 +309,16 @@ export function TeamInvitePage() {
   const router = useRouter();
   const { project: from } = useSearch({ from: "/settings/team_/invite" });
   const team = useTeam();
-  const { clientId, startAccessChange, sudoAhead, check } = team;
+  const { clientId, startAccessChange, sudoAhead } = team;
   // The team is where this page leads back to: its code is fetched ahead, so it paints at once.
   useEffect(() => {
     void router.preloadRoute({ to: "/settings/team" }).catch(() => undefined);
   }, [router]);
   const actions: TeamInviteActions = {
     confirm: sudoAhead,
-    check,
     send: async ({ email, name, names, membership, grants }) => {
       if (clientId === null) throw new Error("Zerops isn't reachable from here.");
-      await startAccessChange({
-        kind: "invite",
-        email,
-        ...(names === undefined ? {} : { names }),
-        membership,
-        ...(grants.length === 0 ? {} : { grants }),
-      });
+      await startAccessChange(invitationChange({ email, names, membership, grants }));
       // Zerops lists the invitation by its address until they join: the typed name stands in.
       rememberInvitedName(clientId, email, name);
     },

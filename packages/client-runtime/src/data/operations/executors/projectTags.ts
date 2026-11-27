@@ -1,16 +1,10 @@
 /**
  * The sole project-record writer: serialized per project across this browser's tabs, based on
- * a fresh platform read. Zerops owns the name; only the Mate marker is written to tags, beside the
- * project's own.
+ * a fresh platform read. A rename puts the project's own tags back as read.
  * One PUT and one read-back: a concurrent replacement fails visibly for a manual Again.
  */
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { ZeropsProject } from "../../../zerops/api/project.ts";
-import {
-  applyProjectTagPatch,
-  sameProjectTags,
-  type ProjectTagPatch,
-} from "../../../zerops/data/tagPatch.ts";
 interface ProjectTagWriteError {
   readonly _tag: "ZeropsProjectTagWriteError";
   readonly kind: "rejected";
@@ -36,7 +30,6 @@ export type ProjectTagWrite =
   | { readonly kind: "unchanged"; readonly project: ZeropsProject };
 
 export interface ProjectTagWriter {
-  readonly write: (projectId: string, patch: ProjectTagPatch) => Promise<ProjectTagWrite>;
   /**
    * Names the project `name`, its tags put back as a fresh read holds them. With `from`, only a
    * project that is still named so: one renamed since is refused before anything is written.
@@ -97,16 +90,6 @@ export function makeProjectTagWriter(options: {
     locks.request(projectTagsLockName(projectId), run);
 
   return {
-    write: (projectId, patch) =>
-      serialized(projectId, async () => {
-        const project = await source.fetchProject(projectId);
-        const next = applyProjectTagPatch(project.tagList ?? [], patch);
-        if (sameProjectTags(next, project.tagList ?? [])) return { kind: "unchanged", project };
-        await source.writeProject(project, { name: project.name, tagList: next });
-        const confirmed = await source.fetchProject(projectId);
-        if (!sameProjectTags(confirmed.tagList ?? [], next)) throw replacedTooOften("tags");
-        return { kind: "written", project: confirmed };
-      }),
     rename: (projectId, name, writeOptions = {}) =>
       serialized(projectId, async () => {
         const { from } = writeOptions;

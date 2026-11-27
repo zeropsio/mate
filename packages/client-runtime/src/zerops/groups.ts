@@ -54,17 +54,6 @@ import type { ZeropsProject } from "./api/project.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 
-/** Namespace every tag this product writes shares, so nothing collides with a user's own tags. */
-export const MATE_TAG_NAMESPACE = "mate";
-
-/**
- * The marker: this project has a Mate, for the Zerops GUI. The bare namespace
- * word, so the GUI shows a project's one-word answer beside its longer tags and
- * a tag filter on `mate` lists the Mates. Written when a Mate is set up; Mate
- * itself reads a Mate's existence from HQ's placement, never from the tag.
- */
-export const MATE_MARKER_TAG = MATE_TAG_NAMESPACE;
-
 /**
  * What an environment is for, as HQ places its project (`ROLE_OF_KIND`). Four values rather than
  * two so a group can say "this one is both my dev box and what I show people" without inventing a
@@ -205,27 +194,6 @@ export function renamedProjectName(
  */
 export function changedMateFace(worn: ZeropsMateFaceTag | undefined, face: ZeropsMateFace): string {
   return formatMateFace(face, { named: worn?.tint === undefined || worn.named === true });
-}
-
-/**
- * Declares the Mate for the Zerops GUI: the marker added to the project's own tags — a plain
- * project its person tagged keeps them (Set up Mate) — and the obsolete `mate:*` metadata tags an
- * earlier client wrote on a Mate dropped, as HQ holds that metadata now. Idempotent, so every path
- * that stands a Mate up — the wizard, "Add dev" with an agent, "Set up Mate" — can write it without
- * checking first.
- */
-export function withZeropsMateTag(
-  tagList: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> {
-  const own = (tagList ?? []).filter(
-    (tag) => tag !== MATE_MARKER_TAG && !tag.startsWith(`${MATE_MARKER_TAG}:`),
-  );
-  const next = [...own, MATE_MARKER_TAG];
-  return tagList !== undefined &&
-    tagList.length === next.length &&
-    next.every((tag) => tagList.includes(tag))
-    ? tagList
-    : next;
 }
 
 export type CanonicalGroupEnvironment =

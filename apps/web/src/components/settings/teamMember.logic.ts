@@ -2,7 +2,7 @@
  * One person on the team, as their own page and the invitation edit them — the shapes legacy
  * Zerops draws: four role cards (*Role preset*) and *Advanced* (a Zerops role and three flags);
  * then *Project access*, the projects whose own level for them differs from what their role gives,
- * as chips, and a picker that adds more; and the address checked before an invitation.
+ * as chips, and a picker that adds more; and an invitation's change sent to HQ.
  *
  * Projects are named the way Mate names them — the Mate project, then the place: "Snap ·
  * production" — never by Zerops's raw tags. A Chief is one person's own Mate for the whole
@@ -10,7 +10,7 @@
  *
  * Pure: the member, the viewer's role and the projects arrive read.
  */
-import type { InviteeCheck } from "@t3tools/client-runtime/data";
+import type { HqAccessChange } from "@t3tools/client-runtime/zerops/hq";
 import { nameUnderApp, zeropsRoleWords } from "@t3tools/client-runtime/zerops";
 import type { ProjectAccessRole } from "@t3tools/client-runtime/zerops/projectAccess";
 import {
@@ -423,30 +423,20 @@ export function nameProblem(first: string, last: string): string | null {
   return first.trim() === "" || last.trim() === "" ? "Enter their first and last name." : null;
 }
 
-/** "Adding <e-mail>": a new account is named first; someone with an account is not. */
-interface TeamInviteStep {
-  readonly step: "details";
+/** An invitation always carries the typed names; HQ decides whether the account needs them. */
+export function invitationChange(input: {
   readonly email: string;
-  readonly existing: string | null;
-}
-
-/**
- * Where an invitation goes once Zerops said who the address is: on to "Adding <e-mail>", or — for
- * an address already in the organization — nowhere, the e-mail field saying why.
- */
-export function teamInviteStep(
-  email: string,
-  answer: InviteeCheck,
-  organizationName: string,
-): TeamInviteStep | { readonly problem: string } {
-  switch (answer.kind) {
-    case "existing":
-      return { step: "details", email, existing: answer.userId };
-    case "new":
-      return { step: "details", email, existing: null };
-    case "member":
-      return { problem: `${email} is in ${organizationName} already.` };
-  }
+  readonly names: { readonly firstName: string; readonly lastName: string };
+  readonly membership: OrgMembership;
+  readonly grants: ReturnType<typeof inviteGrants>;
+}): Extract<HqAccessChange, { readonly kind: "invite" }> {
+  return {
+    kind: "invite",
+    email: input.email,
+    names: input.names,
+    membership: input.membership,
+    ...(input.grants.length === 0 ? {} : { grants: input.grants }),
+  };
 }
 
 /** One project an invitation gives: a Mate project whole, or a Zerops project outside any. */

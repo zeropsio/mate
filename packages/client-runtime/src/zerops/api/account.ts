@@ -2,7 +2,6 @@
  * and the reads of an organization's members: one resource of `../api.ts`'s client. */
 
 import type { ZeropsUserId } from "@t3tools/contracts";
-import { ZeropsApiError } from "../errors.ts";
 import type { ZeropsDoor } from "../api.ts";
 import type { ZeropsApp } from "../app.ts";
 
@@ -90,37 +89,6 @@ export interface ZeropsOrganizationMember {
 export interface ZeropsOrganizationInvitation {
   readonly id: string;
   readonly name: string;
-}
-
-/**
- * `POST /client/{id}/user/validate` — who an address is to the organization before it is
- * invited: an existing Zerops account (its user id) or a new one. Changes nothing. An address
- * already a member, or invited, is refused `userAlreadyConnectedToCompany`; anyone but an owner
- * or an admin is refused 403 (measured 2026-10-14).
- */
-export async function validateOrganizationUser(
-  door: ZeropsDoor,
-  clientId: string,
-  email: string,
-  beforeWrite?: () => Promise<void>,
-): Promise<{ readonly kind: "existing"; readonly userId: string } | { readonly kind: "new" }> {
-  try {
-    const answer = await door<{ readonly id?: unknown }>(
-      `/client/${clientId}/user/validate`,
-      { method: "POST", body: JSON.stringify({ email }) },
-      {
-        operationKind: "read",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (typeof answer.id !== "string" || answer.id.length === 0)
-      throw new ZeropsApiError("Zerops didn't say whose that address is.", "unexpected");
-    return { kind: "existing", userId: answer.id };
-  } catch (cause) {
-    if (cause instanceof ZeropsApiError && cause.code === "userAccountNotFound")
-      return { kind: "new" };
-    throw cause;
-  }
 }
 
 /**

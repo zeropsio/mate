@@ -1,9 +1,5 @@
 import { admitPlatformOperation } from "./platformAdmission.ts";
-import {
-  validateOrganizationUser,
-  listOrganizationMembers,
-  type ZeropsOrganization,
-} from "../../../zerops/api/account.ts";
+import type { ZeropsOrganization } from "../../../zerops/api/account.ts";
 /**
  * Zerops as an operation's owner, over the account's REST client: each Zerops kind's executor,
  * picked by the intent's kind. Zerops keeps no request ids, so a lost answer is resolved by the
@@ -60,11 +56,7 @@ import type { OperationExecutor } from "../coordinator.ts";
 import { createServicesExecutor } from "./creationWrites.ts";
 import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
-import {
-  renameProjectExecutor,
-  startProjectExecutor,
-  updateProjectTagsExecutor,
-} from "./projectWrites.ts";
+import { renameProjectExecutor, startProjectExecutor } from "./projectWrites.ts";
 import {
   deleteServiceExecutor,
   enableSubdomainAccessExecutor,
@@ -73,7 +65,6 @@ import {
 } from "./serviceWrites.ts";
 import { cancelBuildExecutor } from "./pipelineWrites.ts";
 import { addressWritesExecutor, type AddressPlatform } from "./addressWrites.ts";
-import { appAccessExecutor, type AppAccessPlatform } from "./appAccess.ts";
 import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "./vaultWrites.ts";
 
 type ZeropsOperationsClient = Pick<
@@ -115,7 +106,6 @@ export function makeZeropsExecutor(input: {
     AddressPlatform &
     Parameters<typeof enableSubdomainAccessExecutor>[0] &
     ServiceLifecycle &
-    AppAccessPlatform &
     Pick<Parameters<typeof createServicesExecutor>[0], "importServicesIntoProject">;
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
@@ -147,7 +137,6 @@ export function makeZeropsExecutor(input: {
     });
     const tags = makeProjectTagWriter({ source: client, locks: tagLocks });
     const rename = renameProjectExecutor(tags);
-    const retag = updateProjectTagsExecutor(tags);
     const vault = vaultWriteExecutor(client);
     const restartOne = serviceRestartExecutor({
       restartService: (serviceId) => client.restartService(serviceId),
@@ -163,10 +152,6 @@ export function makeZeropsExecutor(input: {
       updatePublicPortRouting: (id, port) => client.updatePublicPortRouting(id, port),
       deletePublicPortRouting: (id) => client.deletePublicPortRouting(id),
       requestProjectPublicIp: (projectId) => client.requestProjectPublicIp(projectId),
-    });
-    const people = appAccessExecutor({
-      validateOrganizationUser: (orgId, email) => client.validateOrganizationUser(orgId, email),
-      listOrganizationMembers: (orgId) => client.listOrganizationMembers(orgId),
     });
     return {
       submit: (requestId, intent) =>
@@ -190,8 +175,6 @@ export function makeZeropsExecutor(input: {
               return startAll(requestId, intent);
             case "rename-project":
               return rename(requestId, intent);
-            case "update-project-tags":
-              return retag(requestId, intent);
             case "create-services":
               return createMissing(requestId, intent);
             case "vault-write":
@@ -214,8 +197,6 @@ export function makeZeropsExecutor(input: {
               return addresses.closePort(requestId, intent);
             case "request-ipv4":
               return addresses.requestIpv4(requestId, intent);
-            case "check-invitee":
-              return people.check(requestId, intent);
             default:
               // HQ's own writes go to HQ's executor; the coordinator never routes one here.
               return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
@@ -305,9 +286,6 @@ export function makeZeropsExecutor(input: {
         deletePublicPortRouting: (id) => deletePublicPortRouting(source.door, id, undefined, check),
         requestProjectPublicIp: (id) => requestProjectPublicIp(source.door, id, undefined, check),
         fetchProject: (...args) => source.fetchProject(...args),
-        listOrganizationMembers: (orgId) => listOrganizationMembers(source.door, orgId),
-        validateOrganizationUser: (orgId, email) =>
-          validateOrganizationUser(source.door, orgId, email, check),
       };
       return admission().pipe(
         Effect.mapError((fault) => ({ ...fault, writeNotSent: true as const })),

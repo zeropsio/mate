@@ -177,17 +177,6 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     },
     [operations],
   );
-  const check = useCallback(
-    (email: string) => {
-      if (operations === null || clientId === null)
-        return Promise.reject(new Error("Zerops isn't reachable from here."));
-      return operations.run(
-        { kind: "check-invitee", orgId: clientId, email },
-        { orgId: clientId, unobserved: "Zerops isn't answering. Try again." },
-      );
-    },
-    [clientId, operations],
-  );
 
   /**
    * Starts one person's access change at HQ (`start-access-changes`), under an id chosen here:
@@ -250,7 +239,6 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     invitable,
     writable: operations !== null && clientId !== null,
     write,
-    check,
     startAccessChange,
     sudoAhead,
     continueAccessChange,

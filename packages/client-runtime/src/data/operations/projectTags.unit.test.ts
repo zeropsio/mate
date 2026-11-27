@@ -3,8 +3,8 @@ import type { ZeropsProject } from "../../zerops/api/project.ts";
 import { makeProjectTagWriter } from "./executors/projectTags.ts";
 
 // witness: packages/client-runtime/src/data/operations/executors/projectTags.ts | source.writeProject(project, { name, tagList: project.tagList ?? [] }) → source.writeProject(project, { name, tagList: [] })
-it("OP12: A rename and a tag write to one project never undo each other", async () => {
-  let project: ZeropsProject = { id: "p1", name: "One", status: "ACTIVE", tagList: [] };
+it("OP12: A project rename preserves the tags it read", async () => {
+  let project: ZeropsProject = { id: "p1", name: "One", status: "ACTIVE", tagList: ["person"] };
   const writer = makeProjectTagWriter({
     source: {
       fetchProject: async () => project,
@@ -14,10 +14,6 @@ it("OP12: A rename and a tag write to one project never undo each other", async 
       },
     },
   });
-  const writes = await Promise.allSettled([
-    writer.write("p1", { kind: "mate" }),
-    writer.rename("p1", "Nova"),
-  ]);
-  expect([project.name, project.tagList]).toEqual(["Nova", ["mate"]]);
-  for (const write of writes) if (write.status === "rejected") throw write.reason;
+  await writer.rename("p1", "Nova");
+  expect([project.name, project.tagList]).toEqual(["Nova", ["person"]]);
 });

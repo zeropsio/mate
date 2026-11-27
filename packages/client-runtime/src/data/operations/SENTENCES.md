@@ -8,7 +8,7 @@ next: OP68
 - OP5 — After a lost answer a Zerops operation adopts only one new process that no other operation holds; a process that ran before the send, or two new ones, adopt nothing
 - OP6 — Only a synchronous refusal of the target write proves that Zerops refused it
 - OP7 — After a lost answer a service start adopts only a start running for its own service and is never sent again
-- OP12 — A rename and a tag write to one project never undo each other
+- OP12 — A project rename preserves the tags it read
 - OP13 — A dropped socket or the same boot proves no outcome of a Mate's update
 - OP14 — A press answered during a reboot waits for the boot after the one that answered
 - OP22 — A queued Zerops write rechecks the account's access after its source read: a closed account or a denied project writes nothing
@@ -40,3 +40,6 @@ next: OP68
 - OP64 — After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.
 - OP65 — An accepted Add is acknowledged as adding, and Stop adding finishes when HQ reopens that change; breaks: an active build is reported as a closed change or a stop acts on another change.
 - OP66 — A birth's End is sent once and a lost answer stays uncertain even when it disappears from navigation; a refusal keeps HQ's words; breaks: a cleanup the maker continued reads as ended or a refused End goes again
+- OP+1 — After a lost answer a service deletion adopts only a deletion running for that service
+- OP+2 — After a lost answer a canceled build is adopted only when its own process says it is canceling
+- OP+3 — After a lost answer opening a subdomain is adopted only when that service is open

@@ -72,21 +72,8 @@ export interface FakeZeropsRest {
   readonly projectsOf: (clientId: string) => ReadonlyArray<ZeropsProject>;
   /** Whether the person belongs to the organization, the check every organization read makes. */
   readonly memberOf: (userId: string, clientId: string) => boolean;
-  /** Every integration token minted, in minting order, with the bearers that touched it. */
-  readonly integrationTokens: () => ReadonlyArray<FakeIntegrationToken>;
-  /** Minted and never deleted. */
-  readonly orphanTokens: () => ReadonlyArray<FakeIntegrationToken>;
   /** Every request that reached the platform, in arrival order. */
   readonly requests: () => ReadonlyArray<FakeZeropsRequest>;
-}
-
-export interface FakeIntegrationToken {
-  readonly id: string;
-  readonly clientId: string;
-  /** The session access token the mint carried. */
-  readonly mintedWith: string;
-  /** The access token the delete carried, while it is not deleted `null`. */
-  readonly deletedWith: string | null;
 }
 
 /** One held round. Settling it answers what waits and ends the hold. */
@@ -150,7 +137,6 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
   type Answer = (request: FakeZeropsRequest) => Response;
   const holds = new Map<string, Array<(answer: Answer) => void>>();
   const hanging = new Set<string>();
-  const integrationTokens: FakeIntegrationToken[] = [];
   const concurrentTagWrites = new Map<
     string,
     (tags: ReadonlyArray<string>) => ReadonlyArray<string>
@@ -281,46 +267,15 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
       // The whole list, every time: the platform ignores `limit` and `offset` (measured 2026-10-03).
       return json(200, { list: [...tokensOf(tokenList[1]!).values()] });
     }
-    const tokenRecord = /^(GET|PUT) \/client\/([^/]+)\/integration-token\/([^/]+)$/.exec(
-      request.route,
-    );
+    const tokenRecord = /^GET \/client\/([^/]+)\/integration-token\/([^/]+)$/.exec(request.route);
     if (tokenRecord !== null) {
-      const [, method, clientId, tokenId] = tokenRecord;
+      const [, clientId, tokenId] = tokenRecord;
       if (bearer === undefined) return failure(401, "unauthorized");
       if (!memberOf(bearer, clientId)) return failure(403, "forbidden");
       const held = tokensOf(clientId!);
       const current = held.get(tokenId!);
       if (current === undefined) return failure(404, "integrationTokenNotFound");
-      if (method === "GET") return json(200, current);
-      // The platform replaces the record with what the write sent.
-      const { name, roleCode, projects: grants } = request.body as ZeropsIntegrationToken;
-      const updated = { ...current, name, roleCode, projects: grants };
-      held.set(tokenId!, updated);
-      return json(200, updated);
-    }
-    const tokenRoute = /^(POST|DELETE) \/client\/([^/]+)\/integration-token(?:\/([^/]+))?$/.exec(
-      request.route,
-    );
-    if (tokenRoute !== null) {
-      const [, method, clientId, tokenId] = tokenRoute;
-      if (bearer === undefined) return failure(401, "unauthorized");
-      if (!memberOf(bearer, clientId)) return failure(403, "forbidden");
-      if (method === "POST" && tokenId === undefined) {
-        const id = `integration-${integrationTokens.length + 1}`;
-        integrationTokens.push({
-          id,
-          clientId: clientId!,
-          mintedWith: request.token!,
-          deletedWith: null,
-        });
-        return json(200, { id, token: `${id}-value` });
-      }
-      const index = integrationTokens.findIndex(
-        (token) => token.id === tokenId && token.deletedWith === null,
-      );
-      if (method !== "DELETE" || index < 0) return failure(404, "integrationTokenNotFound");
-      integrationTokens[index] = { ...integrationTokens[index]!, deletedWith: request.token! };
-      return json(204, null);
+      return json(200, current);
     }
     switch (request.route) {
       case "POST /auth/login": {
@@ -476,8 +431,6 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     project: (projectId) => projects.get(projectId),
     projectsOf,
     memberOf,
-    integrationTokens: () => [...integrationTokens],
-    orphanTokens: () => integrationTokens.filter(({ deletedWith }) => deletedWith === null),
     failProject: (projectId, status) => {
       if (status === null) projectFailures.delete(projectId);
       else projectFailures.set(projectId, status);

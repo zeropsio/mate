@@ -50,7 +50,6 @@ export {
   nameUnderApp,
   projectNameInApp,
   renamedProjectName,
-  withZeropsMateTag,
   type BirthPlacement,
   type ZeropsEnvironmentRole,
   type ZeropsGroupPendingMember,

@@ -1,9 +1,6 @@
 /**
- * The write half of {@link ./zeropsApiRead.ts}: one authenticated `POST`,
- * one authenticated `DELETE`, against the same Zerops REST API, sharing that
- * module's failure vocabulary. Kept separate from `zeropsApiRead.ts` because
- * that module's own header scopes itself to reads; every write this server
- * makes goes through here instead.
+ * Authenticated JSON `POST`s (writes and searches) and `DELETE`s against the
+ * Zerops REST API, sharing {@link ./zeropsApiRead.ts}'s failure vocabulary.
  *
  * A token is a parameter and a request header. It is never stored, logged,
  * annotated onto a span, or carried in a failure payload.

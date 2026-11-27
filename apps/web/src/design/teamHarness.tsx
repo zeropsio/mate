@@ -263,7 +263,6 @@ function Page() {
       <TeamInviteView
         actions={{
           confirm: answered("confirmed" as const),
-          check: answered({ kind: "new" }),
           send: answered(undefined),
         }}
         from={params.get("from") ?? (details ? "g-snap" : undefined)}

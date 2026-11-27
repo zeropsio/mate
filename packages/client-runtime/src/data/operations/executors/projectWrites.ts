@@ -50,11 +50,3 @@ export function renameProjectExecutor(tags: Pick<ProjectTagWriter, "rename">) {
       answeredReceipt(requestId, { family: "project", id: intent.projectId }),
     );
 }
-
-export function updateProjectTagsExecutor(tags: Pick<ProjectTagWriter, "write">) {
-  return (requestId: string, intent: IntentOf<"update-project-tags">) =>
-    Effect.as(
-      tagWrite(() => tags.write(intent.projectId, intent.patch)),
-      answeredReceipt(requestId, { family: "project", id: intent.projectId }),
-    );
-}

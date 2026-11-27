@@ -28,7 +28,8 @@ import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/http";
 
 import { requestWithMateKey, type ZeropsMateKeyReader } from "./ZeropsMateKey.ts";
-import { readJson, zeropsPost } from "./zeropsApiRead.ts";
+import { readJson } from "./zeropsApiRead.ts";
+import { zeropsPost } from "./zeropsApiWrite.ts";
 
 export const PROJECT_SOCKET_PING_EVERY = Duration.seconds(15);
 export const PROJECT_SOCKET_PONG_DEADLINE = Duration.seconds(8);

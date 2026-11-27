@@ -28,12 +28,6 @@ export function admitPlatformOperation(input: {
         viewer,
       });
     if (viewer === undefined) return yield* refused("Your Zerops access is still being checked.");
-    // Who works on an app: the organization's to decide, by its owners and admins alone.
-    if (intent.kind === "check-invitee") {
-      if (viewer.id !== intent.orgId || !capabilities().manageOrganization)
-        return yield* refused("Only an organization owner or admin can invite.");
-      return;
-    }
     let projectId = "projectId" in intent ? intent.projectId : undefined;
     if (projectId === undefined && "serviceId" in intent) {
       let service = readsOfState(input.store.state()).fact("service", intent.serviceId);

@@ -48,10 +48,8 @@ import { startProject } from "./startProject.ts";
 import { startService } from "./startService.ts";
 import { stopService } from "./stopService.ts";
 import { deleteService } from "./deleteService.ts";
-import { updateProjectTags } from "./updateProjectTags.ts";
 import { vaultWrite } from "./vaultWrite.ts";
 import { ADDRESS_WRITE_KINDS } from "./addressWrites.ts";
-import { APP_ACCESS_KINDS } from "./appAccess.ts";
 
 /** The registry, checked once at startup: each kind once. Its kinds keep their names' types. */
 function defineOperationKinds<const Kinds extends ReadonlyArray<RegisteredOperationKind>>(
@@ -88,7 +86,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   deleteService,
   startProject,
   renameProject,
-  updateProjectTags,
   createServices,
   ...HQ_WRITE_KINDS,
   ...PERSONA_TEMPLATE_KINDS,
@@ -112,7 +109,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   serviceRestart,
   ...FLOW_WRITE_KINDS,
   ...ADDRESS_WRITE_KINDS,
-  ...APP_ACCESS_KINDS,
 ]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */
