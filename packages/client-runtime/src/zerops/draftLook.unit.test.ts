@@ -98,3 +98,16 @@ it("ZV202: Only an open or adding change offers its draft; merged and discarded 
     expect(draftLook({ ...base, state: "closed", leases })).toEqual({ kind: "discarded" });
   }
 });
+
+// witness: packages/client-runtime/src/zerops/draftLook.ts | (input.repositoryUrl === undefined && input.repositoryRemote === undefined) → false
+it("ZV+1: A draft's availability is unknown until its branch, copies and repository have been read; breaks: a draft whose repository is still unread is reported unavailable.", () => {
+  for (const input of [
+    { ...base, branch: undefined },
+    { ...base, leases: undefined },
+    { ...base, classic: undefined },
+    { ...base, repositoryUrl: undefined, repositoryRemote: undefined, leases: [] },
+  ]) {
+    expect(draftLook(input)).toEqual({ kind: "reading" });
+  }
+  expect(draftLook({ ...base, leases: [] })).toEqual({ kind: "unavailable" });
+});
