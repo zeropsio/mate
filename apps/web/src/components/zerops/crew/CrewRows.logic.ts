@@ -159,8 +159,12 @@ export interface CrewRowModel {
   readonly plan: boolean;
   /** The Mate's dev address shows this crewmate's work: the line, and *Back to Fen's*. */
   readonly served: { readonly line: CrewRowLine; readonly action: CrewRowAction } | null;
-  /** What it does next, its queue in order. */
-  readonly next: string | null;
+  /** What it does next, its queue in order: each task with its *Drop it*, so none waits with no way out. */
+  readonly next: ReadonlyArray<{
+    readonly id: string;
+    readonly title: string;
+    readonly drop: CrewRowAction;
+  }>;
 }
 
 /**
@@ -638,8 +642,15 @@ export function crewRowModel(input: {
   const named = new Set(asked.flatMap((entry) => (entry.taskId === null ? [] : [entry.taskId])));
   const next = row.queuedTasks
     .filter((task) => !named.has(task.id))
-    .map((task) => task.title)
-    .join(" · ");
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      drop: {
+        kind: "command" as const,
+        ...labelled("dropIt", mateName),
+        command: { _tag: "discard" as const, taskId: task.id },
+      },
+    }));
 
   const servedHost = snapshot.hosts.find(
     (host) => host.served.by === "crewmate" && host.served.handle === mate.handle,
@@ -693,6 +704,6 @@ export function crewRowModel(input: {
               command: { _tag: "claimRelease", host: servedHost.host },
             },
           },
-    next: next === "" ? null : next,
+    next,
   };
 }

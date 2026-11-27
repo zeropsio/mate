@@ -839,7 +839,7 @@ it("CD88: Start fresh pressed while its crewmate is busy clears its conversation
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.land.ts | const asked = member.kind === "reader" && task.source === "message"; → const asked = false;
-it("CD+1: A person's message to a reader closes once the reader reports and is free: its answer is in its chat and nothing of it waits to be landed; breaks: every question to a reviewer waits in Needs you as work to review, with nothing to land", () => {
+it("CD92: A person's message to a reader closes once the reader reports and is free: its answer is in its chat and nothing of it waits to be landed; breaks: every question to a reviewer waits in Needs you as work to review, with nothing to land", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
   w.press({ _tag: "message", handle: "reviewer", text: "Which model are you?", attachments: [] });

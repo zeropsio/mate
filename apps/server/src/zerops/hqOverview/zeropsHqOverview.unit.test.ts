@@ -936,7 +936,7 @@ it("HO37: A failed stand-up names to HQ each service zcp failed with where it fa
 });
 
 // witness: apps/server/src/zerops/hqOverview/zeropsHqOverview.ts | return kind === "failed" ? "idle" : kind; → return kind;
-it("HO+1: A crewmate whose chat's last turn failed rests on its face in the crew digest, its failure left to the crew's own row; breaks: Needs you asks the person to answer a crewmate that asked nothing, with an Answer that opens nothing, long after its task was dropped", () => {
+it("HO41: A crewmate whose chat's last turn failed rests on its face in the crew digest, its failure left to the crew's own row; breaks: Needs you asks the person to answer a crewmate that asked nothing, with an Answer that opens nothing, long after its task was dropped", () => {
   const leadsChat = shell("crew-lead-1", {
     session: { ...RUNNING.session, status: "error", lastError: "boom" },
     crew: { crew: "Shop", crewmate: "lead", stint: 1 },

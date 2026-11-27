@@ -20,6 +20,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import {
   CREW_MINI_NEEDS_WORD,
   CREW_NEXT_WORD,
+  CREW_THEN_WORD,
   CREW_ROW_VERBS,
   crewMenuOfWord,
   crewOpenConversationWord,
@@ -445,12 +446,28 @@ function CrewRow(
             ) : null}
           </p>
         )}
-        {model.next === null ? null : (
-          <p className="mt-1.5 truncate text-line leading-4.5 text-muted-foreground">
-            <span className="me-1.5 font-medium text-foreground/76">{CREW_NEXT_WORD}</span>
-            {model.next}
+        {model.next.map((task, index) => (
+          <p
+            className={cn(
+              "flex min-w-0 items-baseline text-line leading-4.5 text-muted-foreground",
+              index === 0 ? "mt-1.5" : "mt-0.5",
+            )}
+            key={task.id}
+          >
+            <span className="min-w-0 truncate">
+              <span className="me-1.5 font-medium text-foreground/76">
+                {index === 0 ? CREW_NEXT_WORD : CREW_THEN_WORD}
+              </span>
+              {task.title}
+            </span>
+            {offered(task.drop) ? (
+              <span className="shrink-0">
+                <span aria-hidden="true">{" · "}</span>
+                <Action {...props} action={task.drop} origin={origin} quiet="text" />
+              </span>
+            ) : null}
           </p>
-        )}
+        ))}
         {error === null ? null : (
           <Failure className="mt-1.5" cause={error} role="alert" size="line" />
         )}

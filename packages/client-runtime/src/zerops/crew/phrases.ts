@@ -414,6 +414,8 @@ export const crewMenuOfWord = (name: string): string => `${crewPossessive(name)}
 
 /** What a crewmate will do after what it is on now. */
 export const CREW_NEXT_WORD = "Next";
+/** Before each queued task after the next one. */
+export const CREW_THEN_WORD = "Then";
 
 /** Finished work, still in the crewmate's own copy. */
 export const crewReadyWords = (mateName: string): string =>

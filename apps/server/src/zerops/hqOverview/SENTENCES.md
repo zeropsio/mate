@@ -1,4 +1,4 @@
-next: HO41
+next: HO42
 
 - HO40 — HQ receives zcp's stand-up error when one was written, masked and cut to 280 characters, and no error when none was written; breaks: an operator cannot see why a stand-up failed, or credentials leave the Mate
 - HO39 — HQ is told how many connections are open in the Mate by the role each holds and how many entries the Mate itself refused by code with the last one's time, eight rows of each at most, and never who; breaks: HQ's operator cannot see that people are in a Mate or that it turns them away, or a person's id leaves the Mate in a report
@@ -40,4 +40,4 @@ next: HO41
 - HO34 — An attention over one frame of the link drops the oldest entries of its longer list, marked cut, until it fits
 - HO35 — A chat a restart cut that waits on the person to continue it waits as failed with the interruption on its cut turn, an answer it asks keeps the interruption, a changed interruption raises the revision, and continuing clears it
 - HO38 — HQ is told since when a conversation's run stopped answering, on that conversation's row; breaks: the mark stays in the Mate and its operator sees a working chat
-- HO+1 — A crewmate whose chat's last turn failed rests on its face in the crew digest, its failure left to the crew's own row; breaks: Needs you asks the person to answer a crewmate that asked nothing, with an Answer that opens nothing, long after its task was dropped
+- HO41 — A crewmate whose chat's last turn failed rests on its face in the crew digest, its failure left to the crew's own row; breaks: Needs you asks the person to answer a crewmate that asked nothing, with an Answer that opens nothing, long after its task was dropped
