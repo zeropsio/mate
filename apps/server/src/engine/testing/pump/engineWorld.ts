@@ -45,12 +45,12 @@ import { LiveBus } from "../../LiveBus.ts";
 import { MateEngine } from "../../MateEngine.ts";
 import {
   AgentWorkspace,
-  HandedOverResume,
   MessagePictures,
   ProviderUsageFeed,
   RestartEvidence,
   RunAdmission,
   RunRefused,
+  ThreadResume,
   WorkspaceUnavailable,
   type InstanceUsage,
 } from "../../ports.ts";
@@ -160,8 +160,13 @@ export const makeEngineWorld = (options: WorldOptions) =>
         }),
       ),
       Layer.succeed(
-        HandedOverResume,
-        HandedOverResume.of({ of: (input) => Effect.succeed(options.handedOver?.(input)) }),
+        ThreadResume,
+        ThreadResume.of({
+          of: (input) => {
+            const handedOver = options.handedOver?.(input);
+            return Effect.succeed({ resumes: handedOver !== undefined, handedOver });
+          },
+        }),
       ),
       Layer.succeed(
         ProviderUsageFeed,

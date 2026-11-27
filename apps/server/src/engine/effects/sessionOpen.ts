@@ -33,7 +33,7 @@ import { readBrief } from "../read/brief.ts";
 import type { SessionOpenedValue } from "../domain/decide.effects.ts";
 import { effectSettledCommandId } from "../domain/ids.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
-import { AgentWorkspace, HandedOverResume, ProviderUsageFeed } from "../ports.ts";
+import { AgentWorkspace, ProviderUsageFeed, ThreadResume } from "../ports.ts";
 import { TurnPump } from "../pump/TurnPump.ts";
 import { bounded, failed, knownDriver, recovering, timedOut, wordsOf } from "./shared.ts";
 
@@ -66,7 +66,7 @@ export const makeSessionOpen = Effect.gen(function* () {
   const conversations = yield* Conversations;
   const workspace = yield* AgentWorkspace;
   const sql = yield* SqlClient.SqlClient;
-  const handedOver = yield* HandedOverResume;
+  const threadResume = yield* ThreadResume;
 
   /** The model options a session of this driver takes on its next send, as V1 decides it. */
   const inSessionOptions = (driver: BridgeDriver, instanceId: string) =>
@@ -140,7 +140,7 @@ export const makeSessionOpen = Effect.gen(function* () {
                   ? "fresh"
                   : "resume",
           });
-          const resumeCursor = yield* handedOver.of({
+          const resume = yield* threadResume.of({
             thread: host.thread,
             instanceId: payload.instanceId,
           });
@@ -151,7 +151,7 @@ export const makeSessionOpen = Effect.gen(function* () {
                 providerInstanceId: payload.instanceId as never,
                 cwd: setup.cwd,
                 runtimeMode,
-                ...(resumeCursor === undefined ? {} : { resumeCursor }),
+                ...(resume.handedOver === undefined ? {} : { resumeCursor: resume.handedOver }),
                 ...(payload.model === null
                   ? {}
                   : {
@@ -177,8 +177,9 @@ export const makeSessionOpen = Effect.gen(function* () {
             const words = wordsOf(started.cause);
             yield* host.record({ kind: "start-failed", words });
             yield* host.discard(session);
-            // An agent that no longer holds the thread it resumed fails it as any other open.
-            return failed(words, resumeCursor === undefined ? {} : { resumed: true });
+            // An agent that no longer holds the conversation it resumed (its own instance's or
+            // one handed over) fails it as any other open.
+            return failed(words, resume.resumes ? { resumed: true } : {});
           }
           const startedSession = Option.getOrThrow(started.value);
           opened = startedSession;

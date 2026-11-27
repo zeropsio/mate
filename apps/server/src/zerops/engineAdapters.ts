@@ -24,7 +24,7 @@ import {
   claimMessageAttachments,
   releaseClaimedAttachments,
 } from "../orchestration/Services/MessageAttachments.ts";
-import { serverHandedOverResume } from "../engineSessionDirectory.ts";
+import { serverThreadResume } from "../engineSessionDirectory.ts";
 import {
   AgentWorkspace,
   LeaseRelease,
@@ -294,6 +294,6 @@ export const engineAdaptersLayer = Layer.mergeAll(
   ),
   serverWorkspace,
   serverMessagePictures,
-  serverHandedOverResume,
+  serverThreadResume,
   serverProviderUsage,
 );
