@@ -19,7 +19,6 @@ const SOURCE_LABELS: Readonly<Record<CrewTaskSource, string>> = {
   you: "from you",
   message: "from your message",
   lead: "from the lead",
-  issue: "from an issue",
 };
 
 const short = (sha: string): string => sha.slice(0, 7);

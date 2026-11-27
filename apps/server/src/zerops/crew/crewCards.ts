@@ -48,7 +48,6 @@ const SOURCE_LABELS: Readonly<Record<CrewTaskSource, string>> = {
   you: "from you",
   message: "from your message",
   lead: "from the lead",
-  issue: "from an issue",
 };
 
 export const taskCard = (

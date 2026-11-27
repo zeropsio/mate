@@ -37,8 +37,8 @@ export const CrewTaskState = Schema.Literals([
 ]);
 export type CrewTaskState = typeof CrewTaskState.Type;
 
-/** Where a task came from (PRD §6.1); `issue` is phase D. */
-export const CrewTaskSource = Schema.Literals(["you", "lead", "message", "issue"]);
+/** Where a task came from (PRD §6.1). */
+export const CrewTaskSource = Schema.Literals(["you", "lead", "message"]);
 export type CrewTaskSource = typeof CrewTaskSource.Type;
 
 export const CrewRunState = Schema.Literals([
