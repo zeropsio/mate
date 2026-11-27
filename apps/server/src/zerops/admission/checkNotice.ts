@@ -32,16 +32,15 @@ export function checkNoticeVerdict(input: {
       readonly reason: MateMessageNotAdmittedReason;
     } {
   if (input.usageLimited) {
-    return input.current === undefined ||
-      input.current === "unknown" ||
-      input.others.some((login) => login !== "unavailable")
+    return input.current === undefined || input.current === "unknown"
       ? { kind: "wait" }
       : { kind: "end", reason: "usage-limit" };
   }
-  if (input.current === "ready" || (input.current === undefined && input.others.includes("ready")))
-    return { kind: "run" };
-  if (input.current === "unknown" || input.others.some((login) => login !== "unavailable"))
-    return { kind: "wait" };
+  if (input.current === "ready") return { kind: "run" };
+  if (input.current === "unavailable") return { kind: "end", reason: "no-agent" };
+  if (input.current === "unknown") return { kind: "wait" };
+  if (input.others.includes("ready")) return { kind: "run" };
+  if (input.others.includes("unknown")) return { kind: "wait" };
   return { kind: "end", reason: "no-agent" };
 }
 
