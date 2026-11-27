@@ -26,5 +26,7 @@ export const HqOperationFailure = Schema.Struct({
   at: Schema.String,
   origin: Schema.String,
   zerops: Schema.optionalKey(HqZeropsAnswer),
+  tokenId: Schema.optionalKey(Schema.String),
+  tokenIds: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type HqOperationFailure = typeof HqOperationFailure.Type;

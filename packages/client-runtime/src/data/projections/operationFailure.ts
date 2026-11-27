@@ -126,7 +126,25 @@ export function accessLostLine(failure: HqOperationFailure, continues: boolean):
 /** HQ's code for a check of an operation Zerops refused: it is not Zerops' own, so never shown. */
 const OBSERVATION_REFUSED = "operation_observation_refused";
 
-/** HQ stopped the step itself: one sentence per HQ code of the spec's closed list. */
+const TOKEN_DELETE_REFUSED = "token_delete_refused";
+
+/** HQ's deploy-token stops and what happened before a person can start again. */
+const DEPLOY_TOKEN_STOPPED = new Map<string, string>([
+  [TOKEN_DELETE_REFUSED, "Only an organization owner can delete this environment's deploy token."],
+  [
+    "deploy_token_mint_failed",
+    "HQ lost Zerops' answer about the new deploy token, and Zerops lists none.",
+  ],
+  ["deploy_token_keep_failed", "HQ could not keep the deploy token and deleted it in Zerops."],
+]);
+
+/** The refused id precedes the remaining ids when HQ sends a list. */
+function deployTokenIds(failure: HqOperationFailure): readonly string[] {
+  if (failure.tokenIds !== undefined && failure.tokenIds.length > 0) return failure.tokenIds;
+  return failure.tokenId === undefined ? [] : [failure.tokenId];
+}
+
+/** The other HQ stops, one sentence per code of the spec's closed list. */
 const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
   [ACCESS_LOST, ACCESS_LOST_WORDS],
@@ -135,10 +153,6 @@ const HQ_STOPPED = new Map<string, string>([
   [
     "placed_or_production_taken",
     "The project is already placed, or this application already has a production.",
-  ],
-  [
-    "token_delete_refused",
-    "Only an organization owner can delete this environment's deploy token.",
   ],
   [
     "project_write_in_flight",
@@ -182,6 +196,18 @@ export function operationFailureWords(failure: HqOperationFailure): string {
     return platformErrorWords(failure.step);
   if (failure.origin === "zerops_process")
     return PROCESS_FAILED.get(failure.code) ?? `Zerops could not finish it: ${failure.code}`;
+  if (failure.origin === "hq") {
+    const words = DEPLOY_TOKEN_STOPPED.get(failure.code);
+    if (words !== undefined) {
+      const ids = deployTokenIds(failure);
+      if (ids.length > 0) {
+        const token = ids.length === 1 ? "token" : "tokens";
+        const next = failure.code === TOKEN_DELETE_REFUSED ? "." : ", then start it again.";
+        return `${words} Delete ${token} ${ids.join(", ")} in Zerops${next}`;
+      }
+      return failure.code === TOKEN_DELETE_REFUSED ? words : `${words} Start it again.`;
+    }
+  }
   return (
     (failure.origin === "hq" ? HQ_STOPPED.get(failure.code) : undefined) ??
     `HQ stopped it: ${failure.code}`

@@ -2,7 +2,7 @@ import { expect, it } from "vite-plus/test";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HqAccessOperation } from "@t3tools/shared/hqAccessOperation";
-import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
+import { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 import { HqBirthOperation } from "../../zerops/hq/client.ts";
 import {
   accessLostLine,
@@ -46,6 +46,143 @@ it("PJ128: A stopped operation reads by who stopped it: Zerops' refusal as Zerop
     failure("v3", "token_expired"),
   ])
     expect(operationFailureWords(unknown)).toContain(unknown.code);
+});
+
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.tokenIds !== undefined && failure.tokenIds.length > 0) return failure.tokenIds; → if (failure.tokenIds !== undefined && failure.tokenIds.length > 0) return failure.tokenIds.slice(0, 1);
+it("PJ164: An HQ stop over a deploy token names the token ids HQ sent and what the person does next; breaks: a person is told a token was refused without the id to delete, or reads HQ's code", () => {
+  const cases: ReadonlyArray<readonly [HqOperationFailure, string]> = [
+    [
+      { step: "key", code: "token_delete_refused", at: "2026-11-27T15:00:00.000Z", origin: "hq" },
+      "Only an organization owner can delete this environment's deploy token.",
+    ],
+    [
+      {
+        step: "key",
+        code: "token_delete_refused",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenId: "T1",
+      },
+      "Only an organization owner can delete this environment's deploy token. Delete token T1 in Zerops.",
+    ],
+    [
+      {
+        step: "key",
+        code: "token_delete_refused",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenId: "T1",
+        tokenIds: ["T1", "T2"],
+      },
+      "Only an organization owner can delete this environment's deploy token. Delete tokens T1, T2 in Zerops.",
+    ],
+    [
+      {
+        step: "key",
+        code: "deploy_token_mint_failed",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+      },
+      "HQ lost Zerops' answer about the new deploy token, and Zerops lists none. Start it again.",
+    ],
+    [
+      {
+        step: "key",
+        code: "deploy_token_keep_failed",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+      },
+      "HQ could not keep the deploy token and deleted it in Zerops. Start it again.",
+    ],
+    [
+      {
+        step: "key",
+        code: "deploy_token_mint_failed",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenId: "T1",
+      },
+      "HQ lost Zerops' answer about the new deploy token, and Zerops lists none. Delete token T1 in Zerops, then start it again.",
+    ],
+    [
+      {
+        step: "key",
+        code: "deploy_token_keep_failed",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenIds: ["T1", "T2"],
+      },
+      "HQ could not keep the deploy token and deleted it in Zerops. Delete tokens T1, T2 in Zerops, then start it again.",
+    ],
+    [
+      {
+        step: "key",
+        code: "token_delete_refused",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenId: "T1",
+        tokenIds: [],
+      },
+      "Only an organization owner can delete this environment's deploy token. Delete token T1 in Zerops.",
+    ],
+    [
+      {
+        step: "key",
+        code: "token_delete_refused",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "zerops",
+        tokenId: "T1",
+      },
+      "Zerops refused: token_delete_refused",
+    ],
+    [
+      {
+        step: "key",
+        code: "project_not_gone",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "hq",
+        tokenId: "T1",
+      },
+      "Zerops still lists the project after its deletion ended.",
+    ],
+    [
+      {
+        step: "key",
+        code: "token_delete_refused",
+        at: "2026-11-27T15:00:00.000Z",
+        origin: "new_origin",
+        tokenId: "T1",
+      },
+      "HQ stopped it: token_delete_refused",
+    ],
+    [
+      { step: "key", code: "future_code", at: "2026-11-27T15:00:00.000Z", origin: "hq" },
+      "HQ stopped it: future_code",
+    ],
+  ];
+  for (const [input, words] of cases) expect(operationFailureWords(input)).toBe(words);
+
+  const withIds = {
+    step: "key",
+    code: "token_delete_refused",
+    at: "2026-11-27T15:00:00.000Z",
+    origin: "hq",
+    tokenId: "T1",
+    tokenIds: ["T1", "T2"],
+  };
+  const decode = Schema.decodeUnknownSync(HqOperationFailure);
+  expect(decode(withIds)).toEqual(withIds);
+  expect(decodeFailure(withIds)).toEqual(withIds);
+  const withoutIds = {
+    step: "key",
+    code: "token_delete_refused",
+    at: "2026-11-27T15:00:00.000Z",
+    origin: "hq",
+  };
+  const decodedWithoutIds = decode(withoutIds);
+  expect(decodedWithoutIds).toEqual(withoutIds);
+  expect(decodedWithoutIds).not.toHaveProperty("tokenId");
+  expect(decodedWithoutIds).not.toHaveProperty("tokenIds");
 });
 
 /** `mate-hq spec/protocol.md` "Operation failures", its example with a neutral path. */

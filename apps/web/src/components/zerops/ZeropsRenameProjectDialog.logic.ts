@@ -62,7 +62,7 @@ function projectWords(
   if (result === "moved")
     return {
       projectId: project.projectId,
-      words: `${name}: moved to another project, not renamed`,
+      words: `${name}: moved to another application, not renamed`,
       failed: false,
     };
   if (result === "gone")

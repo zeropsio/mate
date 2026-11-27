@@ -276,6 +276,16 @@ it("MN117: A failed application rename, whatever its projects' results, still of
         { projectId: "p2", words: "Old - api: gone from Zerops", failed: false },
       ],
     },
+    {
+      projects: [{ projectId: "p1", result: "moved" }],
+      words: [
+        {
+          projectId: "p1",
+          words: "Old - web: moved to another application, not renamed",
+          failed: false,
+        },
+      ],
+    },
   ] as const;
   const operation = {
     id: "op",
