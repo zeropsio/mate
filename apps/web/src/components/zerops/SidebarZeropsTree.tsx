@@ -46,7 +46,7 @@ import { mateStatus } from "../../zerops/mateStatus.logic";
  * lights the open Mate and slides to the next one opened
  * (`SidebarSelectedBand`).
  *
- * A Mate's crew stands one line under it (`SidebarCrewLine`), lit with it as
+ * A Mate's crew stands one line under it (`SidebarCrewMinis`), lit with it as
  * one (`MateUnit`). Its open change rides its own row: the change's mark and
  * title on its line, and *Review* — the one door to merging — in its time's
  * place where the change waits on the viewer.

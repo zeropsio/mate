@@ -265,7 +265,7 @@ export const OverviewLogins = Schema.Record(Schema.String, LoginDigest).check(
 export type OverviewLogins = typeof OverviewLogins.Type;
 
 /**
- * An applied crew as the sidebar draws it (`SidebarCrewLine`). An open vocabulary — a tint, an
+ * An applied crew as the sidebar draws it (`SidebarCrewMinis`). An open vocabulary — a tint, an
  * attention kind — travels as a string, so a newer crew never closes an older HQ's link.
  */
 export const CrewDigest = Schema.Struct({

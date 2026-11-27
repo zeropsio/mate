@@ -43,7 +43,7 @@ import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
-import { crewFaces } from "../zerops/crew/SidebarCrewLine.logic";
+import { crewFaces } from "~/zerops/crew/crewDigest";
 import { MateOwnerMark } from "../zerops/MateOwnerMark";
 import { MateFace, MateFaceAsMark } from "../zerops/primitives";
 import { ownerBadge, ownerMark, type BadgeSeat } from "../zerops/SidebarMateRow.logic";
