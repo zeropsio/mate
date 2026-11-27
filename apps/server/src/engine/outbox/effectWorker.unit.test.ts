@@ -12,6 +12,7 @@ import { Conversations } from "../Conversations.ts";
 import type { Decision, EffectClass, EffectLane, ProviderSignal } from "../domain/command.ts";
 import { signalsCommandId } from "../domain/ids.ts";
 import { EngineSignals, type Doorbell } from "../EngineSignals.ts";
+import { threadResumeOf } from "../ports.ts";
 import { EngineStore } from "../store/EngineStore.ts";
 import {
   conversation,
@@ -756,3 +757,21 @@ it.effect(
     }).pipe(Effect.provide(engineLayer(":memory:", handlersOf(outage), [tallyDomain])));
   },
 );
+
+// witness: apps/server/src/engine/ports.ts | resumes: held, → resumes: held && saved.instanceId !== instanceId,
+it("EO+1: A session open resumes whenever its thread's binding holds a saved conversation, its own instance's as well as one another instance hands over, and a binding with none resumes nothing; breaks: a crewmate whose agent lost its own saved conversation fails every turn as its session opens and never moves to a new one", () => {
+  const cursor = { schemaVersion: 1, sessionId: "native-1" };
+  expect(threadResumeOf({ instanceId: "cursor", cursor }, "cursor")).toEqual({
+    resumes: true,
+    handedOver: undefined,
+  });
+  expect(threadResumeOf({ instanceId: "cursor-work", cursor }, "cursor")).toEqual({
+    resumes: true,
+    handedOver: cursor,
+  });
+  expect(threadResumeOf({ instanceId: "cursor", cursor: null }, "cursor")).toEqual({
+    resumes: false,
+    handedOver: undefined,
+  });
+  expect(threadResumeOf(undefined, "cursor")).toEqual({ resumes: false, handedOver: undefined });
+});

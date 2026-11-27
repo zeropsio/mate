@@ -18,3 +18,4 @@ next: EO19
 - EO16 — Each boot tells a crew once that it restarted, so it reconciles what it holds; breaks: a crew keeps work the restart cut
 - EO17 — A conversation's effect that waits on a crewmate's copy rides out the outage a crew effect rides out; breaks: a brief ssh outage fails the person's step
 - EO18 — A crew effect rides out a minute's outage that fails a conversation's ordinary effect for good; breaks: the crew gives up on a container restart, or a person waits minutes on a dead effect
+- EO+1 — A session open resumes whenever its thread's binding holds a saved conversation, its own instance's as well as one another instance hands over, and a binding with none resumes nothing; breaks: a crewmate whose agent lost its own saved conversation fails every turn as its session opens and never moves to a new one

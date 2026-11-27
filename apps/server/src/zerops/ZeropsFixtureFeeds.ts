@@ -47,7 +47,7 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { macPairCommands, macRemoveCommands } from "./mac/MacHost.ts";
 import { engineLayer } from "../engine/layer.ts";
-import { serverHandedOverResume } from "../engineSessionDirectory.ts";
+import { serverThreadResume } from "../engineSessionDirectory.ts";
 import {
   noRestartEvidence,
   serverMessagePictures,
@@ -691,7 +691,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
           noRestartEvidence,
           serverWorkspace,
           serverMessagePictures,
-          serverHandedOverResume,
+          serverThreadResume,
         ),
       ),
       Layer.provide(admission),

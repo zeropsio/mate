@@ -1,6 +1,6 @@
 /**
  * Conversation and provider-session identities at the server wiring boundary: the current
- * provider thread, retained-image ownership, and the engine's `HandedOverResume` port. The engine
+ * provider thread, retained-image ownership, and the engine's `ThreadResume` port. The engine
  * reaches drivers only through `ProviderService`; this wiring hands it what the directory holds.
  *
  * @module engineSessionDirectory
@@ -11,7 +11,7 @@ import * as Option from "effect/Option";
 import { ConversationId, ThreadId } from "@t3tools/contracts";
 
 import { MateEngine, providerThreadOf } from "./engine/MateEngine.ts";
-import { HandedOverResume } from "./engine/ports.ts";
+import { ThreadResume, threadResumeOf } from "./engine/ports.ts";
 import { ProviderSessionDirectory } from "./provider/Services/ProviderSessionDirectory.ts";
 
 /** Resolve a client's conversation to its current provider thread. */
@@ -26,28 +26,31 @@ export const currentProviderThread = Effect.gen(function* () {
 });
 
 /**
- * What another instance of the driver left on the thread, from the provider's session directory:
- * its resume cursor, unless the binding is the picked instance's own (the provider resumes that
- * itself). No directory, or an unreadable one, reads as nothing left.
+ * What a session of the thread resumes, from the conversation the provider's session directory
+ * keeps on its binding. No directory, or an unreadable one, reads as nothing saved.
  */
-export const serverHandedOverResume = Layer.effect(
-  HandedOverResume,
+export const serverThreadResume = Layer.effect(
+  ThreadResume,
   Effect.map(Effect.serviceOption(ProviderSessionDirectory), (directory) =>
-    HandedOverResume.of({
+    ThreadResume.of({
       of: ({ thread, instanceId }) =>
         Option.match(directory, {
-          onNone: () => Effect.succeed(undefined),
+          onNone: () => Effect.succeed(threadResumeOf(undefined, instanceId)),
           onSome: (sessions) =>
             sessions.getBinding(ThreadId.make(thread)).pipe(
               Effect.map((binding) =>
-                Option.isSome(binding) &&
-                binding.value.providerInstanceId !== undefined &&
-                binding.value.providerInstanceId !== instanceId &&
-                binding.value.resumeCursor != null
-                  ? binding.value.resumeCursor
-                  : undefined,
+                threadResumeOf(
+                  Option.match(binding, {
+                    onNone: () => undefined,
+                    onSome: ({ providerInstanceId, resumeCursor }) => ({
+                      instanceId: providerInstanceId,
+                      cursor: resumeCursor,
+                    }),
+                  }),
+                  instanceId,
+                ),
               ),
-              Effect.orElseSucceed(() => undefined),
+              Effect.orElseSucceed(() => threadResumeOf(undefined, instanceId)),
             ),
         }),
     }),

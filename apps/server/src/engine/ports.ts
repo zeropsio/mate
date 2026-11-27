@@ -2,8 +2,8 @@
  * What the Mate engine needs from the product around it, as ports: who may
  * start a run (`RunAdmission`), what the platform says about the last
  * restart (`RestartEvidence`), where a conversation's agent works
- * (`AgentWorkspace`), how a call's pictures are claimed (`MessagePictures`), what
- * another instance of a driver left on a thread (`HandedOverResume`) and what each provider
+ * (`AgentWorkspace`), how a call's pictures are claimed (`MessagePictures`), what a
+ * session of a thread resumes (`ThreadResume`) and what each provider
  * reports of its signed-in account's usage (`ProviderUsageFeed`) and how an archived conversation's
  * branch goes back to its pool (`LeaseRelease`), how a taken task's change is linked to it
  * (`TaskChangeLink`), and where the work stands (`WorkWhere`). The engine imports these,
@@ -143,20 +143,44 @@ export class MessagePictures extends Context.Service<
   }
 >()("t3/engine/ports/MessagePictures") {}
 
+/** What a session the picked instance opens on a thread resumes (`threadResumeOf`). */
+export interface ThreadResumeState {
+  /** The agent's saved conversation, the picked instance's own or another's handed over. */
+  readonly resumes: boolean;
+  /**
+   * The resume state another instance of the same driver left, which a person's agent pick that
+   * keeps the thread hands over: `undefined` when none is, and for the picked instance's own
+   * binding, which `ProviderService` resumes itself.
+   */
+  readonly handedOver: unknown;
+}
+
 /**
- * The resume state another instance of the same driver left on a thread, read when a person's
- * agent pick keeps the thread: `undefined` when it left none (the session starts fresh), and for
- * the thread's own instance, whose binding `ProviderService` resumes itself.
+ * What the conversation saved on a thread's binding (whose instance saved it, and its cursor)
+ * gives the picked instance's next session, as `ProviderService` starts it: its own instance's is
+ * resumed, another instance's is handed over.
  */
-export class HandedOverResume extends Context.Service<
-  HandedOverResume,
+export const threadResumeOf = (
+  saved: { readonly instanceId: string | undefined; readonly cursor: unknown } | undefined,
+  instanceId: string,
+): ThreadResumeState => {
+  const held = saved !== undefined && saved.instanceId !== undefined && saved.cursor != null;
+  return {
+    resumes: held,
+    handedOver: held && saved.instanceId !== instanceId ? saved.cursor : undefined,
+  };
+};
+
+/** What a session of a thread resumes, read from the thread's binding as it opens. */
+export class ThreadResume extends Context.Service<
+  ThreadResume,
   {
     readonly of: (input: {
       readonly thread: string;
       readonly instanceId: string;
-    }) => Effect.Effect<unknown>;
+    }) => Effect.Effect<ThreadResumeState>;
   }
->()("t3/engine/ports/HandedOverResume") {}
+>()("t3/engine/ports/ThreadResume") {}
 
 /** One provider instance's word on the usage of the account it is signed in to. */
 export interface InstanceUsage {
