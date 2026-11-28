@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId, TurnId } from "@t3tools/contracts";
 import type { CrewDigest } from "@t3tools/shared/mateLink";
 import { expect, it } from "vite-plus/test";
 
@@ -166,4 +166,36 @@ it("MN128: What the viewer set aside stays out of Needs you while its revision i
     same: keysWhen("2026-11-27T09:00:00Z"),
     askedAgain: keysWhen("2026-11-27T11:30:00Z"),
   }).toEqual({ same: [], askedAgain: ["t:pool-1:task-9"] });
+});
+
+// witness: apps/web/src/zerops/waiting.logic.ts | : { item: `${who}:chat`, revision: need.turnId }; → : null;
+it("MN142: A crewmate whose chat asks the viewer, set aside, stays out of Needs you while its chat's turn is the one set aside and comes back with a new turn, and one whose Mate names no turn cannot be set aside; breaks: a crewmate's question can never be set aside, or a new question in its chat stays hidden", () => {
+  const asks = (turnId: string | undefined): CrewDigest =>
+    crew({
+      crewmates: [
+        {
+          handle: "sol",
+          displayName: "Sol",
+          tint: "sky",
+          lead: false,
+          threadId: ThreadId.make("t-sol"),
+          threadKind: "input",
+          loginKey: null,
+          ...(turnId === undefined ? {} : { turnId: TurnId.make(turnId) }),
+        },
+      ],
+    });
+  const keysWhen = (turnId: string | undefined) =>
+    needsYou({
+      mates: [mate({ crew: { digest: asks(turnId), current: true, reviewable: () => true } })],
+      order: [],
+      releases: [],
+      dayStart: DAY,
+      snoozes: [{ item: "ask:fen:sol:chat", revision: "turn-1" }],
+    }).items.map((item) => item.key);
+  expect({
+    same: keysWhen("turn-1"),
+    askedAgain: keysWhen("turn-2"),
+    olderMate: keysWhen(undefined),
+  }).toEqual({ same: [], askedAgain: ["c:fen:h:sol"], olderMate: ["c:fen:h:sol"] });
 });

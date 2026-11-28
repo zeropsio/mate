@@ -21,6 +21,8 @@ export interface CrewDigestFace {
   readonly state: MateMarkState;
   /** Its chat, which the face opens; `null` before its first turn. */
   readonly threadId: ThreadId | null;
+  /** Its chat's latest turn, the revision of what it asks; absent before one, or from an older Mate. */
+  readonly turnId?: string;
   readonly lead: boolean;
 }
 
@@ -42,6 +44,7 @@ export function crewFaces(crew: CrewDigest, mine: boolean): ReadonlyArray<CrewDi
       tint: tintOf(mate.tint),
       state: !mine && state === "needs" ? "idle" : state,
       threadId: mate.threadId,
+      ...(mate.turnId === undefined ? {} : { turnId: mate.turnId }),
       lead: mate.lead,
     };
   });

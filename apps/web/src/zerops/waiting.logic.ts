@@ -101,7 +101,7 @@ export interface WaitingCrewmate {
  */
 export type WaitingCrewNeed =
   | { readonly kind: "row"; readonly rowId: string; readonly row: string }
-  | { readonly kind: "chat" }
+  | { readonly kind: "chat"; readonly turnId?: string }
   | { readonly kind: "ready"; readonly taskId: string };
 
 export interface WaitingCrew {
@@ -357,7 +357,12 @@ function crewWaits(mate: NeedsYouMate): ReadonlyArray<WaitingItem> {
     ),
     ...faces
       .filter((face) => face.state === "needs" && !named.has(face.handle))
-      .map((face) => item(`h:${face.handle}`, crewmateOf(face.handle), { kind: "chat" })),
+      .map((face) =>
+        item(`h:${face.handle}`, crewmateOf(face.handle), {
+          kind: "chat",
+          ...(face.turnId === undefined ? {} : { turnId: face.turnId }),
+        }),
+      ),
     ...ready
       .filter((task) => crew.reviewable(task.id))
       .map((task) =>
@@ -392,16 +397,18 @@ export function snoozeOf(item: WaitingItem): NeedsYouSnooze | null {
         ? null
         : { item: `release:${item.release.groupId}`, revision: String(item.release.ahead) };
     case "crew": {
-      // A crewmate's new ask is a new row of its crew's list, and a new ready task its own: the
-      // row's or the task's id is the revision. What its chat asks carries no time in the crew's
-      // digest, so it cannot be set aside.
+      // A crewmate's new ask is a new row of its crew's list, a new ready task its own, and a new
+      // question in its chat a new turn: the row's, the task's or the turn's id is the revision. A
+      // chat from a Mate whose digest names no turn cannot be set aside.
       const { need, crewmate } = item.crew;
       const who = `ask:${item.crew.projectId}:${crewmate.handle}`;
       return need.kind === "row"
         ? { item: `${who}:row`, revision: need.rowId }
         : need.kind === "ready"
           ? { item: `${who}:ready:${need.taskId}`, revision: need.taskId }
-          : null;
+          : need.turnId === undefined
+            ? null
+            : { item: `${who}:chat`, revision: need.turnId };
     }
     case "change": {
       const change = item.mate.change;
