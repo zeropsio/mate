@@ -359,9 +359,16 @@ function Question({
   readonly asker: string;
 }) {
   const field = useRef<HTMLTextAreaElement | null>(null);
+  // The press that opened this task to answer it asked for the field once: it is taken only once
+  // the field stands (the Board read may draw the question a moment after the panel), and given
+  // after the frame, so the panel's own opening focus never takes it back.
   useEffect(() => {
-    if (verbs !== undefined && takeAnswerOnArrival(row.id)) field.current?.focus();
-  }, [verbs, row.id]);
+    const answerField = field.current;
+    if (verbs === undefined || row.question === null || answerField === null) return;
+    if (!takeAnswerOnArrival(row.id)) return;
+    // Never cancelled: the request is spent, and focusing a field that left is harmless.
+    requestAnimationFrame(() => answerField.focus());
+  }, [verbs, row.id, row.question]);
   if (row.question === null) return null;
   const whom = row.asks === null || row.asks === "you" ? "" : ` ${row.asks}`;
   return (
