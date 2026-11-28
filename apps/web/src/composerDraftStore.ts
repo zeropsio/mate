@@ -483,8 +483,8 @@ export interface ComposerSendIds {
    */
   readonly about?: MessageAbout;
   /**
-   * A task of the Board the person took for this Mate (`TakenTask`): the words are its brief, the
-   * new conversation's first message, and the conversation is the task's from then on.
+   * A task of the Board the person took for this Mate (`TakenTask`): the words are its brief, and
+   * the task is the conversation's task in hand from then on.
    */
   readonly taken?: TakenTask;
 }

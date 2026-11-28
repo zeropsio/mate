@@ -24,7 +24,7 @@ import type {
   TaskSourceWrite,
   TaskWriteAction,
 } from "@t3tools/client-runtime/data";
-import { OPENING_TAKEN_WORDS } from "@t3tools/client-runtime/zerops";
+import { SENDING_TAKEN_WORDS } from "@t3tools/client-runtime/zerops";
 import type { BoardSource, ConversationSource } from "@t3tools/contracts";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
@@ -246,16 +246,16 @@ export function taskRoute(link: string | null): string | null {
 
 /**
  * Where a task's conversation opens inside Mate, as an in-app path. A task a person took: the
- * conversation of their Mate that carries it, where this page holds it — HQ's link for it leads to
- * the Mate, whose newest conversation may be another task's; else, and for every other task, where
- * HQ's link leads (`taskRoute`).
+ * conversation of their Mate it was taken into, where this page holds it, at the task's card
+ * (`?task=`) — HQ's link for it leads to the Mate, whose newest conversation may be another one;
+ * else, and for every other task, where HQ's link leads (`taskRoute`).
  */
 export function taskConversationRoute(
-  task: Pick<HqAppTask, "link" | "taker">,
+  task: Pick<HqAppTask, "id" | "link" | "taker">,
   carried: TakenConversationAt | undefined,
 ): string | null {
   if (task.taker?.kind === "person" && carried !== undefined)
-    return `/${encodeURIComponent(carried.environmentId)}/${encodeURIComponent(carried.conversationId)}`;
+    return `/${encodeURIComponent(carried.environmentId)}/${encodeURIComponent(carried.conversationId)}?task=${encodeURIComponent(task.id)}`;
   return taskRoute(task.link);
 }
 
@@ -306,7 +306,7 @@ export interface BoardContext {
   /** A Mate the reader's list holds, by its project: its name; `undefined` where it holds none. */
   readonly mateName?: (projectId: string) => string | undefined;
   /**
-   * The conversation a task the reader took was opened for, by the task (`takenConversationsAtom`):
+   * The conversation a task the reader took was taken into, by the task (`takenConversationsAtom`):
    * the Mate's rows this page holds say it; `undefined` where none does.
    */
   readonly takenConversation?: (taskId: string) => TakenConversationAt | undefined;
@@ -1064,7 +1064,7 @@ export function taskRowPress(input: {
 }): RowPress {
   if (input.asking === input.taskId) return { kind: "asking" };
   const { action, opening } = input;
-  if (opening?.kind === "opening") return { kind: "working", words: OPENING_TAKEN_WORDS };
+  if (opening?.kind === "opening") return { kind: "working", words: SENDING_TAKEN_WORDS };
   if (opening?.kind === "stranded") return { kind: "refused", words: opening.words };
   if (action?.kind === "working") return { kind: "working", words: UNDER_WAY[action.verb] ?? "…" };
   if (action?.kind === "failed" || action?.kind === "unresolved")

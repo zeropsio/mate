@@ -11,6 +11,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import ChatViewBoundary from "../components/ChatViewBoundary";
+import { taskCardSearch } from "../components/chat/taskCardReveal";
 import { threadHasStarted } from "../components/ChatView.logic";
 import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
 import {
@@ -202,6 +203,8 @@ function usePatienceSpent(key: string | null, ms: number): boolean {
 }
 
 export const Route = createFileRoute("/_chat/$environmentId/$threadId")({
+  // The task whose card the conversation opens at (`taskCardReveal`).
+  validateSearch: taskCardSearch,
   component: ChatThreadRouteView,
   pendingComponent: ChatThreadRoutePending,
   // This small wrapper stays ready during draft promotion. ChatViewBoundary owns the lazy

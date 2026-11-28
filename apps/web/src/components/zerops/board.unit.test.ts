@@ -456,11 +456,11 @@ it("MN156: The Board's door counts only the tasks Waiting for the reader, never 
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | if (task.taker?.kind === "person" && carried !== undefined) → if (task.taker?.kind === "pool" && carried !== undefined)
-it("MN158: Open its conversation for a task a person took opens the conversation of their Mate that carries it, where the reader's page holds it, and where HQ's link leads otherwise; breaks: the press opens the Mate's newest conversation, another task's", () => {
-  // HQ links Ivo's taken task to his Fern; his Fern's conversation c-take carries it.
-  const took = { link: `${DEFAULT_HOSTED_APP_URL}/mate/p-fern`, taker: ivo };
-  expect(taskConversationRoute(took, { environmentId: "env-fern", conversationId: "c-take" })).toBe(
-    "/env-fern/c-take",
+it("MN158: Open its conversation for a task a person took opens the conversation of their Mate it was taken into at the task's card, where the reader's page holds it, and where HQ's link leads otherwise; breaks: the press opens the Mate's newest conversation, or its end, far from the task", () => {
+  // HQ links Ivo's taken task to his Fern; he took it into his Fern's main conversation c-main.
+  const took = { id: "t-9", link: `${DEFAULT_HOSTED_APP_URL}/mate/p-fern`, taker: ivo };
+  expect(taskConversationRoute(took, { environmentId: "env-fern", conversationId: "c-main" })).toBe(
+    "/env-fern/c-main?task=t-9",
   );
   expect(taskConversationRoute(took, undefined)).toBe("/mate/p-fern");
 });

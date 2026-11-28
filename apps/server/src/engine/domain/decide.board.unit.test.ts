@@ -185,7 +185,7 @@ it("ED147: A change a conversation opens is linked to the task in hand, the task
 });
 
 // witness: apps/server/src/engine/domain/evolve.ts | return { ...state, takenTasks: [...state.takenTasks.filter((id) => id !== taskId), taskId] }; → return { ...state, takenTasks: [...state.takenTasks, taskId] };
-it("ED+1: A task taken into a conversation under way joins the tasks taken into it as the task in hand, and a task taken into it again comes back in hand, listed once; breaks: a Take into the Mate's main conversation is refused, or a task taken twice stands twice on its conversation's row", () => {
+it("ED151: A task taken into a conversation under way joins the tasks taken into it as the task in hand, and a task taken into it again comes back in hand, listed once; breaks: a Take into the Mate's main conversation is refused, or a task taken twice stands twice on its conversation's row", () => {
   const chat = opening(ConversationId.make("ana-chat"), { _tag: "Send", text: "Cache the menu." }, [
     take("task-7"),
     take("task-8"),

@@ -6,7 +6,7 @@
  * Enter opens a task's panel); on the project page the few that need the reader stand alone over
  * the way to the Board.
  */
-import { OPEN_TAKEN_LABEL } from "@t3tools/client-runtime/zerops";
+import { SEND_TAKEN_LABEL } from "@t3tools/client-runtime/zerops";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import {
   useEffect,
@@ -272,7 +272,7 @@ export function VerbPress({
           size={size}
           variant={variant}
         >
-          {OPEN_TAKEN_LABEL}
+          {SEND_TAKEN_LABEL}
         </Button>
       );
     case "drop":

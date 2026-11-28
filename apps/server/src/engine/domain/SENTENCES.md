@@ -1,4 +1,4 @@
-next: ED151
+next: ED152
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -142,4 +142,4 @@ next: ED151
 - ED147 — A change a conversation opens is linked to the task in hand, the task the person took from the Board into it last, and a conversation no task was taken into links none; breaks: a person's taken task never ends when its change merges, or another task's change is attached to it
 - ED148 — A change the agent opened is read off zcp's `open-change` answer as the repository its address names and the number it answers, only where both agree; any other answer or tool names no change
 - ED149 — Only the agent's `open-change` call links a change to a taken task: its `describe-change`, a call without its action, or any other action naming the same change in the same fields links nothing; breaks: describing or closing a change links it to the task again, or a closed change is linked as if opened
-- ED+1 — A task taken into a conversation under way joins the tasks taken into it as the task in hand, and a task taken into it again comes back in hand, listed once; breaks: a Take into the Mate's main conversation is refused, or a task taken twice stands twice on its conversation's row
+- ED151 — A task taken into a conversation under way joins the tasks taken into it as the task in hand, and a task taken into it again comes back in hand, listed once; breaks: a Take into the Mate's main conversation is refused, or a task taken twice stands twice on its conversation's row

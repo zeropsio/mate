@@ -1,10 +1,10 @@
 /**
  * The Board's doors in the web client: what the person may do on an application's Board
- * (`boardOffers`), **Take** — HQ's take,
- * then a new conversation in the person's own Mate whose first message is the task's brief, sent
- * as them and linked to the task (`ComposerSendIds.taken`); a taken task none of the Mate's conversations
- * carries (`strandedTakesAtom`), with its way to open it; and the ways back to the conversation a
- * task was put from.
+ * (`boardOffers`), **Take** — HQ's take, then the task's brief sent as them into their own Mate's
+ * main conversation, linked to the task (`ComposerSendIds.taken`): a person's Mate is one long
+ * conversation that takes task after task; a taken task none of the Mate's conversations carries
+ * (`strandedTakesAtom`), with its way to open it; and the ways back to the conversation a task was
+ * put from.
  */
 import {
   boardOffers,
@@ -20,7 +20,9 @@ import {
   assignCandidateMateTints,
   mateShapeOf,
   projectNameInApp,
+  resolvePrimaryConversation,
   strandedTakes,
+  takeLandsIn,
 } from "@t3tools/client-runtime/zerops";
 import { findCandidate, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -30,11 +32,12 @@ import { useRouter } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 
-import { useComposerDraftStore } from "../composerDraftStore";
+import { useComposerDraftStore, type ComposerThreadTarget } from "../composerDraftStore";
 import { REQUESTED_SEND_WAIT_MS, sendOutcomeOf } from "../hooks/useComposerSendRequests";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { newCommandId, newMessageId } from "../lib/utils";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { readThreadShells } from "../state/entities";
 import { environmentProjects } from "../state/projects";
 import { environmentServerConfigsAtom } from "../state/server";
 import { environmentShell } from "../state/shell";
@@ -140,7 +143,7 @@ export const strandedTakesAtom = Atom.make((get): ReadonlyArray<StrandedTake> =>
   Atom.withLabel("zerops:stranded-takes"),
 );
 
-/** The conversation a task the reader took was opened for, in their Mate's environment. */
+/** The conversation a task the reader took was taken into, in their Mate's environment. */
 export interface TakenTaskConversation {
   readonly environmentId: EnvironmentId;
   readonly conversationId: string;
@@ -225,23 +228,33 @@ function untilRead<A, B>(
 
 type NewThread = ReturnType<typeof useNewThreadHandler>;
 
-/** The task as a taken conversation's first message carries it; `null` where HQ named no source. */
+/** How a Take reaches its Mate's conversation: a new one where it has none, or one it has. */
+interface TakeDoors {
+  readonly handleNewThread: NewThread;
+  /** Shows a conversation of the Mate at the card of task `taskId` (`?task=`). */
+  readonly show: (environmentId: EnvironmentId, conversationId: string, taskId: string) => void;
+}
+
+/** The task as its brief carries it; `null` where HQ named no source. */
 const takenOf = (task: HqAppTask) =>
   task.source === undefined ? null : { taskId: task.id, source: task.source };
 
 /**
- * Opens a new conversation for taken task `task` in its Mate's environment, once `reach` has it
- * (where this page is linked to the Mate, at once; else through its door), and sends its brief as
- * the first message, carrying the task (`taken`). Each step waits on its read within one bound: the
- * environment's project known, the brief taken by its conversation, then a row of the Mate's that
- * carries the task, so the press ends only once the data says the conversation opened. Where any
- * step does not come, the task is left stranded, and the Mate's conversations and the Board say so
- * from the data (`strandedTakesAtom`); one press at a time per task.
+ * Sends taken task `task`'s brief into its Mate's main conversation once `reach` has the Mate
+ * (where this page is linked to it, at once; else through its door), carrying the task (`taken`),
+ * and shows that conversation at the task's card: queued behind its turn where the Mate is at
+ * work, like any message. A Mate with no conversation yet, or on a server from before a brief went
+ * into a conversation under way (`takeLandsIn`), gets a new conversation for the task. Each step
+ * waits on its read within one bound: the Mate's server config, its conversations listed whole
+ * here (so the main one is the one every surface opens), the brief taken by the conversation, then
+ * its row listing the task, so the press ends only once the data says the task is in it. Where any step does not come, the task is
+ * left stranded, and the Mate's conversations and the Board say so from the data
+ * (`strandedTakesAtom`); one press at a time per task.
  */
 async function openTaken(
   task: HqAppTask,
   reach: (deadline: number) => Promise<EnvironmentId | null>,
-  handleNewThread: NewThread,
+  doors: TakeDoors,
 ): Promise<void> {
   const taken = takenOf(task);
   if (taken === null || openings.has(task.id)) return;
@@ -250,28 +263,70 @@ async function openTaken(
     const deadline = Date.now() + OPEN_WAIT_MS;
     const environmentId = await reach(deadline);
     if (environmentId === null) return;
-    const projectId = await untilRead(
-      environmentProjects.projectsAtom,
-      (projects) => projects.find((entry) => entry.environmentId === environmentId)?.id,
+    const capabilities = await untilRead(
+      environmentServerConfigsAtom,
+      (configs) => configs.get(environmentId)?.environment.capabilities,
       deadline,
     );
-    if (projectId === null) return;
-    const opened = await handleNewThread(scopeProjectRef(environmentId, projectId), {
-      fresh: true,
-    });
-    if (opened === null) return;
+    if (capabilities === null) return;
+    const takesIntoMain = capabilities.conversationTakenTasks === true;
+    // Its conversations read whole here, so the main one is the one every surface opens.
+    if (
+      takesIntoMain &&
+      (await untilRead(
+        environmentShell.threadsListedAtom(environmentId),
+        (whole) => (whole ? true : undefined),
+        deadline,
+      )) === null
+    )
+      return;
+    const landing = takeLandsIn(
+      takesIntoMain,
+      takesIntoMain
+        ? resolvePrimaryConversation(
+            readThreadShells().filter((thread) => thread.environmentId === environmentId),
+          ).primary
+        : undefined,
+    );
+    let target: ComposerThreadTarget;
+    let conversationId: string;
+    if (landing.kind === "main") {
+      target = scopeThreadRef(environmentId, landing.conversationId as ThreadId);
+      conversationId = landing.conversationId;
+    } else {
+      const projectId = await untilRead(
+        environmentProjects.projectsAtom,
+        (projects) => projects.find((entry) => entry.environmentId === environmentId)?.id,
+        deadline,
+      );
+      if (projectId === null) return;
+      const opened = await doors.handleNewThread(scopeProjectRef(environmentId, projectId), {
+        fresh: true,
+      });
+      if (opened === null) return;
+      target = opened.draftId;
+      conversationId = opened.threadId;
+    }
     const messageId = newMessageId();
     const outcome = sendOutcomeOf(messageId);
-    useComposerDraftStore.getState().requestSend(opened.draftId, task.brief ?? task.title, {
+    useComposerDraftStore.getState().requestSend(target, task.brief ?? task.title, {
       commandId: newCommandId(),
       messageId,
       taken,
     });
+    // The conversation takes the send while it is shown; a new one already is.
+    if (landing.kind === "main") doors.show(environmentId, conversationId, task.id);
     if ((await outcome).kind !== "sent") return;
+    // Only a server that names each row's taken tasks says the task is in it: on an older one the
+    // press ends with the send's answer.
+    if (!takesIntoMain) return;
     // Its row comes on the Mate's own stream after the send's answer: until then it is opening.
     await untilRead(
       mateTakenTasksAtom(environmentId),
-      (carried) => (carried.some((each) => each.taskId === task.id) ? true : undefined),
+      (carried) =>
+        carried.some((each) => each.taskId === task.id && each.conversationId === conversationId)
+          ? true
+          : undefined,
       Date.now() + OPEN_WAIT_MS,
     );
   } finally {
@@ -279,18 +334,36 @@ async function openTaken(
   }
 }
 
+/** The doors a Take goes through from this page (`TakeDoors`). */
+function useTakeDoors(): TakeDoors {
+  const handleNewThread = useNewThreadHandler();
+  const router = useRouter();
+  return useMemo(
+    () => ({
+      handleNewThread,
+      show: (environmentId, conversationId, taskId) => {
+        void router.navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(scopeThreadRef(environmentId, conversationId as ThreadId)),
+          search: { task: taskId },
+        });
+      },
+    }),
+    [handleNewThread, router],
+  );
+}
+
 /**
- * **Take**: HQ takes the task for the person's Mate `mateProjectId`, then its conversation opens
- * with the brief as the first message (`openTaken`). HQ's refusal stands on the task's row
- * (`appTaskWrites`); a conversation that did not open leaves the task stranded
- * (`strandedTakesAtom`), and **Open its conversation** (`open`) opens it under the same task,
- * never taking it twice.
+ * **Take**: HQ takes the task for the person's Mate `mateProjectId`, then its brief goes into the
+ * Mate's main conversation (`openTaken`). HQ's refusal stands on the task's row (`appTaskWrites`);
+ * a brief that did not go leaves the task stranded (`strandedTakesAtom`), and **Open its
+ * conversation** (`open`) sends it again under the same task, never taking it twice.
  */
 export function useTakeTask(appId: string | null) {
   const writes = useBoardTaskWrites(appId);
   const { listing } = useZeropsDetailCandidates();
   const openMate = useOpenMate();
-  const handleNewThread = useNewThreadHandler();
+  const doors = useTakeDoors();
   const open = useCallback(
     (task: HqAppTask, mateProjectId: string) =>
       openTaken(
@@ -315,9 +388,9 @@ export function useTakeTask(appId: string | null) {
             }
           });
         },
-        handleNewThread,
+        doors,
       ),
-    [handleNewThread, listing, openMate],
+    [doors, listing, openMate],
   );
   const take = useCallback(
     async (taskId: string, mateProjectId: string) => {
@@ -344,8 +417,8 @@ const NOTHING_HERE: ReadonlyArray<StrandedTakeHere> = [];
 
 /**
  * The reader's stranded Takes in the Mate of `environmentId` (`strandedTakesAtom`), said where they
- * land for that Mate — its conversations — each with **Open its conversation**, which opens it here
- * under the same task; its Board is read for the task's brief only while one is stranded.
+ * land for that Mate — its conversations — each with **Open its conversation**, which sends its
+ * brief into the Mate's main conversation under the same task; its Board is read for the task's brief only while one is stranded.
  */
 export function useStrandedTakesHere(
   environmentId: EnvironmentId,
@@ -359,7 +432,7 @@ export function useStrandedTakesHere(
   const setting = board.read.setting;
   const held = setting.state === "known" ? setting.held : null;
   const pressing = useTakeOpenings();
-  const handleNewThread = useNewThreadHandler();
+  const doors = useTakeDoors();
   return useMemo(() => {
     if (here.length === 0) return NOTHING_HERE;
     return here.map((take) => {
@@ -372,11 +445,11 @@ export function useStrandedTakesHere(
           task === undefined || task.source === undefined
             ? null
             : () => {
-                void openTaken(task, () => Promise.resolve(environmentId), handleNewThread);
+                void openTaken(task, () => Promise.resolve(environmentId), doors);
               },
       };
     });
-  }, [environmentId, handleNewThread, held, here, pressing]);
+  }, [doors, environmentId, held, here, pressing]);
 }
 
 /**

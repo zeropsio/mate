@@ -1667,7 +1667,6 @@ function ConversationView(props: ChatViewProps) {
     reconnectWarningGraceElapsed,
     handleReconnectActiveEnvironment,
   });
-  // The task this conversation works, on an automated Mate: the header names it.
   const activeThreadMessages = activeThread?.messages;
   // Adobe Express is a Labs preview: while the person's switch is off, nothing of it shows.
   const expressOn = useExpressGate() === "on";
@@ -1676,10 +1675,6 @@ function ConversationView(props: ChatViewProps) {
     activeThreadEnvironmentId,
     activeThreadMessages,
     expressOn,
-  );
-  const activeThreadTask = useMemo(
-    () => conversationTask(activeThreadMessages ?? []),
-    [activeThreadMessages],
   );
   // Every task it carried: each live one's bar stands while its card is out of sight.
   const activeThreadTasks = useMemo(
@@ -1693,6 +1688,12 @@ function ConversationView(props: ChatViewProps) {
       const at = zeropsMateAt(zeropsMates, activeThreadEnvironmentId);
       return at.kind === "mate" && at.mate.automated === true;
     })();
+  // The task an automated Mate's turn works, which heads its conversation and its composer; a
+  // person's Mate is one long conversation that takes task after task, headed as any chat.
+  const activeThreadTask = useMemo(
+    () => (automatedHere ? conversationTask(activeThreadMessages ?? []) : null),
+    [activeThreadMessages, automatedHere],
+  );
   const providerInstanceEntries = useMemo(
     () =>
       automatedMateEntries(
@@ -7494,7 +7495,7 @@ function ConversationView(props: ChatViewProps) {
                     asker: mateAsker(admissionOwner),
                     onSteerQueuedMessage,
                     queueBlockedByAnswer: queueBlockedByPendingRequest,
-                    automatedTask: automatedHere ? activeThreadTask : null,
+                    automatedTask: activeThreadTask,
                     steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
                       keybindings,
                       "thread.steerQueuedMessage",

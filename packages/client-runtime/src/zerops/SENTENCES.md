@@ -1,4 +1,4 @@
-next: ZV223
+next: ZV224
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -180,5 +180,6 @@ next: ZV223
 - ZV218 — Of several drafts, each line goes by its title, and one HQ is adding says what its addition does in place of it; breaks: the line over the composer names the change by its number with only Adding after it
 - ZV219 — A conversation's own changes are each one its runs pushed or a finished zcp handover named, though no message links it, and never one a call is still opening or closes; breaks: after Add to your app the conversation draws no row saying the app has the change
 - ZV220 — Your app names a version only when its commit matches the head or merge commit of the Mate's own added change in that stage's repository. An unmatched commit leaves the line blank. Without a commit the newest-merge rule still applies; breaks: a merge-commit deploy loses its change title or a Review build loses its added line
-- ZV221 — A task the reader took for their Mate is stranded, offering Open its conversation, only where that Mate's conversations are read whole here from a server that names each one's taken task; breaks: a Mate on an older server, or one whose rows are still arriving, offers a second conversation for every task it took
+- ZV221 — A task the reader took for their Mate is stranded, offering to send its brief again, only where that Mate's conversations are read whole here from a server that names each one's taken task; breaks: a Mate on an older server, or one whose rows are still arriving, offers a second conversation for every task it took
 - ZV222 — A taken task one of its Mate's conversations carries is not stranded, and one none of them carries is; breaks: a task whose conversation opened still offers to open it again, or a Take whose conversation never opened offers no way to open it
+- ZV223 — A Take sends its brief into the Mate's main conversation where its server takes a brief into a conversation under way, and opens a new conversation for the task on an older server or for a Mate with no conversation yet; breaks: every Take strands on a Mate not yet updated, whose engine refuses a brief into its main conversation

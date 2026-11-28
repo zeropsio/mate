@@ -166,7 +166,7 @@ export const engineStartTurn =
       // with it where the session's steer carries them; else, for a plan (the run keeps the mode it
       // began in) and for a message the person queued, as the next run: the conversation holds it
       // whatever becomes of the tab that queued it.
-      // A taken task's brief opens its own conversation: never steered into a run.
+      // A taken task's brief is a turn of its own: never steered into a run, queued behind one.
       const steered =
         input.interactionMode !== "plan" && input.queued !== true && input.taken === undefined
           ? engineSteerTarget(readsOfState(host.store.state()), target, attachments.length > 0)

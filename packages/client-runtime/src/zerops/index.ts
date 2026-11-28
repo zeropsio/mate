@@ -142,10 +142,12 @@ export {
 } from "./serviceTypeWords.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
-  OPEN_TAKEN_LABEL,
-  OPENING_TAKEN_WORDS,
+  SEND_TAKEN_LABEL,
+  SENDING_TAKEN_WORDS,
   STRANDED_TAKE_WORDS,
   strandedTakes,
+  takeLandsIn,
+  type TakeLanding,
   type TakenConversations,
 } from "./takenConversation.ts";
 export {

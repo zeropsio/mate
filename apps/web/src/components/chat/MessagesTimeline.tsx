@@ -90,6 +90,7 @@ import { useLastWordsClock } from "./useLastWordsClock";
 import { useTimelineProposals } from "./useTimelineProposals";
 import { useEarlierTurnsAnchor } from "./useEarlierTurnsAnchor";
 import { useOpenedIntoView } from "./useOpenedIntoView";
+import { useTaskCardReveal } from "./taskCardReveal";
 import { useRememberPosition } from "./useRememberPosition";
 import { useAskRoom } from "./useAskRoom";
 import { useStableRows } from "./useStableRows";
@@ -632,6 +633,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     timelineViewportElement,
   });
   const { notePersonSession } = person;
+  // A Take, or the Board's Open its conversation, lands at the task's card (`?task=`).
+  const revealTaskCard = useCallback(
+    (index: number) => {
+      onManualNavigation();
+      notePersonSession({ type: "input", at: performance.now() });
+      void listRef.current?.scrollToIndex({
+        index,
+        animated: !prefersReducedMotion(),
+        viewOffset: 24,
+      });
+    },
+    [listRef, notePersonSession, onManualNavigation],
+  );
+  useTaskCardReveal(rows, listPlaced, revealTaskCard);
 
   useOpenedIntoView(
     timelineViewportElement,
