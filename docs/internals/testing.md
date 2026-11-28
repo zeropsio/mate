@@ -57,8 +57,11 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   repository” in `zeropsio/mate-hq:docs/architecture/testing.md` for how they are recorded.
   A recording that no longer decodes is recorded again there, never edited here. Copy a recording
   only in the card whose case reads it.
-- Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
-  data sources turns it red.
+- A web unit that says what a surface shows reads the surface's key state: its fixture through the
+  decision the surface calls, or, where the sentence is about what is drawn from a record, the state's own element
+  (`stateElement`, `apps/web/src/design/mount.tsx`) rendered in process. It asserts values the fixture holds and
+  which presses are offered, so swapping data sources turns it red. A sentence about a state no flow has adds the
+  state first.
 - Model catalogue entries are configuration. Validate their schema; do not pin individual names,
   aliases, badges, version boundaries or profile assignments in tests. Test changes to catalogue
   semantics with synthetic providers and model names.

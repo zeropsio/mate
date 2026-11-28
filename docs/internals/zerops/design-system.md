@@ -355,27 +355,30 @@ The machine ledgers own the entries and fingerprints; do not copy their counts i
 
 ## 7. Building with the kit
 
-The kit is the web client's component library (`apps/web/src/components/ui`) and its workbench at
-`/kit`, served by every dev server, preview and production build.
+The kit is the source of truth of the web client's design: the component library
+(`apps/web/src/components/ui`), its workbench at `/kit`, and the flows, each a surface of the product in its
+key states over fixtures (`apps/web/src/design`). Every dev server, preview and production build serves it, at
+`/kit` and `/design/`; it reads no account and calls no server. A UI change is made in its terms, so the kit
+shows the change the moment it lands.
 
-- Before drawing anything, find the piece that does the job. `/kit` groups the components by what
-  they are for, and each page shows its forms, a playground and its import line. Read the
-  component's doc comment before deciding nothing fits.
-- A surface composes kit pieces and lays them out with utilities. A look belongs to the kit, never
-  to the surface: never restyle a piece from outside, and never draw a look by hand that a piece
-  already draws.
-- If nothing fits, extend the kit, not the surface. Add a variant or size when the job is the
-  same, and a new component when it differs. Either one lands in its own commit, before the
-  surface uses it, with:
-  - its doc comment;
-  - its kit section (`apps/web/src/kit/sections/<id>.tsx`, on `kit/Specimen.tsx`'s tiles);
-  - its playground (`apps/web/src/kit/playground/<id>.tsx`).
-
-  A job others would otherwise draw by hand also gets a guard (§5).
-
-- To see a surface in a state, use its flow, never a throwaway page. Each `apps/web/design-*.html`
-  page draws one surface over fixtures (`apps/web/src/design/`) and needs no account, project or
-  Mate. Its states are listed in its `kit-states` meta, and it appears in `/kit` under Flows, with
-  a link per state in light, dark or both. A missing state is added to the surface's flow as a
-  fixture and a `kit-states` entry. A surface without a flow gets one.
-- A look is checked in `/kit` in both appearances and on the canvas's grounds before it lands.
+- **A look is a kit piece.** Before drawing, find the piece that does the job: `/kit` groups them by what they
+  are for, and each page shows its forms, a playground and its import line. A surface composes pieces and lays
+  them out with utilities; it never restyles one and never draws by hand what a piece draws. If nothing fits,
+  extend the kit: a variant or size when the job is the same, a new component when it differs, in its own
+  commit before the surface uses it, with its doc comment, its section (`apps/web/src/kit/sections/<id>.tsx`,
+  on `apps/web/src/kit/Specimen.tsx`'s tiles) and its playground (`apps/web/src/kit/playground/<id>.tsx`). A job others
+  would draw by hand also gets a guard (§5).
+- **A surface is drawn by its flow.** A flow (`apps/web/src/design/<id>.flow.tsx`) names the component the
+  product itself renders and the fixture of each state; the mount (`apps/web/src/design/mount.tsx`) draws it,
+  and alone stands in for the account, the router and the frame. A flow draws nothing itself and calls no
+  product function: where a surface cannot stand on the mount, the wiring it needs moves into a component the
+  product renders, and the flow names that. A new surface lands with its flow.
+- **A key state is a named state of a flow:** each kind the surface's own decision returns, each reader whose
+  presses differ, and missing, partial, stale and refused evidence. It is one line of the flow's states
+  (`apps/web/src/design/<id>.states.ts`) and one fixture in the flow; when a brief names a screen key, that
+  key is its id. Its address is `/design-<id>.html?state=<state>` (`&theme=dark`). A state the product gains
+  lands with its key state in the same change. To see a state, open its address; never build a page for it.
+- **Fixtures are the only fake:** literal evidence as its source sends it, or the literal inputs of the
+  component drawn. They live in `apps/web/src/design`, or in a package's own fixtures when its unit reads them
+  too; never beside product code.
+- **A look is checked at its key state's address,** in both appearances, before it lands.

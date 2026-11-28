@@ -29,19 +29,22 @@ delivery. Local-only: never commit it or its credentials.
   continuously repainting effects, especially on high-refresh displays.
 - **zcp starts this server.** Unknown `mate serve` flags kill every unit boot: new settings use the
   launch environment, never a new flag (`zeropsio/zcp:docs/spec-mate.md` §2.2).
+- **UI goes through the kit.** A look is a kit piece, a surface is drawn by its flow from the component the
+  product renders, a key state is a named state of that flow, and fixtures are the only fake: design-system
+  §7.
 
 ## Size the work, then verify
 
 Name the tier before the first tool call. Its loop is the whole loop; no higher-tier rituals.
 T1 (the units) runs at every landing; other suites run only when the owner explicitly asks; normal
-verification is T1, lint, typecheck and build (plus a live look for UI).
+verification is T1, lint, typecheck and build (plus its looks for UI).
 
 - **Tweak** — existing look: CSS, spacing, colour, copy, icon, one component's layout. Grep, edit, one
-  look cropped to the surface at the reference viewport (1786 × 1000, menu at 435 px) in the report's
-  theme, `vp check` the files, one commit. Nothing extra (test, harness, matrix, ledger entry,
-  subagent, release) unless asked. Delete tests pinning the old class, pixel or colour; do not update them.
+  look at the surface's key state (`/design-<flow>.html?state=<state>`) in the report's theme, `vp check`
+  the files, one commit. Nothing extra (test, matrix, ledger entry, subagent, release) unless asked. Delete
+  tests pinning the old class, pixel or colour; do not update them.
 - **Change** — behaviour: state, data, protocol, new control. Lint and typecheck of the touched
-  packages, one live look for UI.
+  packages, one look per key state it adds or alters, one live look for UI.
 - **Pass** — a maintainer calls it a pass, or it redesigns several surfaces or lands a slice: loop below.
 
 The loop:
@@ -65,8 +68,8 @@ The loop:
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.
 - The server is event-sourced; async flows emit typed receipts. Wait on receipts and worker drains,
   never sleeps or polling.
-- Live looks use the `test-t3-app` test browser. Computer use on the person's own desktop needs
-  their consent.
+- Looks use the `test-t3-app` test browser at the reference viewport (1786 × 1000, menu at 435 px).
+  Computer use on the person's own desktop needs their consent.
 
 `web-v*` tags deploy the hosted web client (mate.zerops.io) through `zerops.yml`'s `prod` setup.
 Release, staging, HQ and container delivery: `docs/operations/release-and-deploy.md`;
@@ -134,8 +137,8 @@ To answer a question, go to the home:
 - Terminal renderers → `docs/architecture/terminal-renderers.md`.
 - Server services and thin transports → `docs/internals/effect-services.md`; read before adding server code.
 - Platform assumptions our code relies on → `docs/internals/zerops/verified.md` or a comment beside the code.
-- UI principles, copy glossary, tokens, guards, exception policy, and how to build and look at UI
-  with the kit (`/kit`, flows) → `docs/internals/zerops/design-system.md`; UI work starts at its §7.
+- UI principles, copy glossary, tokens, guards, exception policy, the kit and its flows →
+  `docs/internals/zerops/design-system.md`; UI work starts at its §7.
 - Platform editing rules → `docs/internals/zerops/platform-data-architecture.md`.
 - Instrumentation rules → `docs/operations/observability.md`.
 - Runbooks → `docs/operations/`.
@@ -166,9 +169,6 @@ To answer a question, go to the home:
 
 - Complexity at the adapter boundary; pure orchestration, dumb UI.
 - An RPC handler (a `register*Rpc.ts` module), HTTP route or CLI command decodes input, calls one service method, maps errors.
-- `apps/web/src/components/ui` exports own their look: pick a `variant`/`size`, never restyle with
-  `className`, never add a `t3code/no-restyle` exception. If none fits, generic looks get a variant;
-  feature-specific looks stay in the feature. Layout classes belong on the parent.
 - Important invariants get deterministic checks with an exception ledger that may only shrink.
 - Any part (HQ, a Mate's container, the Zerops platform, a provider) can fail: bounded waits, honest
   user state, recovery on return; no machinery for failures not yet seen.
