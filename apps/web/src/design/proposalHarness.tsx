@@ -13,9 +13,8 @@
  * live: Reveal shows an example value for half a minute; `?only=reveal` draws those alone. Then a
  * Mate proposing an MCP server for its agents: with a key to type, proposed for the whole project,
  * waiting for a sign-in and its paste fallback, connected, and failed; `?only=mcp` shows those
- * alone. Before them all, a Mate's two asks about production — creating a service it lacks, and
- * releasing what waits — in each state, and the conversation hearing how a release ended
- * (`productionAskHarness`); `?only=production` shows those alone.
+ * alone. The release offer and its outcome in the conversation appear first.
+ * `?only=production` shows those fixtures alone.
  *
  * Served by the dev server at `/design-proposal.html`. Fixtures only: nothing here ships, and no
  * route imports this module.

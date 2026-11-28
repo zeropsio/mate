@@ -178,10 +178,9 @@ interface ProposalRecordDrawing {
 
 const HQ_DID_NOT_KEEP = "HQ could not keep your decision, so nothing ran. Try again.";
 
-/** Why HQ did not take an approval: its words, and its code where it refused. */
-export interface ApprovalRefusal {
+/** HQ's words when it did not take an approval. */
+interface ApprovalRefusal {
   readonly words: string;
-  readonly code?: string;
 }
 const DECIDED_ELSEWHERE = "It was decided elsewhere.";
 
@@ -319,8 +318,8 @@ export function makeProposalRecord() {
     },
     /**
      * Starts the approval HQ carries out. Answers null once HQ took it — its decision `approved` is
-     * then HQ's, running until HQ records the end — or why not: HQ's words and its code, or, where
-     * HQ holds another decision of it, that one drawn.
+     * then HQ's, running until HQ records the end — or HQ's words when it refuses. Where HQ
+     * holds another decision of it, that one is drawn.
      */
     async approve(
       at: ProposalDecisionsAt,
@@ -352,10 +351,8 @@ export function makeProposalRecord() {
           }
           return { words: DECIDED_ELSEWHERE };
         }
-        const code = (cause as { readonly code?: unknown } | null)?.code;
         return {
           words: cause instanceof Error && cause.message !== "" ? cause.message : HQ_DID_NOT_KEEP,
-          ...(typeof code === "string" ? { code } : {}),
         };
       } finally {
         if (generation === asOf) {

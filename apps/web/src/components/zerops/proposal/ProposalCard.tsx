@@ -385,7 +385,7 @@ function Words({ words }: { readonly words: string }) {
 }
 
 /** Something handed along, folded under its title until asked for: a log, an import. */
-export function Attachment({ title, text }: { readonly title: string; readonly text: string }) {
+function Attachment({ title, text }: { readonly title: string; readonly text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <Collapsible

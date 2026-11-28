@@ -432,11 +432,9 @@ export interface HqPlacementSide {
 
 /**
  * The reviewed effect an approval carries (`mate-hq spec/protocol.md` S19b), which HQ carries out
- * as its `proposal_effect` operation: a service's start, stop or restart; a domain routed to a
- * service's port; the services a release plan creates, imported into production (`hostnames`,
- * each once, and `planHash`, the hash of the plan the person read); access changes, one per
- * person, each with the operation id the client chose; or a message to the named Mate's project,
- * which HQ's mailbox delivers.
+ * as its `proposal_effect` operation. It starts, stops or restarts a service, routes a domain
+ * to a service's port, changes access with one client-chosen operation id per person, or
+ * delivers a message to the named Mate's project through HQ's mailbox.
  */
 export type HqProposalEffect =
   | {
@@ -448,11 +446,6 @@ export type HqProposalEffect =
       readonly serviceId: string;
       readonly domains: ReadonlyArray<string>;
       readonly port: number;
-    }
-  | {
-      readonly kind: "service.create";
-      readonly hostnames: ReadonlyArray<string>;
-      readonly planHash: string;
     }
   | { readonly kind: "access.set"; readonly changes: ReadonlyArray<HqStartedAccessChange> }
   | {
@@ -2119,9 +2112,6 @@ export function makeHqApi(input: {
         {
           signIn: "Sign in with your Zerops account to approve this.",
           inFlight: "Another change on this project is running. Approve this once it ends.",
-          refused: {
-            service_not_planned: "Production changed since this was read, so nothing was created.",
-          },
         },
         approval.effect.kind !== "mate.message" && approval.effect.kind !== "chief.message",
       ),

@@ -138,15 +138,6 @@ export interface ZeropsRevealProposalParams {
 }
 
 /**
- * The services the application's production tier declares and production lacks, by hostname, and
- * the recipe's `main` the Mate read them at. Hostnames only: what creates them is HQ's plan.
- */
-export interface ZeropsServiceCreateParams {
-  readonly services: ReadonlyArray<string>;
-  readonly recipeHead: string;
-}
-
-/**
  * What waits for production, as HQ offered it when the Mate asked: the recipe's `main` the offer
  * was read at, which pins the ask, and the release name HQ suggested.
  */
@@ -196,10 +187,6 @@ export type ZeropsProposal =
       readonly kind: "env.reveal";
       readonly projectId: string;
       readonly params: ZeropsRevealProposalParams;
-    })
-  | (ProposalHead & {
-      readonly kind: "service.create";
-      readonly params: ZeropsServiceCreateParams;
     })
   | (ProposalHead & {
       readonly kind: "release.offer";
@@ -333,15 +320,6 @@ const RevealProposal = Schema.Struct({
   params: RevealParams,
 });
 
-const ServiceCreateProposal = Schema.Struct({
-  ...Head,
-  kind: Schema.Literal("service.create"),
-  params: Schema.Struct({
-    services: Schema.NonEmptyArray(Words),
-    recipeHead: Words,
-  }),
-});
-
 const ReleaseOfferProposal = Schema.Struct({
   ...Head,
   kind: Schema.Literal("release.offer"),
@@ -361,7 +339,6 @@ const ProposalDocument = Schema.Struct({
     AccessProposal,
     McpProposal,
     RevealProposal,
-    ServiceCreateProposal,
     ReleaseOfferProposal,
   ]),
 });
@@ -532,17 +509,6 @@ function shaped(proposal: DecodedProposal, params: unknown): ZeropsProposal | un
       const mcp = mcpParams(proposal.params);
       if (mcp === undefined) return undefined;
       return { ...head, kind: "mcp.add", projectId: proposal.projectId, params: mcp };
-    }
-    case "service.create": {
-      // Each service once, by its hostname: a blank one names nothing to create.
-      const services = [...new Set(proposal.params.services.map((service) => service.trim()))];
-      if (services.some((service) => service === "") || blank(proposal.params.recipeHead))
-        return undefined;
-      return {
-        ...head,
-        kind: "service.create",
-        params: { services, recipeHead: proposal.params.recipeHead },
-      };
     }
     case "release.offer": {
       const { head: offerHead, suggestion } = proposal.params;

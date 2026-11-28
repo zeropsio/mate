@@ -1,156 +1,23 @@
 /**
- * A Mate's two asks about its application's production, in each state the cards stand in —
- * waiting, working, failed, done, replaced, someone else's, Not now — and the conversation
- * hearing how a release ended. Every state is read through the cards' own logic
- * (`productionAsk.logic`) from made-up sources: HQ's plan, the flow's releases, the decision
- * record. Drawn by the proposal harness (`/design-proposal.html?only=production`). Fixtures only:
- * nothing here ships.
+ * Release offer states and how a conversation shows the outcome of a release.
+ * The proposal harness draws these fixtures at `/design-proposal.html?only=production`.
  */
-import { waitingWords } from "@t3tools/client-runtime/data";
-import type { HqOperationStanding } from "@t3tools/client-runtime/data";
 import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
-import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import type { ReactNode } from "react";
 
 import { EventLine } from "~/components/chat/ConversationRows";
 import { MateFace } from "~/components/zerops/primitives";
 import {
-  askedCreations,
   releaseOfferView,
-  serviceCreateView,
   type ReleaseOfferLive,
-  type ServiceCreatePlan,
 } from "~/components/zerops/proposal/productionAsk.logic";
-import {
-  ReleaseOfferAskCard,
-  ServiceCreateAskCard,
-} from "~/components/zerops/proposal/ProductionAskCards";
+import { ReleaseOfferAskCard } from "~/components/zerops/proposal/ProductionAskCards";
 import type { ProposalDecision } from "~/zerops/proposalRecord";
-import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 
 const HEAD = "4f".repeat(20);
 const MOVED = "9c".repeat(20);
 const ASKED_AT = "2026-11-08T14:00:00.000Z";
-
-const CREATE: Extract<ZeropsProposal, { kind: "service.create" }> = {
-  id: "create",
-  kind: "service.create",
-  summary: "Create db in Production",
-  reason:
-    "The People change keeps invitations in a database. Production has none yet, so the next release needs it first.",
-  projectId: "p-prod",
-  projectName: "Production",
-  params: { services: ["db"], recipeHead: HEAD },
-};
-
-const CREATE_TWO = {
-  ...CREATE,
-  params: { services: ["db", "cache"], recipeHead: HEAD },
-};
-
-const DB = {
-  kind: "create" as const,
-  service: "db",
-  settings: { hostname: "db", type: "postgresql@18", mode: "HA" },
-  cost: "Adds one billed service.",
-};
-const CACHE = {
-  kind: "create" as const,
-  service: "cache",
-  settings: { hostname: "cache", type: "valkey@7.2", mode: "NON_HA" },
-  cost: "Adds one billed service.",
-};
-const DEPLOY = { kind: "deploy" as const, service: "app", sha: "1a".repeat(20) };
-
-const planOf = (...creations: ReadonlyArray<typeof DB | typeof CACHE>): ServiceCreatePlan => ({
-  kind: "ready",
-  plan: {
-    hash: "0".repeat(64),
-    operations: [...creations, DEPLOY],
-    vault: { state: "known", gaps: [] },
-  } satisfies ReleaseServicePlan,
-});
-
-const MAY = { allowed: true } as const;
-const APPROVED: ProposalDecision = { state: "running", at: "2026-11-08T14:20:00.000Z" };
-
-const CREATES: ReadonlyArray<{
-  readonly name: string;
-  readonly proposal?: typeof CREATE;
-  readonly plan: ServiceCreatePlan;
-  /** HQ's operation carrying the approval out, for the viewer. */
-  readonly effect?: HqOperationStanding;
-  readonly decision?: ProposalDecision;
-  readonly permission?: { readonly allowed: boolean; readonly reason?: string };
-}> = [
-  { name: "waiting", plan: planOf(DB) },
-  { name: "waiting-two", proposal: CREATE_TWO, plan: planOf(DB, CACHE) },
-  { name: "reading", plan: { kind: "reading" } },
-  { name: "working", plan: planOf(DB), decision: APPROVED, effect: { kind: "going", id: "op" } },
-  {
-    name: "paused",
-    plan: planOf(DB),
-    decision: APPROVED,
-    effect: {
-      kind: "waiting",
-      id: "op-create",
-      continueBy: "dana",
-      yours: true,
-      ...waitingWords("token_expired"),
-    },
-  },
-  {
-    name: "failed",
-    plan: planOf(DB),
-    decision: {
-      state: "failed",
-      at: APPROVED.at,
-      message:
-        "Zerops could not create db: the hardware of this region has no room for a highly available PostgreSQL right now.",
-    },
-  },
-  { name: "done", plan: planOf(), decision: { ...APPROVED, state: "done" } },
-  { name: "exists", plan: planOf() },
-  {
-    name: "others",
-    plan: { kind: "reading" },
-    permission: { allowed: false, reason: "Only an owner or an admin can release Tea Shop." },
-  },
-  { name: "notNow", plan: planOf(DB), decision: { ...APPROVED, state: "declined" } },
-];
-
-function Create(fixture: (typeof CREATES)[number]) {
-  const proposal = { ...(fixture.proposal ?? CREATE), id: `create-${fixture.name}` };
-  const decided = fixture.decision !== undefined;
-  const view = serviceCreateView({
-    services: proposal.params.services,
-    plan: fixture.plan,
-    permission: fixture.permission ?? MAY,
-    decision: fixture.decision,
-    decisionKnown: true,
-    sending: false,
-    effect: fixture.effect ?? { kind: "none" },
-    liveTag: "v0.1.3",
-    by: decided ? "Dana" : null,
-    at: decided ? "15:20" : null,
-  });
-  return (
-    <ServiceCreateAskCard
-      mateName="Juno"
-      onContinue={() => undefined}
-      onCreate={() => undefined}
-      onNotNow={() => undefined}
-      proposal={proposal}
-      view={view}
-      yaml={
-        fixture.plan.kind === "ready"
-          ? servicePlanImportYaml(askedCreations(fixture.plan.plan, proposal.params.services))
-          : undefined
-      }
-    />
-  );
-}
 
 const OFFER: Extract<ZeropsProposal, { kind: "release.offer" }> = {
   id: "offer",
@@ -166,7 +33,7 @@ const LIVE: ReleaseOfferLive = {
   head: HEAD,
   suggestion: "v0.1.6",
   gate: { allowed: true },
-  permission: MAY,
+  permission: { allowed: true },
   inFlight: undefined,
   waiting: 3,
 };
@@ -322,8 +189,7 @@ function Conversation() {
           {index !== 0 ? null : (
             <p className="text-body text-foreground">
               <span className="font-medium">Juno</span> · Production still runs v0.1.3 and nothing
-              of yours is lost. The database is the only thing missing: press Try again on the card
-              above.
+              of yours is lost. The database is the only thing missing.
             </p>
           )}
         </div>
@@ -344,17 +210,6 @@ function Section({ title, children }: { readonly title: string; readonly childre
 export function ProductionAsks() {
   return (
     <>
-      <Section title="Create what production lacks">
-        {CREATES.map((fixture) => (
-          <div
-            className="min-w-0 px-1 py-0.5"
-            data-harness-state={`create:${fixture.name}`}
-            key={fixture.name}
-          >
-            <Create {...fixture} />
-          </div>
-        ))}
-      </Section>
       <Section title="Release, asked where the work ends">
         {OFFERS.map((fixture) => (
           <div

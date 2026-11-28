@@ -2148,14 +2148,11 @@ function ConversationView(props: ChatViewProps) {
     timelineMessages,
     zeropsThreadModel.entries,
   );
-  // When the Mate raised each ask about production here: the releases made after one are this
-  // conversation's to hear the end of.
+  // The conversation hears the end of releases made after the Mate asked to release here.
   const productionAsks = useMemo(
     () =>
       zeropsThreadModel.entries.flatMap((entry) =>
-        entry.kind === "operation" &&
-        (entry.operation.proposal?.kind === "release.offer" ||
-          entry.operation.proposal?.kind === "service.create")
+        entry.kind === "operation" && entry.operation.proposal?.kind === "release.offer"
           ? [entry.operation.anchorAt]
           : [],
       ),

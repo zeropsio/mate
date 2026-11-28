@@ -8,7 +8,7 @@
  * for their sign-in. A value is the vault panel's write from this tab, its decision and its end
  * recorded here. What the person decided is kept at HQ by proposal id (`proposalRecord.ts`), so a
  * reload draws it as it was and no card offers Approve twice. A reveal is its own card
- * (`RevealAskContainer`), as are the two asks about production (`ProductionAskContainers`).
+ * (`RevealAskContainer`), as is the release offer (`ProductionAskContainers`).
  */
 import { useTimelineRowReading, useTimelineRowSettling } from "~/components/chat/timelineRowReads";
 import {
@@ -81,7 +81,7 @@ import {
   type RestartsEnded,
 } from "../vault/readerRestarts";
 import { McpProposalCardContainer } from "./McpProposalCardContainer";
-import { ReleaseOfferAsk, ServiceCreateAsk } from "./ProductionAskContainers";
+import { ReleaseOfferAsk } from "./ProductionAskContainers";
 import { ProposalCard, type ProposalCardProps } from "./ProposalCard";
 import { RevealAsk } from "./RevealAskContainer";
 import { endProjectOperationIntent } from "../ZeropsOperationEnd.logic";
@@ -183,9 +183,6 @@ export function ProposalCardContainer({
   // A reveal approves nothing to run: the person sees a value, on their screen only.
   if (proposal.kind === "env.reveal")
     return <RevealAsk environmentId={environmentId} proposal={proposal} />;
-  // What production lacks is created from HQ's plan, and followed to its end.
-  if (proposal.kind === "service.create")
-    return <ServiceCreateAsk environmentId={environmentId} proposal={proposal} />;
   // A release is never made from the card: it opens the review.
   if (proposal.kind === "release.offer")
     return (
@@ -203,10 +200,7 @@ function Proposal({
   proposal,
   environmentId,
 }: {
-  readonly proposal: Exclude<
-    ZeropsProposal,
-    { readonly kind: "mcp.add" | "service.create" | "release.offer" }
-  >;
+  readonly proposal: Exclude<ZeropsProposal, { readonly kind: "mcp.add" | "release.offer" }>;
   readonly environmentId: EnvironmentId;
 }) {
   // The conversation's own project: the organization every approval acts in, and where HQ keeps
