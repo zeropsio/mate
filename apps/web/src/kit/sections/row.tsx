@@ -213,11 +213,14 @@ function RowSpecimens() {
       </SpecimenBlock>
       <SpecimenBlock note="Cells that line up with their list's columns." title="Columns">
         <SpecimenGrid size="xl">
-          <Specimen label="columns pressable" note="In a list of auto · 1fr · auto · auto">
+          <Specimen
+            label="columns pressable · picked"
+            note="In a list of auto · 1fr · auto · auto, the second picked"
+          >
             <ul className="grid w-full max-w-md grid-cols-[auto_minmax(0,1fr)_auto_auto] [--row-pad-x:--spacing(2)] [--row-pad-y:--spacing(1.5)]">
-              {COLUMN_ROWS.map((row) => (
+              {COLUMN_ROWS.map((row, at) => (
                 <li className="col-span-full grid grid-cols-subgrid" key={row.title}>
-                  <Row columns pressable render={<button type="button" />}>
+                  <Row columns pressable picked={at === 1} render={<button type="button" />}>
                     <GitPullRequestIcon aria-hidden="true" className="me-2.5 mt-0.5 size-4" />
                     <span className="truncate text-body">{row.title}</span>
                     <span className="ms-4 text-caption text-muted-foreground">{row.state}</span>

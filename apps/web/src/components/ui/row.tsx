@@ -278,12 +278,20 @@ function RowSlots({
 const rowColumnsVariants = cva(
   "group/row col-span-full grid grid-cols-subgrid items-start text-left outline-none",
   {
-    defaultVariants: { pressable: false, ground: "none" },
+    defaultVariants: { pressable: false, picked: false, ground: "none" },
     variants: {
       /** As a slotted row's: `true` lights its own ground (`bg-item-hover`); `band` leaves that to its list. */
       pressable: {
         true: "cursor-pointer transition-colors duration-150 ease-out-strong [:hover,:focus-visible,[data-highlighted]]:bg-item-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
         band: "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring",
+        false: "",
+      },
+      /**
+       * As a slotted row's: the one its list shows now (the task open in its panel) stands on
+       * `bg-item-picked`, and stays on it under the pointer and the keyboard's cursor.
+       */
+      picked: {
+        true: "bg-item-picked",
         false: "",
       },
       /**
@@ -297,6 +305,13 @@ const rowColumnsVariants = cva(
         menu: "relative isolate rounded-card transition-colors duration-150 ease-out-strong [--row-ground:var(--sidebar)] [:hover,[aria-current=page],[data-pressed]]:bg-(--row-ground) hover:[--row-ground:var(--sidebar-row-hover)] aria-[current=page]:[--row-ground:var(--sidebar-row-active)] data-pressed:[--row-ground:var(--sidebar-row-active)] motion-reduce:transition-none",
       },
     },
+    compoundVariants: [
+      {
+        pressable: true,
+        picked: true,
+        className: "[:hover,:focus-visible,[data-highlighted]]:bg-item-picked",
+      },
+    ],
   },
 );
 
@@ -312,11 +327,12 @@ function RowColumns({
   className,
   render,
   pressable,
+  picked,
   ground,
   ...props
 }: RowColumnsProps) {
   const defaultProps = {
-    className: cn(rowColumnsVariants({ pressable, ground }), className),
+    className: cn(rowColumnsVariants({ pressable, picked, ground }), className),
     "data-slot": "row",
   };
   return useRender({
