@@ -32,6 +32,7 @@ import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwn
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import {
   Menu,
+  MenuGroupLabel,
   MenuItem,
   MenuPopup,
   MenuRadioGroup,
@@ -120,17 +121,13 @@ function MateChatsMenu({
 }) {
   const open = chats.chats.find((chat) => chat.open)?.threadId ?? "";
   const { close } = chats;
+  const whose = `${mateName}'s chats`;
   return (
     <span className="me-1.5 flex shrink-0">
       <Menu>
         <MenuTrigger
           render={
-            <Button
-              aria-label={`${mateName}'s chats`}
-              data-conversation-chats
-              size="icon-xs"
-              variant="sidebar"
-            />
+            <Button aria-label={whose} data-conversation-chats size="icon-xs" variant="sidebar" />
           }
         >
           <ChevronDownIcon aria-hidden="true" className="size-3.5" />
@@ -143,6 +140,7 @@ function MateChatsMenu({
             }}
             value={open}
           >
+            <MenuGroupLabel>{whose}</MenuGroupLabel>
             {chats.chats.map((chat) => (
               <MenuRadioItem key={chat.threadId} value={chat.threadId} variant="check">
                 <span className="flex min-w-0 items-baseline gap-2">
