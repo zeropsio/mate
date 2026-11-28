@@ -181,7 +181,7 @@ export function TaskPanel({
                     className="flex min-w-0 items-baseline justify-between gap-4 text-line leading-5"
                     key={`${event.kind}:${index}`}
                   >
-                    <span className="min-w-0 text-foreground">{event.words}</span>
+                    <span className="min-w-0 truncate text-foreground">{event.words}</span>
                     <Text className="shrink-0" render={<span />} variant="meta">
                       {event.at}
                     </Text>

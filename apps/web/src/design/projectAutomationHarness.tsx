@@ -471,6 +471,20 @@ const PICKUP = task({
   spentUsd: 0.38,
   workedMs: 9 * 60_000,
   detail: "Should pick-up orders be paid at checkout, or at the greenhouse?",
+  history: [
+    {
+      kind: "asked",
+      at: ago(20),
+      question:
+        "The greenhouse has two addresses in the shop's settings, the old one on Mill Lane and the new one on the ring road: which one should the confirmation name?",
+    },
+    { kind: "answered", at: ago(18) },
+    {
+      kind: "asked",
+      at: ago(4),
+      question: "Should pick-up orders be paid at checkout, or at the greenhouse?",
+    },
+  ],
   ...putOnBoard(ME, "Let people pick their order up at the greenhouse"),
   taker: { kind: "pool", mateProjectId: SOL.projectId },
 });
