@@ -105,6 +105,7 @@ const makeServerEnvironmentCapabilities = (
     threadPullRequestLinking: true,
     matePersona: true,
     crewCardAsk: true,
+    conversationTakenTask: true,
     ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
     ...(options?.mateUpdateCheck === undefined ? {} : { mateUpdateCheck: options.mateUpdateCheck }),
     ...(options?.dataConsole === undefined ? {} : { dataConsole: options.dataConsole }),

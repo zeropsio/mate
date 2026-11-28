@@ -134,6 +134,8 @@ export interface ConversationView {
    * queued a run, or one steered into it — whose run has not ended. Absent: none.
    */
   readonly workingOn?: ConversationWorkingOn;
+  /** The Board task a person took that it was opened for (`ConversationState.takenTask`). */
+  readonly takenTask?: string;
   /** The agent's latest words, once said whole. */
   readonly lastAgent: { readonly text: string; readonly at: number } | null;
   /** The newest call of the run on, while it runs. */
@@ -409,6 +411,7 @@ export const readConversationView = (conversationId: ConversationId) =>
       // Waited on for at most a day; the fold drops one a later run a message started outlived.
       awaits: state.awaits.filter((awaited) => now - awaited.at < MATE_ANSWER_WAIT_MS),
       ...(workingOn === undefined ? {} : { workingOn }),
+      ...(state.takenTask === undefined ? {} : { takenTask: state.takenTask }),
       lastAgent: yield* textOf(yield* item({ kind: "note", open: false, by: "mate" })),
       liveCall:
         callBody?.kind === "call" && call !== undefined
