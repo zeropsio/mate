@@ -3,12 +3,10 @@
  * said as the chat script says Your app's version ("has "Colours" · added 08:15 · version
  * abc1234"). Only what the Mate's own adds built.
  *
- * Where the Mate's envelope says which version the stage runs (zcp `docs/spec-mate.md` §1.7), it
- * is the change whose head that version was built from, with the version; a version built from
- * no such head (a deploy nobody added, another Mate's change, a Review build's candidate) says
- * nothing. Where it does not say, a change is merged only once its build on the stage passed, so
- * the stage runs the newest one added — unless the deploy it runs was made after that merge (a
- * change being added now, a deploy nobody added), when nothing is said.
+ * When the Mate's envelope names a commit (zcp `docs/spec-mate.md` §1.7), the row names the
+ * Mate's own change with that head or merge commit, along with the version. An unmatched commit
+ * leaves the line blank. With no commit, including a Review build's candidate, the stage shows
+ * the newest change added if the deploy it runs is at least as old as that merge.
  *
  * Pure: no network, no clock, no platform globals.
  *
@@ -24,8 +22,10 @@ export interface YourAppChange {
   readonly title: string;
   readonly mergedAt: string | undefined;
   readonly landedOutside?: boolean | undefined;
-  /** The commit its branch stood at, which the stage's build deployed. */
+  /** The commit its branch stood at. */
   readonly headSha?: string | undefined;
+  /** The commit it landed as on its base. */
+  readonly mergeCommitSha?: string | undefined;
 }
 
 /** The version a stage runs, as its Mate's last envelope read it (`ZeropsStageVersion`). */
@@ -39,7 +39,7 @@ export interface YourAppHas {
   readonly title: string;
   /** When it was added: its merge. */
   readonly at: string;
-  /** The version the stage runs, by its commit's first 7 characters; undefined where not read. */
+  /** The first 7 characters of the commit matching this change, if one was read. */
   readonly version: string | undefined;
 }
 
@@ -68,10 +68,11 @@ export function yourAppHas(input: {
       change.mergedAt !== undefined &&
       (input.repository === undefined || change.repository === input.repository),
   );
-  if (input.version !== undefined) {
-    const { commit } = input.version;
-    if (commit === undefined) return undefined;
-    const built = own.find((change) => sameCommit(commit, change.headSha));
+  const commit = input.version?.commit;
+  if (commit !== undefined) {
+    const built = own.find(
+      (change) => sameCommit(commit, change.headSha) || sameCommit(commit, change.mergeCommitSha),
+    );
     return built === undefined
       ? undefined
       : { title: built.title, at: built.mergedAt, version: commit.slice(0, SHORT_COMMIT) };
