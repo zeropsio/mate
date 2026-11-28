@@ -44,6 +44,7 @@ import {
   useMateFaces,
   strandedTakesAtom,
   useOpenTaskConversation,
+  takenConversationsAtom,
   useTakeOpenings,
   useTakeTask,
 } from "~/zerops/useBoardTasks";
@@ -409,6 +410,7 @@ function useTaskBoard(
   const openings = useTakeOpenings();
   const strandedTakes = useAtomValue(strandedTakesAtom);
   const openConversation = useOpenTaskConversation();
+  const takenConversations = useAtomValue(takenConversationsAtom);
   const [asking, setAsking] = useState<string | null>(null);
   const setting = tasks.read.setting;
   const held = setting.state === "known" ? setting.held : null;
@@ -421,6 +423,7 @@ function useTaskBoard(
       viewerId,
       personName,
       mateName: (projectId) => faces.get(projectId)?.name,
+      takenConversation: (taskId) => takenConversations.get(taskId),
     });
     landed.set(groupId, {
       done: Math.min(made.lanes.done.length, RECENT_SHOWN),
@@ -429,7 +432,7 @@ function useTaskBoard(
       broken: made.lanes.waiting.filter((row) => row.broken.length > 0).length,
     });
     return made;
-  }, [held, nowMs, groupId, live, versions, viewerId, personName, faces]);
+  }, [held, nowMs, groupId, live, versions, viewerId, personName, faces, takenConversations]);
   const shownIds = useMemo(() => (held === null ? [] : held.map((task) => task.id)), [held]);
   // The reader's own Takes on this Board whose conversation none of their Mate's carries.
   const stranded = useMemo(() => {

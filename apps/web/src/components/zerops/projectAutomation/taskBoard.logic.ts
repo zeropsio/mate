@@ -245,6 +245,21 @@ export function taskRoute(link: string | null): string | null {
 }
 
 /**
+ * Where a task's conversation opens inside Mate, as an in-app path. A task a person took: the
+ * conversation of their Mate that carries it, where this page holds it — HQ's link for it leads to
+ * the Mate, whose newest conversation may be another task's; else, and for every other task, where
+ * HQ's link leads (`taskRoute`).
+ */
+export function taskConversationRoute(
+  task: Pick<HqAppTask, "link" | "taker">,
+  carried: TakenConversationAt | undefined,
+): string | null {
+  if (task.taker?.kind === "person" && carried !== undefined)
+    return `/${encodeURIComponent(carried.environmentId)}/${encodeURIComponent(carried.conversationId)}`;
+  return taskRoute(task.link);
+}
+
+/**
  * A task's change, as the board links it: its pull request on GitHub, else its change in Mate, else
  * the latest change a person's Mate linked to the task it took.
  */
@@ -290,6 +305,17 @@ export interface BoardContext {
   readonly personName?: (userId: string) => string | undefined;
   /** A Mate the reader's list holds, by its project: its name; `undefined` where it holds none. */
   readonly mateName?: (projectId: string) => string | undefined;
+  /**
+   * The conversation a task the reader took was opened for, by the task (`takenConversationsAtom`):
+   * the Mate's rows this page holds say it; `undefined` where none does.
+   */
+  readonly takenConversation?: (taskId: string) => TakenConversationAt | undefined;
+}
+
+/** A conversation in Mate, in the environment of the Mate it is in. */
+export interface TakenConversationAt {
+  readonly environmentId: string;
+  readonly conversationId: string;
 }
 
 const nobody = () => undefined;
@@ -488,7 +514,7 @@ export function boardOf(
         lane === "queued" || holder?.kind === "person"
           ? ""
           : costWords(now?.spentUsd ?? task.spentUsd),
-      route: taskRoute(task.link),
+      route: taskConversationRoute(task, context.takenConversation?.(task.id)),
       change,
       why: task.state === "failed" || task.state === "stopped" ? task.detail : null,
       // A task whose need broke asks nothing: it waits on its putter to drop the need or stop it.

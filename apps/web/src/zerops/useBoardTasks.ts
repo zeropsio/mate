@@ -120,7 +120,7 @@ export const strandedTakesAtom = Atom.make((get): ReadonlyArray<StrandedTake> =>
       namesTaken:
         get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
           .conversationTakenTask === true,
-      carried: get(mateTakenTasksAtom(environmentId)),
+      carried: get(mateTakenTasksAtom(environmentId)).map((each) => each.taskId),
     };
     for (const task of strandedTakes(taken, conversations))
       stranded.push({
@@ -138,6 +138,52 @@ export const strandedTakesAtom = Atom.make((get): ReadonlyArray<StrandedTake> =>
       strandedKey(a) === strandedKey(b),
   ),
   Atom.withLabel("zerops:stranded-takes"),
+);
+
+/** The conversation a task the reader took was opened for, in their Mate's environment. */
+export interface TakenTaskConversation {
+  readonly environmentId: EnvironmentId;
+  readonly conversationId: string;
+}
+
+const NO_TAKEN: ReadonlyMap<string, TakenTaskConversation> = new Map();
+
+/**
+ * Each task the reader's Mates hold taken (HQ's navigation, `taken`) whose conversation one of the
+ * Mate's rows this page's own socket holds carries (`mateTakenTasksAtom`), by the task: where its
+ * conversation opens. A taken task none carries, or whose Mate this page is not linked to, has none.
+ */
+export const takenConversationsAtom = Atom.make(
+  (get): ReadonlyMap<string, TakenTaskConversation> => {
+    const placements = get(hqPlacementsAtom);
+    if (placements === null) return NO_TAKEN;
+    const found = new Map<string, TakenTaskConversation>();
+    for (const [projectId, placement] of placements) {
+      const taken = placement.mate?.taken;
+      if (taken === undefined || taken.length === 0) continue;
+      const at = get(hqMateOverviewAtom(projectId))?.identity?.environmentId;
+      if (at === undefined) continue;
+      const environmentId = EnvironmentId.make(at);
+      for (const carried of get(mateTakenTasksAtom(environmentId)))
+        found.set(carried.taskId, { environmentId, conversationId: carried.conversationId });
+    }
+    return found.size === 0 ? NO_TAKEN : found;
+  },
+).pipe(
+  Atom.withEquality(
+    (
+      a: ReadonlyMap<string, TakenTaskConversation>,
+      b: ReadonlyMap<string, TakenTaskConversation>,
+    ) =>
+      a.size === b.size &&
+      [...a].every(([taskId, at]) => {
+        const other = b.get(taskId);
+        return (
+          other?.environmentId === at.environmentId && other.conversationId === at.conversationId
+        );
+      }),
+  ),
+  Atom.withLabel("zerops:taken-conversations"),
 );
 
 /** How long a Take may take to open its conversation before it is left stranded (`strandedTakes`). */
@@ -225,7 +271,7 @@ async function openTaken(
     // Its row comes on the Mate's own stream after the send's answer: until then it is opening.
     await untilRead(
       mateTakenTasksAtom(environmentId),
-      (carried) => (carried.includes(task.id) ? true : undefined),
+      (carried) => (carried.some((each) => each.taskId === task.id) ? true : undefined),
       Date.now() + OPEN_WAIT_MS,
     );
   } finally {
