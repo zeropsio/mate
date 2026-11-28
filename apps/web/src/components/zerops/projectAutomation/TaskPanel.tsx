@@ -97,6 +97,17 @@ export function TaskPanel({
               row={row}
               verbs={answersHere ? verbs : undefined}
             />
+          ) : row.status === "failed" && row.why !== null ? (
+            // Why it failed, in its Mate's words; the head already says it failed.
+            <Card size="sm" tone="failed" variant="wash">
+              <Text className="text-foreground" render={<p />} role="alert" variant="description">
+                {row.why}
+              </Text>
+            </Card>
+          ) : row.status === "stopped" && row.why !== null ? (
+            <Text render={<p />} variant="description">
+              {row.why}
+            </Text>
           ) : row.broken.length > 0 ? (
             <Card size="sm" tone="attention" variant="wash">
               <Text render={<p />} variant="description">
@@ -160,13 +171,13 @@ export function TaskPanel({
               <ol className="m-0 grid list-none gap-1.5 p-0">
                 {row.history.map((event) => (
                   <li
-                    className="flex min-w-0 items-baseline justify-between gap-4 text-body"
+                    className="flex min-w-0 items-baseline justify-between gap-4 text-line leading-5"
                     key={event.kind}
                   >
                     <span className="min-w-0 text-foreground">{event.words}</span>
-                    <span className="shrink-0 text-line text-muted-foreground tabular-nums">
+                    <Text className="shrink-0" render={<span />} variant="meta">
                       {event.at}
-                    </span>
+                    </Text>
                   </li>
                 ))}
               </ol>
