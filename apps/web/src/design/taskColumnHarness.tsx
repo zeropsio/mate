@@ -12,7 +12,7 @@ import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { EnvironmentId, MessageId, TurnId, type MateTaskSource } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
-import { assembleRecordCard } from "~/components/chat/MessagesTimeline.logic";
+import { assembleRecordCard, rowGap } from "~/components/chat/MessagesTimeline.logic";
 import type { MessagesTimelineRow, RecordItem } from "~/components/chat/MessagesTimeline.logic";
 import { TimelineRowContent } from "~/components/chat/TimelineRowFrame";
 import {
@@ -59,61 +59,93 @@ const ITEMS: ReadonlyArray<RecordItem> = [
   command("c2", "cat src/copy.ts", 30),
 ];
 
-const ROWS: ReadonlyArray<MessagesTimelineRow> = [
-  {
-    kind: "record",
-    id: "record:question",
-    createdAt: ago(45),
-    turnKey: "question",
+const QUESTION_RECORD = {
+  kind: "record",
+  id: "record:question",
+  createdAt: ago(45),
+  turnKey: "question",
+  live: false,
+  items: ITEMS,
+  ...assembleRecordCard({ items: ITEMS, now: null, answering: false, outcome: null }),
+  now: null,
+  answering: false,
+  status: {
     live: false,
-    items: ITEMS,
-    ...assembleRecordCard({ items: ITEMS, now: null, answering: false, outcome: null }),
-    now: null,
-    answering: false,
-    status: {
-      live: false,
-      face: "idle",
-      startedAt: ago(45),
-      endedAt: ago(5),
-      waitedMs: 0,
-      waitingSince: null,
-      worked: true,
-    },
-    outcome: null,
-    gap: "turn",
-    card: "top",
-    cardWhole: true,
+    face: "idle",
+    startedAt: ago(45),
+    endedAt: ago(5),
+    waitedMs: 0,
+    waitingSince: null,
+    worked: true,
   },
-  { kind: "card-end", id: "card-end:question", createdAt: ago(5), card: "bottom", cardWhole: true },
-  {
-    kind: "message",
-    id: "message:question",
-    createdAt: ago(5),
-    message: {
-      id: MessageId.make("message-question"),
-      role: "assistant",
-      text: "The banner reads its number from the copy file, and both fit.\n\nQUESTION: Which number do you prefer, 1 or 2?",
-      turnId: TURN,
-      streaming: false,
-      createdAt: ago(5),
-      updatedAt: ago(5),
-    },
-    receipt: null,
-    aside: false,
-    imageOnly: false,
-    showAssistantMeta: true,
-    gap: "part-words",
-  },
-  {
-    kind: "task-message",
-    id: "task-message:answer",
-    createdAt: ago(2),
-    message: { id: "m1", from: "reply", author: "Ales Rechtorik", text: "2" },
-    taskId: "task-31",
-    source: TASK,
-    gap: "turn",
-  },
+  outcome: null,
+  card: "top",
+  cardWhole: true,
+} satisfies MessagesTimelineRow;
+
+/** A run's card whole: its head row and its edge's. */
+const runCard = (key: string): ReadonlyArray<MessagesTimelineRow> => [
+  { ...QUESTION_RECORD, id: `record:${key}`, turnKey: key },
+  { kind: "card-end", id: `card-end:${key}`, createdAt: ago(5), card: "bottom", cardWhole: true },
 ];
+
+const answer = (key: string, text: string, turnId: TurnId): MessagesTimelineRow => ({
+  kind: "message",
+  id: `message:${key}`,
+  createdAt: ago(5),
+  message: {
+    id: MessageId.make(`message-${key}`),
+    role: "assistant",
+    text,
+    turnId,
+    streaming: false,
+    createdAt: ago(5),
+    updatedAt: ago(5),
+  },
+  receipt: null,
+  aside: false,
+  imageOnly: false,
+  showAssistantMeta: true,
+});
+
+/** Each row's room above it as the timeline gives it (`rowGap`), under the row before it. */
+const spaced = (
+  rows: ReadonlyArray<MessagesTimelineRow>,
+  first?: MessagesTimelineRow,
+): ReadonlyArray<MessagesTimelineRow> =>
+  rows.map((row, index) => {
+    const previous = index === 0 ? first : rows[index - 1];
+    return { ...row, gap: row.kind === "card-end" ? "none" : rowGap(previous, row) };
+  });
+
+/** The task's card heads the conversation: the rows under it are spaced from it. */
+const TASK_ASK = { kind: "task-ask", id: "task-ask:31" } as MessagesTimelineRow;
+
+/**
+ * The task's conversation as the owner saw Raya's: a run that ends on its question alone, the
+ * answer given on the Board, then the next run, ending on words and a question after them.
+ */
+const ROWS = spaced(
+  [
+    ...runCard("question"),
+    answer("question", "QUESTION: Which number do you prefer, 1 or 2?", TurnId.make("turn-asked")),
+    {
+      kind: "task-message",
+      id: "task-message:answer",
+      createdAt: ago(2),
+      message: { id: "m1", from: "reply", author: "Ales Rechtorik", text: "2" },
+      taskId: "task-31",
+      source: TASK,
+    },
+    ...runCard("again"),
+    answer(
+      "again",
+      "The banner reads its number from the copy file, and both fit.\n\nQUESTION: Should the home page say it too?",
+      TURN,
+    ),
+  ],
+  TASK_ASK,
+);
 
 const settled = {
   live: false,
@@ -127,32 +159,13 @@ const settled = {
  * line alone), its answer; a run that only wrote (nothing to show), its answer; the plan it puts
  * on the Board.
  */
-const NORMAL_ROWS: ReadonlyArray<MessagesTimelineRow> = [
-  {
-    ...ROWS[0]!,
-    id: "record:normal",
-    turnKey: "normal",
-  } as MessagesTimelineRow,
-  { kind: "card-end", id: "card-end:normal", createdAt: ago(60), card: "bottom", cardWhole: true },
-  {
-    kind: "message",
-    id: "message:normal-1",
-    createdAt: ago(60),
-    message: {
-      id: MessageId.make("message-normal-1"),
-      role: "assistant",
-      text: "The banner reads its number from the copy file now.",
-      turnId: TurnId.make("turn-normal-1"),
-      streaming: false,
-      createdAt: ago(60),
-      updatedAt: ago(60),
-    },
-    receipt: null,
-    aside: false,
-    imageOnly: false,
-    showAssistantMeta: true,
-    gap: "part-words",
-  },
+const NORMAL_ROWS = spaced([
+  ...runCard("normal"),
+  answer(
+    "normal-1",
+    "The banner reads its number from the copy file now.",
+    TurnId.make("turn-normal-1"),
+  ),
   {
     kind: "work-line",
     id: "work-line:normal-2",
@@ -164,28 +177,13 @@ const NORMAL_ROWS: ReadonlyArray<MessagesTimelineRow> = [
     endedAt: ago(26),
     worked: false,
     wrote: true,
-    gap: "turn",
   },
-  {
-    kind: "message",
-    id: "message:normal-2",
-    createdAt: ago(26),
-    message: {
-      id: MessageId.make("message-normal-2"),
-      role: "assistant",
-      text: "Here is the plan: two tasks, the second after the first.",
-      turnId: TurnId.make("turn-normal-2"),
-      streaming: false,
-      createdAt: ago(26),
-      updatedAt: ago(26),
-    },
-    receipt: null,
-    aside: false,
-    imageOnly: false,
-    showAssistantMeta: true,
-    gap: "part-words",
-  },
-];
+  answer(
+    "normal-2",
+    "Here is the plan: two tasks, the second after the first.",
+    TurnId.make("turn-normal-2"),
+  ),
+]);
 
 const PLAN = [
   {
