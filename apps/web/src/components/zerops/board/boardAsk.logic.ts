@@ -103,7 +103,7 @@ export const ON_THE_BOARD = "On the board";
 
 /**
  * Where a task put from this conversation stands, in a word or two after the done line: Waits for
- * other tasks, Queued, In progress, Taken, Asks you (or Waits on you, a need of it broken), Up for
+ * other tasks, Queued, In progress, Asks you (or Waits on you, a need of it broken), Up for
  * review, then how it ended.
  */
 export function boardTaskStateWords(row: BoardRow): string {
@@ -111,7 +111,7 @@ export function boardTaskStateWords(row: BoardRow): string {
     case "queued":
       return TASK_STATUS_WORDS[row.status === "held" ? "held" : "queued"];
     case "progress":
-      return row.holder?.kind === "person" ? TASK_STATUS_WORDS.taken : "In progress";
+      return TASK_STATUS_WORDS.taken;
     case "waiting":
       return row.state ?? "Asks you";
     case "review":
@@ -173,7 +173,7 @@ function planTaskWords(row: BoardRow): string {
     case "queued":
       return row.status === "held" ? "waiting for others" : "queued";
     case "progress":
-      return row.holder?.kind === "person" ? "taken" : "in progress";
+      return "in progress";
     case "waiting":
       return row.broken.length > 0 ? "waiting on a person" : "asking";
     case "review":

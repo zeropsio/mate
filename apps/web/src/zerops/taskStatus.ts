@@ -22,11 +22,14 @@ export type TaskStatus =
   | "failed"
   | "stopped";
 
-/** Each status in a word or two, as every surface says it beside its dot. */
+/**
+ * Each status in a word or two, as every surface says it beside its dot: the Board's lane words
+ * where a lane holds it, so a task a person took says In progress wherever it is drawn.
+ */
 export const TASK_STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
   held: "Waits for other tasks",
   queued: "Queued",
-  taken: "Taken",
+  taken: "In progress",
   starting: "Starting",
   working: "Working",
   waiting: "Waiting for you",
