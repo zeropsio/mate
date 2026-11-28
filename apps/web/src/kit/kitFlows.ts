@@ -1,3 +1,5 @@
+import type { FlowStates } from "../design/mount";
+
 /**
  * The design harness's pages as the kit's flows: a surface's states over made-up data, drawn from
  * the kit's components. A build serves them where it carries the harness (the dev server and every
@@ -56,14 +58,11 @@ export interface KitFlow {
   readonly title: string;
   /** The page's address, from the app's base: a frame on any page finds it. */
   readonly href: string;
-  /** The harness module the page names, which the harness page loads. */
+  /** The module the harness page loads. */
   readonly module: string;
-  /** The part of the product it shows, from the page's `kit-area` meta: `Conversation`. */
+  /** The part of the product it shows: `Conversation`. */
   readonly area?: string;
-  /**
-   * Every state the page shows by its address, from its `kit-states` meta, the default first. The
-   * kit reads them from the page's text: a harness module mounts itself on import.
-   */
+  /** Every state the page shows by its address, the default first. */
   readonly states?: readonly KitFlowState[];
 }
 
@@ -71,6 +70,11 @@ const sources: Readonly<Record<string, string>> =
   import.meta.env.VITE_DESIGN_HARNESS === ""
     ? {}
     : import.meta.glob<string>("/design*.html", { query: "?raw", import: "default", eager: true });
+
+const definitions: Readonly<Record<string, FlowStates>> =
+  import.meta.env.VITE_DESIGN_HARNESS === ""
+    ? {}
+    : import.meta.glob<FlowStates>("/src/design/*.states.ts", { import: "default", eager: true });
 
 const ENTITIES: Readonly<Record<string, string>> = {
   "&amp;": "&",
@@ -111,20 +115,35 @@ const statesOf = (source: string): readonly KitFlowState[] | undefined => {
   }
 };
 
-export const KIT_FLOWS: readonly KitFlow[] = Object.entries(sources)
-  .map(([path, source]): KitFlow => {
-    const area = metaOf(source, "kit-area");
-    const states = statesOf(source);
-    return {
-      id: path.slice(1, -".html".length),
-      title: (/<title>([^<]*)<\/title>/u.exec(source)?.[1] ?? path)
-        .replace(/^Mate — (?:the )?/u, "")
-        .replace(/ harness$/u, "")
-        .replace(/^\p{Ll}/u, (first) => first.toUpperCase()),
-      href: `${import.meta.env.BASE_URL}${path.slice(1)}`,
-      module: /<script[^>]*\bsrc="([^"]+)"/u.exec(source)?.[1] ?? "",
-      ...(area === undefined ? {} : { area }),
-      ...(states === undefined ? {} : { states }),
-    };
-  })
-  .toSorted((left, right) => left.title.localeCompare(right.title));
+const htmlFlows = Object.entries(sources).map(([path, source]): KitFlow => {
+  const area = metaOf(source, "kit-area");
+  const states = statesOf(source);
+  return {
+    id: path.slice(1, -".html".length),
+    title: (/<title>([^<]*)<\/title>/u.exec(source)?.[1] ?? path)
+      .replace(/^Mate — (?:the )?/u, "")
+      .replace(/ harness$/u, "")
+      .replace(/^\p{Ll}/u, (first) => first.toUpperCase()),
+    href: `${import.meta.env.BASE_URL}${path.slice(1)}`,
+    module: /<script[^>]*\bsrc="([^"]+)"/u.exec(source)?.[1] ?? "",
+    ...(area === undefined ? {} : { area }),
+    ...(states === undefined ? {} : { states }),
+  };
+});
+
+const definedFlows = Object.entries(definitions).map(([path, flow]): KitFlow => ({
+  id: `design-${flow.id}`,
+  title: flow.title,
+  area: flow.area,
+  href: `${import.meta.env.BASE_URL}design-${flow.id}.html`,
+  module: path.replace(/\.states\.ts$/u, ".flow.tsx"),
+  states: flow.states.map(({ id, label }) => ({
+    id,
+    label,
+    search: new URLSearchParams({ state: id }).toString(),
+  })),
+}));
+
+export const KIT_FLOWS: readonly KitFlow[] = [...htmlFlows, ...definedFlows].toSorted(
+  (left, right) => left.title.localeCompare(right.title),
+);

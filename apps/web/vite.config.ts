@@ -554,8 +554,18 @@ if (
   throw new Error(`VITE_DESIGN_HARNESS is "beside" or "alone", not "${configuredDesignHarness}"`);
 }
 
-/** A `design*.html` page: an address the harness page answers, naming its harness. */
+/** A legacy `design*.html` file naming its harness. */
 const isDesignHarnessPage = (name: string) => /^design[\w-]*\.html$/u.test(name);
+const DESIGN_FLOWS_DIR = NodePath.join(import.meta.dirname, "src/design");
+const FLOW_STATES_SUFFIX = ".states.ts";
+
+function isDesignFlowPage(path: string): boolean {
+  const id = /^design-([\w-]+)\.html$/u.exec(path)?.[1];
+  return (
+    id !== undefined &&
+    NodeFS.existsSync(NodePath.join(DESIGN_FLOWS_DIR, `${id}${FLOW_STATES_SUFFIX}`))
+  );
+}
 
 /**
  * Answers every harness address with the harness page: the dev server rewrites the request, and a
@@ -585,7 +595,8 @@ function designHarnessPlugins({
           path === "design" ||
           path === "design/" ||
           (isDesignHarnessPage(path) &&
-            NodeFS.existsSync(NodePath.join(import.meta.dirname, path)));
+            NodeFS.existsSync(NodePath.join(import.meta.dirname, path))) ||
+          isDesignFlowPage(path);
         if (named) request.url = `${base}${DESIGN_HARNESS_PAGE}${query ? `?${query}` : ""}`;
         next();
       });
@@ -602,8 +613,14 @@ function designHarnessPlugins({
         if (page === undefined || page.type !== "asset") {
           throw new Error(`The design harness build found no ${DESIGN_HARNESS_PAGE}`);
         }
-        const names = NodeFS.readdirSync(import.meta.dirname).filter(isDesignHarnessPage);
-        for (const fileName of alone ? [...names, "index.html"] : names) {
+        const names = new Set(NodeFS.readdirSync(import.meta.dirname).filter(isDesignHarnessPage));
+        for (const name of NodeFS.readdirSync(DESIGN_FLOWS_DIR)) {
+          if (name.endsWith(FLOW_STATES_SUFFIX)) {
+            names.add(`design-${name.slice(0, -FLOW_STATES_SUFFIX.length)}.html`);
+          }
+        }
+        if (alone) names.add("index.html");
+        for (const fileName of names) {
           this.emitFile({ type: "asset", fileName, source: page.source });
         }
       },

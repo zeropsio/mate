@@ -1,13 +1,15 @@
 import { holdAppearance } from "~/hooks/useTheme";
 import { flowFramedOf, flowThemeOf, KIT_FLOWS } from "~/kit/kitFlows";
 
+import type { DesignFlow } from "./mount";
+
 /**
  * The design harness's one page (`design/index.html`, `vite.config.ts`): every `design*.html`
- * address answers with it, and it loads the harness that page names, alone, under its title. Any
- * other address (`/design/`, the hosted harness's root) is the kit: every component, and these
- * pages as its flows. Each `design*.html` stays what names a harness: its title and its module.
+ * address answers with it, and it mounts the named flow or loads the legacy harness. Any other
+ * address (`/design/`, the hosted harness's root) is the kit: every component and these flows.
  */
 const modules = import.meta.glob("/src/design/*Harness.tsx");
+const flows = import.meta.glob<{ default: DesignFlow }>("/src/design/*.flow.tsx");
 
 /**
  * The appearance every harness page draws in, from its query (`flowThemeOf`): held as the page's
@@ -25,11 +27,26 @@ export const harnessFramed = flowFramedOf(location.search);
 
 const here = KIT_FLOWS.find(({ href }) => href === location.pathname);
 const load = here === undefined ? undefined : modules[here.module];
+const loadFlow = here === undefined ? undefined : flows[here.module];
 
-if (here !== undefined && load !== undefined) {
+if (here !== undefined && (loadFlow !== undefined || load !== undefined)) {
   document.title = `Mate — ${here.title}`;
   holdAppearance(harnessAppearance);
-  void load();
+  if (loadFlow !== undefined) {
+    const state = new URLSearchParams(location.search).get("state");
+    void Promise.all([
+      loadFlow(),
+      import("./mount"),
+      import("react-dom/client"),
+      import("../index.css"),
+    ]).then(([{ default: flow }, { stateElement }, { createRoot }]) => {
+      const host = document.getElementById("design");
+      if (host === null) throw new Error("The design page has no mount point");
+      createRoot(host).render(stateElement(flow, state ?? flow.defaultState));
+    });
+  } else {
+    void load?.();
+  }
 } else {
   void import("./harnessKit");
 }
