@@ -108,6 +108,8 @@ const ROWS: ReadonlyArray<MessagesTimelineRow> = [
     id: "task-message:answer",
     createdAt: ago(2),
     message: { id: "m1", from: "reply", author: "Ales Rechtorik", text: "2" },
+    taskId: "task-31",
+    source: TASK,
     gap: "turn",
   },
 ];

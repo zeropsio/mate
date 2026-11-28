@@ -32,6 +32,20 @@ interface TaskSessionView {
   readonly release: (() => void) | null;
 }
 
+/** HQ's placements, and the project of the Mate living in the environment. */
+function useMatePlacement(environmentId: EnvironmentId) {
+  return {
+    projectId: useKnownMate(environmentId)?.projectId,
+    placements: useAtomValue(hqPlacementsAtom),
+  };
+}
+
+/** The application the Mate living in the environment is of; `null` while not known, or none. */
+export function useMateAppId(environmentId: EnvironmentId): string | null {
+  const { projectId, placements } = useMatePlacement(environmentId);
+  return (projectId === undefined ? undefined : placements?.get(projectId))?.appId ?? null;
+}
+
 export function useTaskSession(
   task: MateTaskSource,
   environmentId: EnvironmentId,
@@ -39,8 +53,7 @@ export function useTaskSession(
   /** HQ's id of the task its brief carries; `null` where it carries none (an older server's). */
   brief: string | null,
 ): TaskSessionView {
-  const projectId = useKnownMate(environmentId)?.projectId;
-  const placements = useAtomValue(hqPlacementsAtom);
+  const { projectId, placements } = useMatePlacement(environmentId);
   const working = useProjectMateActivity(projectId ?? "")?.kind === "working";
   const placement = projectId === undefined ? undefined : placements?.get(projectId);
   // Not known while the Mate, HQ's placements or its record's task (an older HQ) are not read.

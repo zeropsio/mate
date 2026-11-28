@@ -670,8 +670,18 @@ type MessagesTimelineRowBody =
   | { kind: "notice"; id: string; createdAt: string; noticeId: string }
   /** The task the server handed a crewmate: its card, never the person's bubble. */
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
-  /** Something said about the task after its Mate took it: its author's, never the viewer's. */
-  | { kind: "task-message"; id: string; createdAt: string; message: MateTaskMessage }
+  /**
+   * Something said about the task after its Mate took it: its author's, never the viewer's; with
+   * the task it is of (HQ's id, and the source its brief brought, where the conversation holds it).
+   */
+  | {
+      kind: "task-message";
+      id: string;
+      createdAt: string;
+      message: MateTaskMessage;
+      taskId: string | null;
+      source: MateTaskSource | null;
+    }
   /**
    * A message another Mate of the person's sent this one, opening its run: that Mate's row ("From
    * Fen · Acme Docs", or "Fen answered"), never the viewer's words.
@@ -2847,12 +2857,13 @@ export function deriveMessagesTimelineRows(input: {
   // drawn (a task put back in line and taken again) draws nothing. A brief with no task's id is
   // of the conversation's own task, an older server's.
   const briefIds = new Set<string>();
-  const briefTasks = new Set<string | null>();
+  // Each task's source, by HQ's id of it: where what is said of it after came from.
+  const briefTasks = new Map<string | null, MateTaskSource>();
   for (const entry of entries) {
     if (entry.kind !== "message" || entry.message.task === undefined) continue;
     const taskId = entry.message.taskId ?? null;
     if (briefTasks.has(taskId)) continue;
-    briefTasks.add(taskId);
+    briefTasks.set(taskId, entry.message.task);
     briefIds.add(entry.id);
   }
   // One row per Mate's message: an earlier send of it the conversation took back draws none.
@@ -2892,7 +2903,15 @@ export function deriveMessagesTimelineRows(input: {
     }
     const heard = entry.message.taskMessage;
     if (heard !== undefined) {
-      return { kind: "task-message", id: entry.id, createdAt: entry.createdAt, message: heard };
+      const taskId = entry.message.taskId ?? null;
+      return {
+        kind: "task-message",
+        id: entry.id,
+        createdAt: entry.createdAt,
+        message: heard,
+        taskId,
+        source: briefTasks.get(taskId) ?? null,
+      };
     }
     const task = crewCardOf(entry.message);
     if (task !== null) {

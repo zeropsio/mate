@@ -46,11 +46,12 @@ import {
 } from "~/components/settings/TaskSourcesSettings";
 import {
   MateTaskCardView,
-  MateTaskMessageRow,
+  MateTaskMessageRowView,
   MateTaskStatusView,
   TaskQuestionView,
 } from "~/components/zerops/MateTaskCard";
 import { Button } from "~/components/ui/button";
+import { taskMessageOrigin } from "~/components/zerops/mateTaskMessage.logic";
 import { MateFace } from "~/components/zerops/primitives";
 import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
 import type { TaskSession } from "~/zerops/taskSession.logic";
@@ -278,6 +279,17 @@ const BANNER_TASK: MateTaskSource = {
 };
 const DONE_TASK: TaskSession = { ...UP_FOR_REVIEW, status: "done", taskId: "task-31" };
 
+/** Who reads the harness: their own answer says You. */
+const VIEWER = ["Ales Rechtorik"];
+const IDA_COMMENT = {
+  id: "c1",
+  from: "comment",
+  author: "ida-ops",
+  text: "Keep the old rounding for invoices, only the cart total changes.",
+} as const;
+/** The reader's own answer, given on the Board's panel of the task. */
+const OWN_ANSWER = { id: "c2", from: "reply", author: "Ales Rechtorik", text: "2" } as const;
+
 /** The conversation's app bar as far as its Mate's line goes: face, name, then what follows it. */
 function AppBar({ children }: { readonly children: ReactNode }) {
   return (
@@ -498,13 +510,14 @@ function Harness() {
               mateName="Raya"
               question="Which number do you prefer, 1 or 2?"
             />
-            <MateTaskMessageRow
-              message={{
-                id: "c1",
-                from: "comment",
-                author: "ida-ops",
-                text: "Keep the old rounding for invoices, only the cart total changes.",
-              }}
+            <MateTaskMessageRowView
+              message={IDA_COMMENT}
+              origin={taskMessageOrigin(IDA_COMMENT, TEA_ISSUE, VIEWER)}
+            />
+            <MateTaskMessageRowView
+              board={{ groupId: "tea-shop", taskId: "task-31" }}
+              message={OWN_ANSWER}
+              origin={taskMessageOrigin(OWN_ANSWER, BANNER_TASK, VIEWER)}
             />
           </div>
         </Panel>

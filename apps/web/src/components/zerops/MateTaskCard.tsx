@@ -31,14 +31,19 @@ import { useCallback, useState, type ReactNode } from "react";
 import { pullRequestName, taskAskBeyondTitle } from "~/zerops/automatedMate.logic";
 import { spentWords, taskPillStatus, type TaskSession } from "~/zerops/taskSession.logic";
 import { TASK_STATUS_WORDS, type TaskTone, taskStatusTone, workedWords } from "~/zerops/taskStatus";
-import { useTaskSession } from "~/zerops/useTaskSession";
+import { useMateAppId, useTaskSession } from "~/zerops/useTaskSession";
 import { useOpenTaskConversation } from "~/zerops/useBoardTasks";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { useHqPersonNames, useViewerCalled } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
-import { projectNameInApp } from "@t3tools/client-runtime/zerops";
+import { projectNameInApp, zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { putOrigin } from "./projectAutomation/taskBoard.logic";
+import {
+  taskMessageOrigin,
+  taskMessageWords,
+  type TaskMessageOrigin,
+} from "./mateTaskMessage.logic";
 
 import { cn } from "~/lib/utils";
 
@@ -572,31 +577,74 @@ export function TaskQuestionAnswer({
   );
 }
 
-/** Who said a task's follow-up, and where: "ida-ops commented on the issue". */
-function mateTaskMessageHeading(message: Pick<MateTaskMessage, "from" | "author">): string {
-  const who = message.author ?? "Someone";
-  switch (message.from) {
-    case "comment":
-      return `${who} commented on the issue`;
-    case "reply":
-      return `${who} replied in the thread`;
-    case "review":
-      return `${who} commented on the change`;
-    case "edit":
-      return `${who} edited the issue`;
-  }
+/**
+ * Something said about a task after its Mate took it, told to it in the task's conversation: who
+ * said it — "You" for the reader — and where, that place a link (`taskMessageOrigin`); never drawn
+ * as the viewer's own message.
+ */
+export function MateTaskMessageRow({
+  message,
+  source,
+  taskId,
+  environmentId,
+}: {
+  readonly message: MateTaskMessage;
+  /** The task it is of, as its brief brought it; `null` where the conversation does not hold it. */
+  readonly source: MateTaskSource | null;
+  readonly taskId: string | null;
+  readonly environmentId: EnvironmentId;
+}) {
+  const session = useZeropsSessionOptional();
+  const called = useViewerCalled();
+  const fullName = session?.user == null ? null : zeropsAccountDisplay(session.user).fullName;
+  const viewer = [called, fullName].filter((name): name is string => name != null);
+  const appId = useMateAppId(environmentId);
+  return (
+    <MateTaskMessageRowView
+      board={appId === null || taskId === null ? null : { groupId: appId, taskId }}
+      message={message}
+      origin={taskMessageOrigin(message, source, viewer)}
+    />
+  );
 }
 
-/**
- * Something said about a task after its Mate took it, told to it in the task's conversation: its
- * author's words, from where they said them — never drawn as the viewer's own message.
- */
-export function MateTaskMessageRow({ message }: { readonly message: MateTaskMessage }) {
+export function MateTaskMessageRowView({
+  message,
+  origin,
+  board = null,
+}: {
+  readonly message: MateTaskMessage;
+  readonly origin: TaskMessageOrigin;
+  /** Where the task's panel opens on the Board, for an answer given there; `null`: not known. */
+  readonly board?: TaskOnBoard | null;
+}) {
+  const { lead, place } = taskMessageWords(origin);
+  const { to } = origin;
   return (
     <Card data-zerops-surface="mate-task-message">
-      <div className="flex flex-col gap-1 px-4 py-2.5">
+      <div className="flex flex-col gap-1 px-3.75 py-2.5 max-sm:px-2.75">
         <Text className="min-w-0" render={<p />} truncate variant="remark">
-          {mateTaskMessageHeading(message)}
+          {lead}{" "}
+          {to.kind === "url" ? (
+            <InlineButton render={<a href={to.url} rel="noreferrer" target="_blank" />}>
+              {place}
+              <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
+            </InlineButton>
+          ) : to.kind === "board" && board !== null ? (
+            <InlineButton
+              render={
+                <Link
+                  params={{ groupId: board.groupId }}
+                  search={{ task: board.taskId }}
+                  to="/group/$groupId/board"
+                />
+              }
+            >
+              {place}
+            </InlineButton>
+          ) : (
+            place
+          )}
         </Text>
         <p className="max-h-60 min-w-0 overflow-y-auto text-prose break-words whitespace-pre-wrap text-foreground">
           {message.text}

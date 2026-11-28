@@ -334,7 +334,14 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "task-ask" ? (
         <TaskCardTimelineRow source={row.source} taskId={row.taskId} text={row.text} />
       ) : null}
-      {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
+      {row.kind === "task-message" ? (
+        <MateTaskMessageRow
+          environmentId={ctx.activeThreadEnvironmentId}
+          message={row.message}
+          source={row.source}
+          taskId={row.taskId}
+        />
+      ) : null}
       {/* Another Mate's message opens the run it started as that Mate's; while this Mate waits for
           an answer to its own, the conversation's end says whose. */}
       {row.kind === "mate-message" ? (
