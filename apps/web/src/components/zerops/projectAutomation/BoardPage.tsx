@@ -1,14 +1,18 @@
 /**
  * An application's Board on its own page, `/group/$groupId/board`: the whole Board using the width
  * (`BoardAutomation`), and the task picked (`?task=<id>`, so a task can be linked and survives a
- * reload) open in its panel beside it (`TaskPanel`). The list runs to 880 px from the page's left
- * edge; with room for both (1280 px of content) the panel stands beside it in a column kept for it,
- * so the list never moves as it opens; with less, a sheet over it; on a phone, from the foot. Esc
- * closes it and gives the keyboard back to its row.
+ * reload) open in its panel beside it (`TaskPanel`). The page stands in the project page's column,
+ * centred at its width, so its trail and title stay where the project page's were; with room for
+ * both (1280 px of content) the panel stands beside the list and the column widens to hold the two,
+ * still centred, easing aside as it does; with less, a sheet over it; on a phone, from the foot.
+ * Esc closes it and gives the keyboard back to its row.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { MOTION } from "@t3tools/shared/brand";
+
 import { useIsMobile } from "~/hooks/useMediaQuery";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { cn } from "~/lib/utils";
 
@@ -25,9 +29,17 @@ import { TaskPanel } from "./TaskPanel";
 
 /**
  * How wide the page's content must be for the panel to stand beside the list: the panel's 440 px,
- * the 16 px between them and a list of at least 824 px (it runs to 880 where there is room).
+ * the 16 px between them and a list of at least 824 px (it runs to the column's 848 where there is
+ * room).
  */
 const PANE_ROOM = 1280;
+
+/**
+ * The page's column: the project page's (`Page`'s `page` width less its gutters), and with the
+ * panel beside the list, that and the panel's 440 px and the 16 px between them.
+ */
+const COLUMN = "max-w-[calc(var(--container-4xl)_-_3rem)]";
+const COLUMN_SPLIT = "max-w-[calc(var(--container-4xl)_-_3rem_+_456px)]";
 
 export function BoardPage({
   groupId,
@@ -92,9 +104,11 @@ export function BoardPageView({
 }) {
   const rows = rowsOf(board);
   const row = board.selected == null ? undefined : rows.get(board.selected);
+  const page = useRef<HTMLDivElement | null>(null);
+  const column = useRef<HTMLDivElement | null>(null);
   const body = useRef<HTMLDivElement | null>(null);
   const heading = useRef<HTMLHeadingElement | null>(null);
-  const wide = useWide(body);
+  const wide = useWide(page);
   const phone = useIsMobile();
   // The row the panel was opened from gets the keyboard back as it closes.
   const close = () => {
@@ -121,10 +135,13 @@ export function BoardPageView({
         rows={rows}
       />
     );
+  const split = wide && panel !== null;
+  useColumnGlide(column, split);
   return (
     <div
-      className="flex min-w-0 flex-col gap-6"
+      className="min-w-0"
       data-zerops-surface="board-page"
+      ref={page}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || row === undefined || event.defaultPrevented) return;
         // Escape in a field or a menu is theirs.
@@ -137,23 +154,26 @@ export function BoardPageView({
         close();
       }}
     >
-      <PageHeader count={open === 0 ? undefined : open} title="Board" trail={trail} />
-      {/* The list holds its width and place whether a panel stands beside it or not: the
-          panel's column is kept, empty, until a task opens. */}
       <div
-        className={cn(
-          "grid min-w-0 items-start justify-start gap-4",
-          wide ? "grid-cols-[minmax(0,880px)_440px]" : "grid-cols-[minmax(0,880px)]",
-        )}
-        ref={body}
+        className={cn("mx-auto flex w-full min-w-0 flex-col gap-6", split ? COLUMN_SPLIT : COLUMN)}
+        ref={column}
       >
-        <Card>{list}</Card>
-        {wide && panel !== null ? (
-          // A pane beside the list, held in view as the list scrolls under the page's top.
-          <div className="sticky top-6 flex max-h-[calc(100dvh-3rem)] min-w-0 flex-col motion-safe:animate-board-panel-in">
-            <Card className="flex min-h-0 flex-col">{panel}</Card>
-          </div>
-        ) : null}
+        <PageHeader count={open === 0 ? undefined : open} title="Board" trail={trail} />
+        <div
+          className={cn(
+            "grid min-w-0 items-start gap-4",
+            split ? "grid-cols-[minmax(0,1fr)_440px]" : "grid-cols-[minmax(0,1fr)]",
+          )}
+          ref={body}
+        >
+          <Card>{list}</Card>
+          {split ? (
+            // A pane beside the list, held in view as the list scrolls under the page's top.
+            <div className="sticky top-6 flex max-h-[calc(100dvh-3rem)] min-w-0 flex-col motion-safe:animate-board-panel-in">
+              <Card className="flex min-h-0 flex-col">{panel}</Card>
+            </div>
+          ) : null}
+        </div>
       </div>
       {wide ? null : (
         <Sheet
@@ -192,6 +212,46 @@ function useWide(element: React.RefObject<HTMLElement | null>): boolean {
     };
   }, [element]);
   return wide;
+}
+
+/**
+ * The column eases to where it stands as the panel opens beside the list or closes: centred, it
+ * widens or narrows by both its sides, so it slides from where it stood (transform only, from
+ * wherever a glide still under way had it), and under reduced motion it stands there at once.
+ */
+function useColumnGlide(element: React.RefObject<HTMLElement | null>, split: boolean) {
+  const width = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const node = element.current;
+    if (node === null) return;
+    const measure = () => {
+      width.current = node.getBoundingClientRect().width;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [element]);
+  const was = useRef(split);
+  useLayoutEffect(() => {
+    const node = element.current;
+    if (node === null || was.current === split) return;
+    was.current = split;
+    const before = width.current;
+    const after = node.getBoundingClientRect().width;
+    width.current = after;
+    if (before === null || prefersReducedMotion()) return;
+    const under = new DOMMatrixReadOnly(getComputedStyle(node).transform).m41;
+    for (const glide of node.getAnimations()) glide.cancel();
+    const from = (after - before) / 2 + under;
+    if (Math.abs(from) < 1) return;
+    node.animate([{ transform: `translateX(${String(from)}px)` }, { transform: "none" }], {
+      duration: MOTION.duration.base,
+      easing: MOTION.easing.out,
+    });
+  }, [element, split]);
 }
 
 /** The picked task's row, brought into view once as the page opens at it (a link, a reload). */
