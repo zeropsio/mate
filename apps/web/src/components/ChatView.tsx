@@ -7484,6 +7484,7 @@ function ConversationView(props: ChatViewProps) {
                     asker: mateAsker(admissionOwner),
                     onSteerQueuedMessage,
                     queueBlockedByAnswer: queueBlockedByPendingRequest,
+                    automatedTask: automatedHere ? activeThreadTask : null,
                     steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
                       keybindings,
                       "thread.steerQueuedMessage",

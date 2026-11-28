@@ -31,7 +31,12 @@ import { deriveDisplayedUserMessageState } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
 import { useEngineLiveMessage } from "./useEngineLiveMessage";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
-import { TimelineRowCtx } from "./timelineContext";
+import { TimelineRowActivityCtx, TimelineRowCtx } from "./timelineContext";
+import { TEXT_EDGE_OUT } from "./runTray";
+import { TaskQuestionAnswer, TaskQuestionView } from "../zerops/MateTaskCard";
+import type { ConversationTask } from "~/zerops/automatedMate.logic";
+import { taskQuestionOf } from "@t3tools/shared/taskQuestion";
+import type { TurnId } from "@t3tools/contracts";
 import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { TurnChangeContext } from "../zerops/BareChangeNumber";
@@ -417,36 +422,90 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
  * and no edge clips them (the owner, 2026-09-26: "placement of this utterly
  * sucks + its even cut of overflow").
  */
-/** The Mate's words in its prose hand: the answer's type, links and chips. */
+/**
+ * The Mate's words in its prose hand: the answer's type, links and chips. In an automated Mate's
+ * task conversation, words ending on the agent's `QUESTION:` line are the words before it, then
+ * the Mate asking (`TaskQuestion`).
+ */
 function MateProseWords({
   text,
   at,
   streaming,
+  turnId,
 }: {
   readonly text: string;
   /** When they were said: the moment a change chip reads its state at. */
   readonly at: string;
   readonly streaming: boolean;
+  /** The turn they were said in: only the latest turn's question may still wait. */
+  readonly turnId: TurnId | null;
 }) {
   const ctx = use(TimelineRowCtx);
+  const asked = ctx.automatedTask == null ? null : taskQuestionOf(text);
+  const prose = (words: string) => (
+    <ChangeChipMomentContext value={at}>
+      <ChatMarkdown
+        variant="answer"
+        text={words}
+        cwd={ctx.markdownCwd}
+        threadRef={ctx.threadRef ?? undefined}
+        isStreaming={streaming}
+        lineBreaks={shouldPreserveAssistantLineBreaks(words)}
+        skills={ctx.skills}
+        headingLevelOffset={MESSAGE_HEADING_LEVEL}
+        onOpenImage={ctx.onImageExpand}
+        onRunShellCommand={ctx.onRunShellCommand}
+      />
+    </ChangeChipMomentContext>
+  );
   return (
     <>
       <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-      <ChangeChipMomentContext value={at}>
-        <ChatMarkdown
-          variant="answer"
-          text={text}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          isStreaming={streaming}
-          lineBreaks={shouldPreserveAssistantLineBreaks(text)}
-          skills={ctx.skills}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onOpenImage={ctx.onImageExpand}
-          onRunShellCommand={ctx.onRunShellCommand}
-        />
-      </ChangeChipMomentContext>
+      {asked?.question === undefined || ctx.automatedTask == null ? (
+        prose(text)
+      ) : (
+        <>
+          {asked.rest === "" ? null : prose(asked.rest)}
+          <TaskQuestion question={asked.question} task={ctx.automatedTask} turnId={turnId} />
+        </>
+      )}
     </>
+  );
+}
+
+/**
+ * The Mate asking, as a card on the column's edges like the run's, out of the prose's inset; with
+ * the way to answer while it is the latest turn's and its task still waits on it.
+ */
+function TaskQuestion({
+  question,
+  task,
+  turnId,
+}: {
+  readonly question: string;
+  readonly task: ConversationTask;
+  readonly turnId: TurnId | null;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { latestTurnId } = use(TimelineRowActivityCtx);
+  const latest = turnId !== null && turnId === latestTurnId && ctx.threadRef !== null;
+  return (
+    <div className={cn(TEXT_EDGE_OUT, "mt-3")}>
+      <TaskQuestionView
+        answer={
+          !latest || ctx.threadRef === null ? null : (
+            <TaskQuestionAnswer
+              conversationId={ctx.threadRef.threadId}
+              environmentId={ctx.threadRef.environmentId}
+              task={task.source}
+              taskId={task.taskId}
+            />
+          )
+        }
+        mateName={ctx.speaker.name}
+        question={question}
+      />
+    </div>
   );
 }
 
@@ -479,6 +538,7 @@ function MateProse({
       at={message.createdAt}
       streaming={Boolean(message.streaming)}
       text={messageText}
+      turnId={message.turnId}
     />
   );
   return (

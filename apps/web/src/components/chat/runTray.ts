@@ -7,6 +7,14 @@
  * phone its words stand on the composer's words, 12 px inside its frame.
  */
 
+/**
+ * The conversation's text edge, where the Mate's words and every row without a card of its own
+ * stand: the composer's text edge, 13 px inside the column on a phone, 17 from sm up. A card drawn
+ * inside such a row reaches the column's edges, the run card's, again by `TEXT_EDGE_OUT`.
+ */
+export const TEXT_EDGE = "px-3.25 sm:px-4.25";
+export const TEXT_EDGE_OUT = "-mx-3.25 sm:-mx-4.25";
+
 /** A slice of a card drawn a row at a time; the middle slice's radius stays in run-card.css. */
 export const RUN_TRAY_SLICE = {
   top: "rounded-t-sheet border-x border-t border-foreground/7 bg-run-tray px-3.75 pt-3.75 max-sm:px-2.75",

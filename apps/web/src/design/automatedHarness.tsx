@@ -26,6 +26,7 @@ import {
   createMemoryHistory,
   createRootRoute,
   createRouter,
+  Link,
   RouterProvider,
 } from "@tanstack/react-router";
 import { StrictMode, type ReactNode } from "react";
@@ -47,7 +48,9 @@ import {
   MateTaskCardView,
   MateTaskMessageRow,
   MateTaskStatusView,
+  TaskQuestionView,
 } from "~/components/zerops/MateTaskCard";
+import { Button } from "~/components/ui/button";
 import { MateFace } from "~/components/zerops/primitives";
 import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
 import type { TaskSession } from "~/zerops/taskSession.logic";
@@ -474,6 +477,26 @@ function Harness() {
             <MateTaskCardView
               task={{ ...DISCORD_ASK, title: "redesign footer" }}
               text={"redesign footer\nkeep the logo on the left\nmatch the header's spacing"}
+            />
+            {/* The Mate asking, while its task waits on the answer. */}
+            <TaskQuestionView
+              answer={
+                <Button
+                  render={
+                    <Link
+                      params={{ groupId: "tea-shop" }}
+                      search={{ task: "task-31" }}
+                      to="/group/$groupId/board"
+                    />
+                  }
+                  size="sm"
+                  variant="secondary"
+                >
+                  Answer on the Board
+                </Button>
+              }
+              mateName="Raya"
+              question="Which number do you prefer, 1 or 2?"
             />
             <MateTaskMessageRow
               message={{

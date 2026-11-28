@@ -1,11 +1,11 @@
 /**
- * A task on an automated Mate, as its conversation shows it: where it stands beside the Mate in the
- * header, with Stop for an Owner or Admin, asked first (`MateTaskStatus`); and the conversation
- * opening with the task, the way an issue page opens — where it came from, its title, what its
- * asker wrote, how long it worked, what it cost, and the change and pull request it made
- * (`MateTaskCard`). The words the agent got with it are its brief, never the person's, so they are
- * never drawn; what people say about the task afterwards, told to its Mate, is drawn as theirs
- * (`MateTaskMessageRow`).
+ * A task, as its conversation shows it: what it is and where it stands beside the Mate in the
+ * header, a link to it on the Board, with its presses (`MateTaskStatus`); the conversation opening
+ * with the task, the way an issue page opens — where it came from, its title, what its asker wrote,
+ * how long it worked, what it cost, and the change and pull request it made (`MateTaskCard`); an
+ * automated Mate's question as the Mate asking (`TaskQuestionView`). The words the agent got with
+ * it are its brief, never the person's, so they are never drawn; what people say about the task
+ * afterwards, told to its Mate, is drawn as theirs, said where (`MateTaskMessageRow`).
  */
 import {
   mateTaskSourceAuthor,
@@ -26,7 +26,7 @@ import {
   WebhookIcon,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 
 import { pullRequestName, taskAskBeyondTitle } from "~/zerops/automatedMate.logic";
 import { spentWords, taskPillStatus, type TaskSession } from "~/zerops/taskSession.logic";
@@ -491,6 +491,84 @@ export function MateTaskCardView({
         </Text>
       </div>
     </Card>
+  );
+}
+
+/**
+ * An automated Mate's question to a person, its agent's last `QUESTION:` line (`taskQuestionOf`):
+ * the Mate asking, in the wash of what waits on a person, and while the task still waits on it
+ * the way to answer it (`answer`, `TaskQuestionAnswer`).
+ */
+export function TaskQuestionView({
+  mateName,
+  question,
+  answer = null,
+}: {
+  readonly mateName: string;
+  readonly question: string;
+  readonly answer?: ReactNode;
+}) {
+  return (
+    <Card
+      data-zerops-surface="mate-task-question"
+      render={<section />}
+      tone="attention"
+      variant="wash"
+    >
+      <div className="flex flex-col items-start gap-1 px-3.75 py-3 max-sm:px-2.75">
+        <Text render={<h3 />} variant="heading">
+          {mateName} asks
+        </Text>
+        <p className="min-w-0 text-prose break-words whitespace-pre-wrap text-foreground">
+          {question}
+        </p>
+        {answer === null ? null : <div className="mt-2">{answer}</div>}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Answer on the Board, for the question of the task the conversation works now, while that task
+ * waits on it: its room held while where it stands is read, gone once it is known not to wait.
+ */
+export function TaskQuestionAnswer({
+  task,
+  taskId,
+  environmentId,
+  conversationId,
+}: {
+  readonly task: MateTaskSource;
+  readonly taskId: string | null;
+  readonly environmentId: EnvironmentId;
+  readonly conversationId: string;
+}) {
+  const { session, appId } = useTaskSession(task, environmentId, conversationId, taskId);
+  const reading = session.status === null;
+  if (!reading && session.status !== "waiting") return null;
+  const taskOnBoard = session.taskId;
+  if (reading || appId === null || taskOnBoard === null)
+    return (
+      <span aria-hidden="true" className="invisible" inert>
+        <Button render={<span />} size="sm" variant="secondary">
+          Answer on the Board
+        </Button>
+      </span>
+    );
+  return (
+    <Button
+      render={
+        <Link
+          params={{ groupId: appId }}
+          search={{ task: taskOnBoard }}
+          to="/group/$groupId/board"
+        />
+      }
+      size="sm"
+      variant="secondary"
+    >
+      Answer on the Board
+    </Button>
   );
 }
 

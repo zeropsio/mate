@@ -135,6 +135,7 @@ const SHARED: TimelineRowSharedState = {
   arrivedAfter: null,
   syncing: false,
   onHoldReading: () => undefined,
+  automatedTask: { source: TASK, taskId: "task-31" },
 };
 
 /** The contexts a conversation row reads, with nothing behind them. */

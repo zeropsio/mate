@@ -24,6 +24,7 @@ import type { DockModel } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import type { MateMentionMatcher } from "../../zerops/mateMentions";
 import type { MatePersonaAskView } from "../persona/useMatePersonaAsk";
+import type { ConversationTask } from "../../zerops/automatedMate.logic";
 
 /** A conversation's rows that enter by opening their room (`opensRoom`). */
 export interface RowRooms {
@@ -113,6 +114,12 @@ export interface TimelineRowSharedState {
   steerQueuedMessageShortcutLabel: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
   queueBlockedByAnswer?: boolean;
+  /**
+   * The task an automated Mate's conversation works now (`conversationTask`): its agent's last
+   * `QUESTION:` line is drawn as the Mate asking (`taskQuestionOf`); absent in any other
+   * conversation, where the words are read as they are.
+   */
+  automatedTask?: ConversationTask | null;
   onRemoveQueuedMessage: (id: string) => void;
   /**
    * The newest message's time when this conversation opened, on the server's

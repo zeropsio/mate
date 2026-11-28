@@ -1,4 +1,5 @@
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
+import type { ConversationTask } from "../../zerops/automatedMate.logic";
 import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
 import { selectedTimelineRowSpan, useSelectedTimelineRowIds } from "./useSelectedTimelineRows";
@@ -281,6 +282,8 @@ interface MessagesTimelineProps {
   steerQueuedMessageShortcutLabel?: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
   queueBlockedByAnswer?: boolean;
+  /** An automated Mate's current task (`TimelineRowSharedState.automatedTask`). */
+  automatedTask?: ConversationTask | null;
   onRemoveQueuedMessage?: (id: string) => void;
 }
 
@@ -348,6 +351,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   queueBlockedByAnswer = false,
+  automatedTask = null,
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
 }: MessagesTimelineProps) {
   // What runs alongside, a bar that ended showing its ending a moment (pass 35).
@@ -832,6 +836,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       queueBlockedByAnswer,
+      automatedTask,
       onRemoveQueuedMessage,
       arrivedAfter,
       rooms,
@@ -875,6 +880,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       queueBlockedByAnswer,
+      automatedTask,
       onRemoveQueuedMessage,
       arrivedAfter,
       rooms,

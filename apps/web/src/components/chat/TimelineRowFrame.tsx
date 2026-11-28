@@ -1,4 +1,4 @@
-import { RUN_TRAY_GHOST, RUN_TRAY_SLICE, RUN_TRAY_SLICE_WHOLE } from "./runTray";
+import { RUN_TRAY_GHOST, RUN_TRAY_SLICE, RUN_TRAY_SLICE_WHOLE, TEXT_EDGE } from "./runTray";
 import { NO_MATE_LIMIT } from "@t3tools/client-runtime/data";
 import { memo, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { wordsJustStood } from "./wordsLanding";
@@ -88,8 +88,7 @@ function rowInset(row: TimelineRow): string {
   // A line with no card keeps the card's geometry in a frame nobody sees, so
   // opening it draws the card around the line without moving it.
   if (row.kind === "work-line") return RUN_TRAY_GHOST;
-  // The composer's text edge: 13 px inside its frame on a phone, 17 from sm up.
-  return "px-3.25 sm:px-4.25";
+  return TEXT_EDGE;
 }
 
 /**
