@@ -39,6 +39,12 @@ export {
 export { HQ_AWAY_BUDGET_MS, hqAwaySaidAt } from "./projections/hqLink.ts";
 export { hqMateOverview, hqIndexWord, type HqIndexWord } from "./projections/hqMates.ts";
 export {
+  boardWaits,
+  NO_BOARD_WAITS,
+  type BoardWait,
+  type BoardWaitsRead,
+} from "./projections/boardWaits.ts";
+export {
   mateAttention,
   matesAttention,
   type MateAttentionRead,

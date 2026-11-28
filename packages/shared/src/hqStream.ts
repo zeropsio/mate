@@ -528,6 +528,32 @@ export const HqNavigationIntake = Schema.Struct({
 export type HqNavigationIntake = typeof HqNavigationIntake.Type;
 
 /**
+ * A task of the application the reader put on the Board (from a conversation or directly) whose
+ * automated Mate asks them (`asksYou`): `askedAt` when it last asked, the revision a snooze of it
+ * holds.
+ */
+export const HqNavigationAskedTask = Schema.Struct({
+  appId: Schema.String,
+  taskId: Schema.String,
+  title: Schema.String,
+  askedAt: Schema.String,
+});
+export type HqNavigationAskedTask = typeof HqNavigationAskedTask.Type;
+
+/**
+ * A held task of the application the reader put, one of whose needs broke (`heldBroken`): it waits
+ * on them to drop that need or stop it. `brokenAt` when its last broken need broke, the revision a
+ * snooze of it holds.
+ */
+export const HqNavigationHeldBrokenTask = Schema.Struct({
+  appId: Schema.String,
+  taskId: Schema.String,
+  title: Schema.String,
+  brokenAt: Schema.String,
+});
+export type HqNavigationHeldBrokenTask = typeof HqNavigationHeldBrokenTask.Type;
+
+/**
  * One of an application's recent rollouts as its navigation carries it: whether HQ planned it, and
  * HQ's words for what it could not ask for — what a handed-over answer (`HqDeployAnswer.rollout`)
  * ends its wait with when the rollout was planned with no job.
@@ -583,6 +609,10 @@ export const HqNavigationApp = Schema.Struct({
    * task rows read again when it moves, never on a timer. Absent from an HQ without the Board.
    */
   boardRevision: Schema.optionalKey(Schema.Int),
+  /** Its tasks the reader put whose automated Mate asks them, oldest question first; absent: none. */
+  asksYou: Schema.optionalKey(Schema.Array(HqNavigationAskedTask)),
+  /** Its held tasks the reader put whose need broke, oldest first; absent: none. */
+  heldBroken: Schema.optionalKey(Schema.Array(HqNavigationHeldBrokenTask)),
   /**
    * Who merges its changes, present only where it limits that (`HqMergers`): the organization's
    * Owner and Admins, and the people it names. Absent, or null: whoever may push merges.
