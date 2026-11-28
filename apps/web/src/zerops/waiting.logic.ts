@@ -3,8 +3,8 @@
  * approve, a question to answer, a Mate of theirs stopped on an error, a Mate's changes to review,
  * its agent's sign-in only the viewer can make, a crewmate's question or finished work, an
  * automated Mate's task waiting for an answer from the Mate's owner or the person who put it on the
- * Board — in the menu's order, then every project whose release is offered, less what the viewer
- * set aside until it changes (`snoozeOf`). One decision makes it (`needsYou`); every surface that
+ * Board, a task of theirs whose need broke — in the menu's order, then every project whose release
+ * is offered, less what the viewer set aside until it changes (`snoozeOf`). One decision makes it (`needsYou`); every surface that
  * counts or says what
  * waits reads this list and these words: the menu's badge, its Needs you list and the rail, the
  * overview's tab, a project's card and page.
@@ -22,6 +22,7 @@ import {
   type MateShapeId,
   type MateTintId,
 } from "@t3tools/shared/brand";
+import type { BoardWait } from "@t3tools/client-runtime/data";
 import type { CrewDigest } from "@t3tools/shared/mateLink";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -137,6 +138,16 @@ export type WaitingItem =
   | { readonly kind: WaitingKind; readonly key: string; readonly mate: WaitingMate }
   | { readonly kind: "crew"; readonly key: string; readonly crew: WaitingCrew }
   | { readonly kind: "task"; readonly key: string; readonly task: WaitingTask }
+  /**
+   * A task the viewer put on a Board whose automated Mate asks them, as HQ says it (`asksYou`),
+   * where no Mate row of theirs carries it: answered on the Board.
+   */
+  | { readonly kind: "asked"; readonly key: string; readonly board: BoardWait }
+  /**
+   * A held task the viewer put whose need broke (`heldBroken`): it waits on them to drop that need
+   * or stop it, on the Board.
+   */
+  | { readonly kind: "held"; readonly key: string; readonly board: BoardWait }
   | { readonly kind: "release"; readonly key: string; readonly release: WaitingRelease };
 
 /** What waits in a Mate's own conversation: its plan, question, error, changes or sign-in. */
@@ -146,10 +157,12 @@ export function isMateWait(item: WaitingItem): item is WaitingMateItem {
   return "mate" in item;
 }
 
-/** The Mate an item is about; none for a release. */
+/** The Mate an item is about; none for a release or a Board's task. */
 export function waitingProjectId(item: WaitingItem): string | undefined {
   switch (item.kind) {
     case "release":
+    case "asked":
+    case "held":
       return undefined;
     case "crew":
       return item.crew.projectId;
@@ -157,6 +170,19 @@ export function waitingProjectId(item: WaitingItem): string | undefined {
       return item.task.projectId;
     default:
       return item.mate.projectId;
+  }
+}
+
+/** The project an item names itself, with no Mate between: a release's, a Board task's. */
+export function waitingGroupId(item: WaitingItem): string | undefined {
+  switch (item.kind) {
+    case "release":
+      return item.release.groupId;
+    case "asked":
+    case "held":
+      return item.board.appId;
+    default:
+      return undefined;
   }
 }
 
@@ -382,9 +408,10 @@ export interface NeedsYouSnooze {
 
 /**
  * An item as the viewer sets it aside (`PUT /api/me/snoozes`): its key — `task:<id>`,
- * `change:<project>/<repo>#<n>`, `ask:<mate>:<what>`, `release:<project>` — and its own revision,
- * which moves when it changes (a new question, a push, a release grown); `null` for one whose
- * revision is not known, which cannot be set aside.
+ * `held:<id>`, `change:<project>/<repo>#<n>`, `ask:<mate>:<what>`, `release:<project>` — and its
+ * own revision, which moves when it changes (a new question, a need broken again, a push, a
+ * release grown); `null` for one whose revision is not known, which cannot be set aside. A task
+ * that asks is one key whether its Mate's row or HQ's `asksYou` shows it, so a snooze holds both.
  */
 export function snoozeOf(item: WaitingItem): NeedsYouSnooze | null {
   switch (item.kind) {
@@ -392,6 +419,10 @@ export function snoozeOf(item: WaitingItem): NeedsYouSnooze | null {
       return item.task.askedAt === undefined
         ? null
         : { item: `task:${item.task.taskId}`, revision: item.task.askedAt };
+    case "asked":
+      return { item: `task:${item.board.taskId}`, revision: item.board.at };
+    case "held":
+      return { item: `held:${item.board.taskId}`, revision: item.board.at };
     case "release":
       return item.release.ahead === undefined
         ? null
@@ -435,8 +466,10 @@ export function snoozeOf(item: WaitingItem): NeedsYouSnooze | null {
  * crew needs, then its task waiting for an answer — said only where its conversation says nothing
  * of its own, since that is where the task asks; then every release offered to them. Another's
  * Mate waits on its owner, not here — but a task it holds that the viewer put on the Board waits
- * on them (`viewer`, their Zerops user id). What the viewer set aside (`snoozes`) is left out while
- * its revision is still the one set aside. Beside it, what runs for the viewer and what they got
+ * on them (`viewer`, their Zerops user id). After every Mate, the tasks HQ says the viewer put
+ * whose Mate asks them (`asked`) that no Mate row carries — one a row carries is that row's, said
+ * once — then their held tasks whose need broke (`broken`), each oldest first. What the viewer set
+ * aside (`snoozes`) is left out while its revision is still the one set aside. Beside it, what runs for the viewer and what they got
  * today, counted from `dayStart` (the start of the viewer's day, in epoch milliseconds).
  */
 export function needsYou(input: {
@@ -445,6 +478,10 @@ export function needsYou(input: {
   readonly releases: ReadonlyArray<WaitingRelease>;
   readonly dayStart: number;
   readonly viewer?: string | undefined;
+  /** HQ's `asksYou`: the viewer's puts whose automated Mate asks them (`boardWaits`). */
+  readonly asked?: ReadonlyArray<BoardWait> | undefined;
+  /** HQ's `heldBroken`: the viewer's held tasks whose need broke (`boardWaits`). */
+  readonly broken?: ReadonlyArray<BoardWait> | undefined;
   readonly snoozes?: ReadonlyArray<NeedsYouSnooze> | undefined;
 }): { readonly items: ReadonlyArray<WaitingItem>; readonly counts: NeedsYouCounts } {
   const place = (projectId: string) => {
@@ -458,6 +495,8 @@ export function needsYou(input: {
   const finishedToday = (at: string) => Date.parse(at) >= input.dayStart;
   let running = 0;
   let doneToday = 0;
+  // The asking tasks a Mate row says, in its task's item or its own conversation's.
+  const carried = new Set<string>();
   for (const mate of mates) {
     const wait = conversationWait(mate);
     if (wait !== undefined) items.push({ kind: wait.kind, key: `m:${mate.projectId}`, mate: wait });
@@ -469,6 +508,7 @@ export function needsYou(input: {
       task?.waiting === true &&
       wait === undefined &&
       (mate.mine || (input.viewer !== undefined && task.putBy === input.viewer));
+    if (task?.waiting === true && (asks || wait !== undefined)) carried.add(task.id);
     if (asks)
       items.push({
         kind: "task",
@@ -498,6 +538,13 @@ export function needsYou(input: {
     doneToday +=
       attention?.results.filter((result) => finishedToday(result.completedAt)).length ?? 0;
   }
+  const oldestFirst = (tasks: ReadonlyArray<BoardWait> | undefined) =>
+    (tasks ?? []).toSorted((left, right) => (left.at < right.at ? -1 : left.at > right.at ? 1 : 0));
+  for (const board of oldestFirst(input.asked))
+    if (!carried.has(board.taskId))
+      items.push({ kind: "asked", key: `a:${board.appId}:${board.taskId}`, board });
+  for (const board of oldestFirst(input.broken))
+    items.push({ kind: "held", key: `b:${board.appId}:${board.taskId}`, board });
   for (const release of input.releases)
     items.push({ kind: "release", key: `r:${release.groupId}`, release });
   const aside = new Map((input.snoozes ?? []).map((snooze) => [snooze.item, snooze.revision]));
@@ -512,6 +559,8 @@ export function needsYou(input: {
 export function waitingPhrase(item: WaitingItem): string {
   if (item.kind === "release") return `Release ${item.release.name}`;
   if (item.kind === "task") return `Answer ${item.task.name}`;
+  if (item.kind === "asked") return `Answer ${crewPossessive(item.board.appName)} task`;
+  if (item.kind === "held") return `Unblock ${crewPossessive(item.board.appName)} task`;
   if (item.kind === "crew") {
     const { crewmate, need } = item.crew;
     if (need.kind === "ready") return `Review ${crewPossessive(crewmate.name)} work`;
@@ -548,6 +597,8 @@ export const WAITING_VERBS = {
   release: REVIEW_RELEASE_LABEL,
   "sign-in": "Sign in",
   task: "Answer",
+  asked: "Answer",
+  held: "Open Board",
   crew: "Open",
 } as const satisfies Record<WaitingItem["kind"], string>;
 
@@ -599,6 +650,9 @@ export const needsYouTellLabel = (name: string): string => `Tell ${name}…`;
 /** An automated Mate's task, under its name: what it is on, waiting for an answer. */
 export const needsYouTaskLine = (title: string): string => `${title} · waiting for your answer`;
 
+/** A held task of the person's, under its project's name: one of the tasks it needs broke. */
+export const needsYouHeldLine = (title: string): string => `${title} · a task it needs broke`;
+
 /** A Mate's changes for the person's review, under its name, where there are several. */
 export const needsYouChangesLine = (count: number): string =>
   `${String(count)} changes waiting for you`;
@@ -641,6 +695,9 @@ export function waitingTitle(item: WaitingItem): string {
       return item.crew.crewmate.name;
     case "task":
       return item.task.name;
+    case "asked":
+    case "held":
+      return item.board.appName;
     default:
       return item.mate.name;
   }

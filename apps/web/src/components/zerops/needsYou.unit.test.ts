@@ -199,3 +199,62 @@ it("MN142: A crewmate whose chat asks the viewer, set aside, stays out of Needs 
     olderMate: keysWhen(undefined),
   }).toEqual({ same: [], askedAgain: ["c:fen:h:sol"], olderMate: ["c:fen:h:sol"] });
 });
+
+const ASKED = (taskId: string, at: string) => ({
+  appId: "shop",
+  appName: "Shop",
+  taskId,
+  title: `Task ${taskId}`,
+  at,
+});
+
+// witness: apps/web/src/zerops/waiting.logic.ts | if (!carried.has(board.taskId)) → if (!carried.has(board.appId))
+it("MN+1: A task the viewer put whose automated Mate asks them, as HQ says it, stands in Needs you though no Mate row of theirs carries it, and one a Mate row carries is said once, by that row; breaks: the person never hears a question from a Mate outside their list, or hears one question twice", () => {
+  const pool = mate({ projectId: "pool-1", name: "Pool", mine: false, task: POOL_TASK });
+  expect(
+    needsYou({
+      mates: [pool],
+      order: [],
+      releases: [{ groupId: "shop", name: "Shop", ahead: 2 }],
+      dayStart: DAY,
+      viewer: "ana",
+      asked: [ASKED("task-9", "2026-11-27T09:00:00Z"), ASKED("task-7", "2026-11-27T08:00:00Z")],
+    }).items.map((item) => item.key),
+  ).toEqual(["t:pool-1:task-9", "a:shop:task-7", "r:shop"]);
+});
+
+// witness: apps/web/src/zerops/waiting.logic.ts | return { item: `task:${item.board.taskId}`, revision: item.board.at }; → return { item: `asked:${item.board.taskId}`, revision: item.board.at };
+it("MN+2: A task asking the viewer that only HQ says is set aside under the task's own key, so a snooze made where its Mate's row said it holds it too, until the Mate asks again; breaks: a question the person set aside comes back the moment its Mate leaves their list", () => {
+  const keysWhen = (at: string) =>
+    needsYou({
+      mates: [],
+      order: [],
+      releases: [],
+      dayStart: DAY,
+      viewer: "ana",
+      asked: [ASKED("task-9", at)],
+      snoozes: [{ item: "task:task-9", revision: "2026-11-27T09:00:00Z" }],
+    }).items.map((item) => item.key);
+  expect({
+    same: keysWhen("2026-11-27T09:00:00Z"),
+    askedAgain: keysWhen("2026-11-27T11:30:00Z"),
+  }).toEqual({ same: [], askedAgain: ["a:shop:task-9"] });
+});
+
+// witness: apps/web/src/zerops/waiting.logic.ts | return { item: `held:${item.board.taskId}`, revision: item.board.at }; → return null;
+it("MN+3: A held task the viewer put whose need broke stands in Needs you, set aside it stays out while its need's break is the one set aside, and comes back when a need breaks again; breaks: a broken task can never be set aside, or a new break stays hidden", () => {
+  const keysWhen = (at: string) =>
+    needsYou({
+      mates: [],
+      order: [],
+      releases: [],
+      dayStart: DAY,
+      viewer: "ana",
+      broken: [ASKED("task-4", at)],
+      snoozes: [{ item: "held:task-4", revision: "2026-11-27T09:00:00Z" }],
+    }).items.map((item) => item.key);
+  expect({
+    same: keysWhen("2026-11-27T09:00:00Z"),
+    brokeAgain: keysWhen("2026-11-27T12:00:00Z"),
+  }).toEqual({ same: [], brokeAgain: ["b:shop:task-4"] });
+});

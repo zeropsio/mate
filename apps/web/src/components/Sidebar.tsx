@@ -1047,9 +1047,22 @@ export default function Sidebar() {
         if (candidate !== undefined) onZeropsOpenCrew(candidate, false);
       },
       onAnswerPut: answerPutTask,
+      onOpenBoard: (appId: string) => {
+        if (isMobile) setOpenMobile(false);
+        void router.navigate({ to: "/group/$groupId/board", params: { groupId: appId } });
+      },
       onAskToFix: onZeropsAskToFix,
     }),
-    [answerPutTask, onZeropsAskToFix, onZeropsOpenCrew, onZeropsSelect, zeropsCandidates],
+    [
+      answerPutTask,
+      isMobile,
+      onZeropsAskToFix,
+      onZeropsOpenCrew,
+      onZeropsSelect,
+      router,
+      setOpenMobile,
+      zeropsCandidates,
+    ],
   );
   // Closed on a desktop, the menu is a rail of tiles: the same projects, in the menu's order.
   const zeropsProjectName = useCallback(

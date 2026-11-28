@@ -52,7 +52,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { menuTreeAtom } from "~/zerops/menuRows";
 import { useOfferedReleases, useViewerWaits } from "~/components/zerops/useSidebarWaiting";
-import { waitingProjectId } from "~/zerops/waiting.logic";
+import { waitingGroupId, waitingProjectId } from "~/zerops/waiting.logic";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
@@ -1792,11 +1792,7 @@ export function ZeropsProjectsContent({
       waiting.items.flatMap((item) => {
         const projectId = waitingProjectId(item);
         const groupId =
-          item.kind === "release"
-            ? item.release.groupId
-            : projectId === undefined
-              ? undefined
-              : groupOf.get(projectId);
+          waitingGroupId(item) ?? (projectId === undefined ? undefined : groupOf.get(projectId));
         return groupId === undefined ? [] : [groupId];
       }),
     );
@@ -1850,11 +1846,7 @@ export function ZeropsProjectsContent({
     for (const item of waiting.items) {
       const projectId = waitingProjectId(item);
       const groupId =
-        item.kind === "release"
-          ? item.release.groupId
-          : projectId === undefined
-            ? undefined
-            : groupOf.get(projectId);
+        waitingGroupId(item) ?? (projectId === undefined ? undefined : groupOf.get(projectId));
       if (groupId === undefined) continue;
       const review =
         item.kind === "release" ||

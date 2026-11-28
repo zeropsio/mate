@@ -408,7 +408,8 @@ export function takeAnswerOnArrival(taskId: string): boolean {
 /**
  * Where the person who put a task on the Board answers its question: their own card in the chat they
  * put it from, where the Board read says which; else the application's Board, on its page, with
- * that task's answer field focused (a task put on the Board itself is answered in its row).
+ * that task's answer field focused (a task put on the Board itself is answered in its row). The
+ * task is named with the Mate that holds it, or with its application where no listed Mate does.
  */
 export function useAnswerPutTask() {
   const store = useAccountStoreForAdapters();
@@ -417,8 +418,13 @@ export function useAnswerPutTask() {
   const openConversation = useOpenTaskConversation();
   const router = useRouter();
   return useCallback(
-    (task: { readonly projectId: string; readonly taskId: string }) => {
-      const appId = placements?.get(task.projectId)?.appId ?? null;
+    (
+      task: { readonly taskId: string } & (
+        | { readonly projectId: string }
+        | { readonly appId: string }
+      ),
+    ) => {
+      const appId = "appId" in task ? task.appId : (placements?.get(task.projectId)?.appId ?? null);
       if (appId === null || orgId === null) return;
       const chat =
         store === null

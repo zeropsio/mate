@@ -66,6 +66,7 @@ import {
   needsYouCountsLine,
   needsYouCrewLine,
   needsYouCrewOf,
+  needsYouHeldLine,
   needsYouReadyLine,
   needsYouTaskLine,
   needsYouTellLabel,
@@ -88,9 +89,16 @@ export interface WaitingVerbs {
   readonly onOpenMate: (projectId: string) => void;
   /**
    * A task the viewer put on the Board asks them: where they answer it — their own card in the chat
-   * they put it from, else the Board.
+   * they put it from, else the Board. Named by the Mate that holds it, or by its application.
    */
-  readonly onAnswerPut: (task: { readonly projectId: string; readonly taskId: string }) => void;
+  readonly onAnswerPut: (
+    task: { readonly taskId: string } & (
+      | { readonly projectId: string }
+      | { readonly appId: string }
+    ),
+  ) => void;
+  /** An application's Board, where a task of the viewer's that waits on them stands. */
+  readonly onOpenBoard: (appId: string) => void;
   readonly onOpenCrew: (projectId: string) => void;
   readonly onAskToFix: (projectId: string, problem: FixProblem) => void;
 }
@@ -398,6 +406,8 @@ function WaitingEntry({
         <CrewEntry item={item} {...props} />
       ) : item.kind === "task" ? (
         <TaskEntry item={item} {...props} />
+      ) : item.kind === "asked" || item.kind === "held" ? (
+        <BoardEntry item={item} {...props} />
       ) : (
         <MateEntry item={item} {...props} />
       )}
@@ -734,6 +744,41 @@ function TaskEntry({
       }
       lead={<MateLead face="needs" shape={task.shape} tint={task.tint} />}
       line={needsYouTaskLine(task.title)}
+      title={waitingTitle(item)}
+    />
+  );
+}
+
+/**
+ * A Board task of the viewer's that no listed Mate says: one whose automated Mate asks them,
+ * answered where they put it from, else on the Board; one whose need broke, on the Board, where
+ * they drop the need or stop it.
+ */
+function BoardEntry({
+  item,
+  verbs,
+  onClose,
+}: EntryProps & {
+  readonly item: Extract<WaitingItem, { readonly kind: "asked" | "held" }>;
+}) {
+  const { board } = item;
+  return (
+    <EntryRow
+      control={
+        <Button
+          onClick={() => {
+            onClose();
+            if (item.kind === "asked")
+              verbs.onAnswerPut({ appId: board.appId, taskId: board.taskId });
+            else verbs.onOpenBoard(board.appId);
+          }}
+          size="sm"
+        >
+          {waitingVerb(item)}
+        </Button>
+      }
+      lead={<LogoTile>{board.appName.trim().charAt(0).toLocaleUpperCase()}</LogoTile>}
+      line={item.kind === "asked" ? needsYouTaskLine(board.title) : needsYouHeldLine(board.title)}
       title={waitingTitle(item)}
     />
   );

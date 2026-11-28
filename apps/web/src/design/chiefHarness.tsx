@@ -116,6 +116,7 @@ function pageViewOf(setup: ChiefSetup): Exclude<ChiefPageView, { kind: "reading"
 const VERBS = {
   onOpenMate: () => {},
   onAnswerPut: () => {},
+  onOpenBoard: () => {},
   onOpenCrew: () => {},
   onAskToFix: () => {},
 };

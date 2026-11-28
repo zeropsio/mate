@@ -1412,8 +1412,11 @@ function SidebarFrame({
                     menuActions.push(`open ${projectId}`);
                     setOpen(projectId);
                   },
-                  onAnswerPut: (task: { readonly projectId: string }) => {
-                    menuActions.push(`answer ${task.projectId}`);
+                  onAnswerPut: (task: { readonly taskId: string }) => {
+                    menuActions.push(`answer ${task.taskId}`);
+                  },
+                  onOpenBoard: (appId: string) => {
+                    menuActions.push(`board ${appId}`);
                   },
                   onOpenCrew: (projectId: string) => {
                     menuActions.push(`crew ${projectId}`);
@@ -1875,8 +1878,11 @@ function RailFrame({
     onOpenMate: (projectId: string) => {
       setOpen(projectId);
     },
-    onAnswerPut: (task: { readonly projectId: string }) => {
-      menuActions.push(`answer ${task.projectId}`);
+    onAnswerPut: (task: { readonly taskId: string }) => {
+      menuActions.push(`answer ${task.taskId}`);
+    },
+    onOpenBoard: (appId: string) => {
+      menuActions.push(`board ${appId}`);
     },
     onOpenCrew: (projectId: string) => {
       setOpen(projectId);

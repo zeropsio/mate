@@ -5,7 +5,8 @@
  *
  * The decision is `needsYou` (`waiting.logic.ts`), over what the data layer answers for each Mate:
  * its row's activity (the one resolver's word, R5), HQ's word of whom it waits on, its changes for
- * the viewer's review, its agent's sign-in, its crew's digest, its task and its attention; and
+ * the viewer's review, its agent's sign-in, its crew's digest, its task and its attention; the
+ * Board tasks HQ says wait on the viewer (`boardWaits`), whichever Mate holds them; and
  * every project whose release is offered (`releaseOffered`) and theirs to make
  * (`useReleaseOnViewer`: being allowed to release a colleague's project is not being asked to).
  * It is always the viewer's: Mine / Everyone chooses which Mates the menu lists, never what waits
@@ -39,7 +40,12 @@ import {
   type WaitingRelease,
 } from "~/zerops/waiting.logic";
 
-import { matesAttention, type MateAttentionRead } from "@t3tools/client-runtime/data";
+import {
+  boardWaits,
+  matesAttention,
+  NO_BOARD_WAITS,
+  type MateAttentionRead,
+} from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/accountData";
 import { mateReviewCount, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -61,6 +67,7 @@ import { useWaitsOnViewer } from "~/zerops/useZeropsMateOwners";
 
 const NO_ATTENTION_READ: Readonly<Record<string, MateAttentionRead>> = {};
 const NO_ATTENTION = Atom.make(NO_ATTENTION_READ);
+const NOTHING_ON_BOARDS = Atom.make(NO_BOARD_WAITS);
 
 /** The start of the viewer's day, in epoch milliseconds: what "done today" counts from. */
 function startOfToday(): number {
@@ -93,7 +100,10 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
       [candidates],
     ),
   );
-  const attention = useProjection(matesAttention, useAccountOrgId(), NO_ATTENTION);
+  const orgId = useAccountOrgId();
+  const attention = useProjection(matesAttention, orgId, NO_ATTENTION);
+  // The Board tasks HQ says wait on the viewer, whether or not their Mate is listed here.
+  const boards = useProjection(boardWaits, orgId, NOTHING_ON_BOARDS);
   // Whose press each change waits for where its application limits who merges: one the person
   // already asked for waits on the people who merge, and is no wait of theirs.
   const standingOf = useChangeStandingOf();
@@ -234,9 +244,11 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
         releases,
         dayStart: startOfToday(),
         viewer: viewerSubject,
+        asked: boards.asksYou,
+        broken: boards.heldBroken,
         snoozes,
       }),
-    [mates, order, releases, snoozes, viewerSubject],
+    [boards, mates, order, releases, snoozes, viewerSubject],
   );
 }
 
