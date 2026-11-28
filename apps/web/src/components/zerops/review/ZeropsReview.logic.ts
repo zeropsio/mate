@@ -761,3 +761,28 @@ export function sinceWords(at: string | undefined, now: number): string | undefi
   }
   return then.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
+
+/** What "Try it" says of the app while it answers at no address: in the slot its press would hold. */
+export const APP_ADDRESS_MISSING = "Your app has no address yet.";
+
+/** One place in "Try it"'s row. */
+export type ReviewTryItem =
+  | { readonly kind: "app"; readonly service: string; readonly url: string }
+  | { readonly kind: "app-missing" }
+  | { readonly kind: "draft" };
+
+/**
+ * "Try it"'s row: a *Your app* press for each address the app answers at or, while it answers at
+ * none, the line naming it (`APP_ADDRESS_MISSING`) in that press's slot, so it never reads as about
+ * *Open draft*; then *Open draft* while the change's draft can open. Every press it holds acts.
+ */
+export function reviewTryRow(
+  builds: ReadonlyArray<{ readonly service: string; readonly url: string }>,
+  draftOpenable: boolean,
+): ReadonlyArray<ReviewTryItem> {
+  const app: ReadonlyArray<ReviewTryItem> =
+    builds.length === 0
+      ? [{ kind: "app-missing" }]
+      : builds.map((build) => ({ kind: "app", service: build.service, url: build.url }));
+  return draftOpenable ? [...app, { kind: "draft" }] : app;
+}

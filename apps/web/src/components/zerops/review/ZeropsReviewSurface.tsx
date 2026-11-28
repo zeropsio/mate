@@ -73,9 +73,11 @@ import { InPhoneBar } from "../system/PhoneBar";
 
 import { ZeropsDeployAnswer, type DeployWhereRow } from "../ZeropsDeployAnswer";
 import {
+  APP_ADDRESS_MISSING,
   changeFileLetter,
   diffFold,
   pressesPrimary,
+  reviewTryRow,
   type ReleaseChangeRow,
   type ReviewFrame,
   type ReviewKind,
@@ -940,27 +942,33 @@ export function ReviewTry({
 }) {
   return (
     <ReviewSection title="Try it">
-      <div className="flex flex-wrap gap-2">
-        {builds.map((build) => (
-          <Button
-            className="max-w-full"
-            key={`${build.service}:${build.url}`}
-            render={<a href={build.url} rel="noreferrer" target="_blank" />}
-            size="sm"
-            title={build.url}
-            variant="secondary"
-          >
-            <GlobeIcon aria-hidden="true" />
-            <span className="flex-none font-medium">Your app</span>
-            <ArrowUpRightIcon aria-hidden="true" />
-          </Button>
-        ))}
-        {draft.kind === "openable" ? (
-          <Button size="sm" variant="secondary" onClick={onOpenDraft}>
-            <GlobeIcon aria-hidden="true" />
-            Open draft
-          </Button>
-        ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {reviewTryRow(builds, draft.kind === "openable").map((item) =>
+          item.kind === "app" ? (
+            <Button
+              className="max-w-full"
+              key={`${item.service}:${item.url}`}
+              render={<a href={item.url} rel="noreferrer" target="_blank" />}
+              size="sm"
+              title={item.url}
+              variant="secondary"
+            >
+              <GlobeIcon aria-hidden="true" />
+              <span className="flex-none font-medium">Your app</span>
+              <ArrowUpRightIcon aria-hidden="true" />
+            </Button>
+          ) : item.kind === "app-missing" ? (
+            // The press's slot, at its height: the row keeps its place when the address comes.
+            <Text className="flex min-h-7 items-center" key="app-missing" variant="description">
+              {APP_ADDRESS_MISSING}
+            </Text>
+          ) : (
+            <Button key="draft" size="sm" variant="secondary" onClick={onOpenDraft}>
+              <GlobeIcon aria-hidden="true" />
+              Open draft
+            </Button>
+          ),
+        )}
       </div>
       {draft.kind !== "openable" ? (
         <Text className="mt-1.5" render={<p />} variant="description">
@@ -969,11 +977,6 @@ export function ReviewTry({
       ) : draftStateLine(draft.state) !== undefined ? (
         <Text className="mt-1.5" render={<p />} variant="description">
           Draft: {draftStateLine(draft.state)}
-        </Text>
-      ) : null}
-      {builds.length === 0 ? (
-        <Text className="mt-1.5" render={<p />} variant="description">
-          App address not available yet.
         </Text>
       ) : null}
     </ReviewSection>

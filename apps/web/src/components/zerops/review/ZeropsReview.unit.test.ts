@@ -14,10 +14,11 @@ import {
   descriptionPicture,
   mergeStages,
   releaseChangeRows,
+  reviewTryRow,
   whySaid,
 } from "./ZeropsReview.logic.ts";
 
-// witness: apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx | draft.kind === "openable" ? ( → draft.kind !== "openable" ? (
+// witness: apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx | {reviewTryRow(builds, draft.kind === "openable").map((item) => → {reviewTryRow(builds, draft.kind !== "openable").map((item) =>
 it("RV13: A review offers an openable draft through a button inside Mate; breaks: a person opens a lease address or has no way into a draft.", () => {
   const copy = { kind: "service", hostname: "webdev", branch: "feature" } as const;
   const openable = renderToStaticMarkup(
@@ -208,4 +209,18 @@ it("RV12: An addition handed to a person shows its given-up reason in the review
     "No agent can work on this Mate: sign one in, then ask it to fix the check.",
   );
   expect(whySaid(changeMergeVerdict({ pull, mateName: "Nova" }).verdict, false)).toBe(false);
+});
+
+// witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | builds.length === 0 → builds.length < 0
+it('RV15: "Try it" holds a Your app press for each address the app answers at, or while it answers at none the line naming it in that press\'s slot, then Open draft while the draft can open; breaks: the line says no address under a working Open draft as if the draft could not open, or a press stands that cannot act', () => {
+  const stage = { service: "webstage", url: "https://webstage.example.app" };
+  expect({
+    noAddressDraft: reviewTryRow([], true).map((item) => item.kind),
+    noAddress: reviewTryRow([], false).map((item) => item.kind),
+    addressDraft: reviewTryRow([stage], true).map((item) => item.kind),
+  }).toEqual({
+    noAddressDraft: ["app-missing", "draft"],
+    noAddress: ["app-missing"],
+    addressDraft: ["app", "draft"],
+  });
 });
