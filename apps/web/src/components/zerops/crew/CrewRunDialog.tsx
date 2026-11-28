@@ -48,6 +48,7 @@ import { Input } from "~/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Radio, RadioGroup } from "~/components/ui/radio-group";
 import { Separator } from "~/components/ui/separator";
+import { Text } from "~/components/ui/text";
 import { Toggle } from "~/components/ui/toggle";
 import { useServerConfigs } from "~/state/entities";
 import { type UseCrewCommand, useCrewCommand } from "~/zerops/crew/useCrewCommand";
@@ -61,6 +62,7 @@ import {
   crewRunDraft,
   crewPlanOf,
   crewSpendBlocker,
+  crewStartBlocker,
   crewStartCommand,
   type CrewLimitKind,
   type CrewResumeDraft,
@@ -145,9 +147,10 @@ export function CrewRunDialog({
         {snapshot === null || ask === null ? null : resuming === null ? (
           <CrewStartBody
             canAct={current && !commands.pending}
+            current={current}
             error={commands.error}
             hasLead={hasLead}
-            initial={crewRunDraft(run, hasLead)}
+            initial={crewRunDraft(run, hasLead, spendBlocker !== null)}
             mateName={mateName}
             plan={plan}
             spendBlocker={spendBlocker}
@@ -262,12 +265,15 @@ export function CrewStartBody(props: {
   readonly hasLead: boolean;
   readonly mateName: string;
   readonly canAct: boolean;
+  /** The crew as shown is the crew as it stands: a press acts on it. */
+  readonly current: boolean;
   readonly error: string | null;
   readonly onStart: (command: CrewCommand) => void;
   readonly onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(props.initial);
   const command = crewStartCommand(draft, props.hasLead, props.spendBlocker !== null);
+  const blocker = crewStartBlocker(draft, props.spendBlocker !== null, props.current);
   return (
     <>
       <DialogHeader>
@@ -348,6 +354,12 @@ export function CrewStartBody(props: {
         </div>
       </DialogPanel>
       <Foot error={props.error}>
+        {blocker === null ? null : (
+          // Start never sits disabled without saying why.
+          <div className="mr-auto self-center">
+            <Text variant="note">{blocker}</Text>
+          </div>
+        )}
         <CrewPress
           label={CREW_RUN_WORDS.cancel}
           onPress={props.onCancel}

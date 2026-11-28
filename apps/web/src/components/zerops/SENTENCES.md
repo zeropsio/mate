@@ -1,4 +1,4 @@
-next: MN141
+next: MN142
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -129,3 +129,4 @@ next: MN141
 - MN138 — A project deletion HQ stopped names the person it waits for by what HQ calls them, the live page and the design flow alike, and says the person who started it while HQ has not said; breaks: a stopped deletion waits for an unnamed person whom HQ has named, or the design flow shows a name the live page never would.
 - MN139 — A repository's Delete says what stays on the host of the remote HQ records for it, or of the one it follows, and nothing where its code goes nowhere; breaks: a GitLab repository's Delete says it stays on GitHub.
 - MN140 — Adding a Mate from a tier sends its recipe revision and project variables to HQ, and HQ gives the refusal for a second zcp service
+- MN141 — The crew's run dialog starts a crew that can't keep a budget on No limit, the one spend choice that starts it, and while Start can't start it says why beside it: the crew not read yet, no spend chosen, a budget this crew can't keep, or an amount or hours not typed; breaks: Start sits disabled with nothing saying what to press

@@ -14,7 +14,11 @@
  * run, so it never asks the run to go on under a limit it has reached
  * (`resumeRefusal` on the server); the usage stop is raised or turned off.
  */
-import { crewLandingWords, crewPlanWords } from "@t3tools/client-runtime/zerops/crew/phrases";
+import {
+  CREW_RUN_WORDS,
+  crewLandingWords,
+  crewPlanWords,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
 
 import {
   type CrewCommand,
@@ -64,7 +68,21 @@ export function crewLandingOptions(
   return crewLandingModes(hasLead).map((mode) => ({ mode, ...crewLandingWords(mode, mateName) }));
 }
 
-export function crewRunDraft(lastRun: CrewRun | null, hasLead: boolean): CrewRunDraft {
+/**
+ * The dialog's choices: the last run's, else the first run's with no budget picked. A crew that
+ * can't keep a budget (a crewmate's agent reports no spend, `crewSpendBlocker`) starts on No
+ * limit, the one spend choice that starts it.
+ */
+export function crewRunDraft(
+  lastRun: CrewRun | null,
+  hasLead: boolean,
+  spendBlocked: boolean,
+): CrewRunDraft {
+  const draft = draftOf(lastRun, hasLead);
+  return spendBlocked ? { ...draft, budget: "unlimited", budgetText: "" } : draft;
+}
+
+function draftOf(lastRun: CrewRun | null, hasLead: boolean): CrewRunDraft {
   if (lastRun === null) {
     return {
       budget: null,
@@ -136,6 +154,23 @@ export function crewPlanOf(
         (login.agent === undefined ? undefined : driverKindForAgent(login.agent)),
     ),
   );
+}
+
+/**
+ * Why Start can't start the run yet, in the person's words, said beside it; `null` once it can.
+ * It names exactly what `crewStartCommand` refuses, and a crew not read yet.
+ */
+export function crewStartBlocker(
+  draft: CrewRunDraft,
+  spendBlocked: boolean,
+  current: boolean,
+): string | null {
+  if (!current) return CREW_RUN_WORDS.reading;
+  if (draft.budget === null) return CREW_RUN_WORDS.chooseSpend;
+  if (spendBlocked && draft.budget !== "unlimited") return CREW_RUN_WORDS.noBudget;
+  if (limitOf(draft.budget, draft.budgetText) === null) return CREW_RUN_WORDS.typeSpend;
+  if (limitOf(draft.time, draft.timeText) === null) return CREW_RUN_WORDS.typeHours;
+  return null;
 }
 
 /**

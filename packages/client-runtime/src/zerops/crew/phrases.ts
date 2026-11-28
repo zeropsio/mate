@@ -204,6 +204,12 @@ export const CREW_RUN_WORDS = {
   start: "Start",
   keepGoing: "Keep going",
   cancel: "Cancel",
+  /** Why Start can't start yet, beside it (`crewStartBlocker`). */
+  chooseSpend: "Choose how much it may spend, or No limit.",
+  noBudget: "This crew can't keep a budget: choose No limit.",
+  typeSpend: "Type how much it may spend, or choose No limit.",
+  typeHours: "Type how many hours it may work, or choose No limit.",
+  reading: "Reading the crew…",
 } as const;
 
 const NEUTRAL_PLAN = "your plan";
