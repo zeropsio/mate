@@ -148,12 +148,12 @@ const IDLE = { kind: "idle" } as const;
 const sol = { projectId: "p-sol", name: "Sol" };
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   { id: "waiting", name: "Waiting for you" }, →   { id: "queued", name: "Waiting for you" },
-it("MN+1: The Board draws Waiting for you first, then In progress, Up for review, Queued and Done; breaks: what waits for the reader sits under the queue, scrolled past", () => {
+it("MN146: The Board draws Waiting for you first, then In progress, Up for review, Queued and Done; breaks: what waits for the reader sits under the queue, scrolled past", () => {
   expect(LANES.map((lane) => lane.id)).toEqual(["waiting", "progress", "review", "queued", "done"]);
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | const COMPACT_LANES: ReadonlyArray<Lane> = ["waiting", "review"]; → const COMPACT_LANES: ReadonlyArray<Lane> = ["review", "waiting"];
-it("MN+2: The project page's Board shows what waits for the reader, then what waits for their review, at most six rows and never a task under way, queued or ended, and holds as many rows while the Board reads; breaks: a question to the reader falls off the project page behind another's review, or the page grows by the whole Board", () => {
+it("MN147: The project page's Board shows what waits for the reader, then what waits for their review, at most six rows and never a task under way, queued or ended, and holds as many rows while the Board reads; breaks: a question to the reader falls off the project page behind another's review, or the page grows by the whole Board", () => {
   const { lanes, ...board } = boardOf(
     [
       task({ id: "r1", state: "done", mate: sol, change: { repo: "shop", number: 4 } }),
@@ -173,7 +173,7 @@ it("MN+2: The project page's Board shows what waits for the reader, then what wa
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   if (holder?.kind === "pool" && row.lane !== "queued") →   if (holder?.kind === "pool")
-it("MN+3: A row leads with who has the task wearing its state — a pool Mate at work, asking or at rest, a person — and, where nobody has it now, the task's own mark: queued, waiting for others, done, failed, stopped or closed; breaks: an ended task wears its Mate's face and its failure cannot be told from a merge at a glance, or a task back in the queue still shows the Mate that dropped it", () => {
+it("MN148: A row leads with who has the task wearing its state — a pool Mate at work, asking or at rest, a person — and, where nobody has it now, the task's own mark: queued, waiting for others, done, failed, stopped or closed; breaks: an ended task wears its Mate's face and its failure cannot be told from a merge at a glance, or a task back in the queue still shows the Mate that dropped it", () => {
   const { lanes } = boardOf(
     [
       task({ id: "work", state: "working", mate: sol }),
@@ -216,7 +216,7 @@ it("MN+3: A row leads with who has the task wearing its state — a pool Mate at
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   if (row.lane === "waiting") { →   if (row.lane === "waiting" && row.question === null) {
-it("MN+4: The line under a row's title says, in place of the rest, what its Mate asks and of whom, which need broke, what it waits for, why it failed, or that it waits for review with its change where no lane's heading says so, else its change, who has it and its cost; else where it came from, who has it and for how long, and its cost, an ended task saying how it ended and its change first; breaks: a question to the reader is hidden behind where the task came from, a failure reads like any other ended task, or a row under Up for review says so a second time", () => {
+it("MN149: The line under a row's title says, in place of the rest, what its Mate asks and of whom, which need broke, what it waits for, why it failed, or that it waits for review with its change where no lane's heading says so, else its change, who has it and its cost; else where it came from, who has it and for how long, and its cost, an ended task saying how it ended and its change first; breaks: a question to the reader is hidden behind where the task came from, a failure reads like any other ended task, or a row under Up for review says so a second time", () => {
   const { lanes } = boardOf(
     [
       task({ id: "a", state: "waiting", mate: sol, detail: "Paid at checkout?", source: put }),
@@ -296,7 +296,7 @@ it("MN+4: The line under a row's title says, in place of the rest, what its Mate
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   return [...events].sort((a, b) => a.ms - b.ms).map(({ event }) => event); →   return events.map(({ event }) => event);
-it("MN+5: A task's history says where it came from, who took it or which Mate it was handed to, and how it ended, oldest first, each by when it happened; breaks: the panel tells a task's story out of order, or says it ended before it was taken", () => {
+it("MN150: A task's history says where it came from, who took it or which Mate it was handed to, and how it ended, oldest first, each by when it happened; breaks: the panel tells a task's story out of order, or says it ended before it was taken", () => {
   const { lanes } = boardOf(
     [
       task({

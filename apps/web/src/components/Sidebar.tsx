@@ -1047,9 +1047,13 @@ export default function Sidebar() {
         if (candidate !== undefined) onZeropsOpenCrew(candidate, false);
       },
       onAnswerPut: answerPutTask,
-      onOpenBoard: (appId: string) => {
+      onOpenBoard: (appId: string, taskId: string) => {
         if (isMobile) setOpenMobile(false);
-        void router.navigate({ to: "/group/$groupId/board", params: { groupId: appId } });
+        void router.navigate({
+          to: "/group/$groupId/board",
+          params: { groupId: appId },
+          search: { task: taskId },
+        });
       },
       onAskToFix: onZeropsAskToFix,
     }),

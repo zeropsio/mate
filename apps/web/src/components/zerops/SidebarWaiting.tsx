@@ -97,8 +97,8 @@ export interface WaitingVerbs {
       | { readonly appId: string }
     ),
   ) => void;
-  /** An application's Board, where a task of the viewer's that waits on them stands. */
-  readonly onOpenBoard: (appId: string) => void;
+  /** An application's Board, the task of the viewer's that waits on them open in its panel. */
+  readonly onOpenBoard: (appId: string, taskId: string) => void;
   readonly onOpenCrew: (projectId: string) => void;
   readonly onAskToFix: (projectId: string, problem: FixProblem) => void;
 }
@@ -770,7 +770,7 @@ function BoardEntry({
             onClose();
             if (item.kind === "asked")
               verbs.onAnswerPut({ appId: board.appId, taskId: board.taskId });
-            else verbs.onOpenBoard(board.appId);
+            else verbs.onOpenBoard(board.appId, board.taskId);
           }}
           size="sm"
         >

@@ -1416,8 +1416,8 @@ function SidebarFrame({
                   onAnswerPut: (task: { readonly taskId: string }) => {
                     menuActions.push(`answer ${task.taskId}`);
                   },
-                  onOpenBoard: (appId: string) => {
-                    menuActions.push(`board ${appId}`);
+                  onOpenBoard: (appId: string, taskId: string) => {
+                    menuActions.push(`board ${appId} ${taskId}`);
                   },
                   onOpenCrew: (projectId: string) => {
                     menuActions.push(`crew ${projectId}`);
@@ -1914,8 +1914,8 @@ function RailFrame({
     onAnswerPut: (task: { readonly taskId: string }) => {
       menuActions.push(`answer ${task.taskId}`);
     },
-    onOpenBoard: (appId: string) => {
-      menuActions.push(`board ${appId}`);
+    onOpenBoard: (appId: string, taskId: string) => {
+      menuActions.push(`board ${appId} ${taskId}`);
     },
     onOpenCrew: (projectId: string) => {
       setOpen(projectId);
