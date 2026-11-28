@@ -74,7 +74,7 @@ export function ComposerVaultAddButton({
         >
           <KeyRoundIcon aria-hidden="true" />
         </TooltipTrigger>
-        <TooltipPopup side="top">Add a key or secret to the vault, not the message</TooltipPopup>
+        <TooltipPopup side="top">Add a value to the vault</TooltipPopup>
       </Tooltip>
       <PopoverPopup align="end" padding="none" side="top" sideOffset={8} width="lg">
         <ComposerVaultAdd

@@ -276,7 +276,7 @@ export const ComposerAccessControl = memo(function ComposerAccessControl(props: 
           })}
         </SelectPopup>
       </Select>
-      <TooltipPopup side="top">{access.description}</TooltipPopup>
+      <TooltipPopup side="top">Change access</TooltipPopup>
     </Tooltip>
   );
 });
@@ -287,9 +287,7 @@ export const ComposerInteractionModeToggle = memo(function ComposerInteractionMo
   readonly onToggle: () => void;
 }) {
   const planning = props.interactionMode === "plan";
-  const tooltip = planning
-    ? "Plan mode — click to return to normal build mode"
-    : "Default mode — click to enter plan mode";
+  const tooltip = planning ? "Back to build mode" : "Switch to plan mode";
   return (
     <Tooltip>
       <TooltipTrigger

@@ -477,7 +477,7 @@ function ComposerVaultKeyChip(props: { name: string; vault: string }) {
         <KeyRoundIcon aria-hidden="true" className={COMPOSER_INLINE_CHIP_ICON_CLASS_NAME} />
         <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.name}</span>
       </TooltipTrigger>
-      <TooltipPopup side="top">{`In ${props.vault}: the message carries its name, never its value`}</TooltipPopup>
+      <TooltipPopup side="top">{`${props.vault} · only its name is sent`}</TooltipPopup>
     </Tooltip>
   );
 }

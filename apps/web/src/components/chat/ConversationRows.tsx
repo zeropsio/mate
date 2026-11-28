@@ -955,10 +955,7 @@ export function PauseBlock({
             <TooltipTrigger render={<Text className="shrink-0" variant="meta" />}>
               {row.held === 1 ? "1 more attempt" : `${row.held} more attempts`}
             </TooltipTrigger>
-            <TooltipPopup>
-              The limit refused {row.held === 1 ? "one more attempt" : `${row.held} more attempts`}{" "}
-              during this pause.
-            </TooltipPopup>
+            <TooltipPopup>Refused by the limit during this pause</TooltipPopup>
           </Tooltip>
         ) : null}
       </div>

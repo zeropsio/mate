@@ -349,7 +349,7 @@ export function queuedBubbleState(input: {
     clockLabel: message.holdUntilUserAction
       ? "Waits for Send now"
       : isNext
-        ? "Sends after the next tool call or when the turn ends"
+        ? "Sends at the next tool call or turn end"
         : "Sends after the messages above it",
     send: {
       label: blocked ? WAITS_FOR_ANSWER : reason !== undefined ? "Retry" : "Send now",

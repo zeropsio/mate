@@ -65,9 +65,9 @@ import { PROVIDER_PRESENTATION } from "./usageProviders";
 import { Text } from "~/components/ui/text";
 
 const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof GaugeIcon }> = {
-  ahead: { label: "Ahead of pace: spending faster than the window elapses", icon: TrendingUpIcon },
-  on: { label: "On pace with the window", icon: GaugeIcon },
-  under: { label: "Under pace: headroom left for the rest of the window", icon: TrendingDownIcon },
+  ahead: { label: "Spending ahead of pace", icon: TrendingUpIcon },
+  on: { label: "Spending on pace", icon: GaugeIcon },
+  under: { label: "Spending under pace", icon: TrendingDownIcon },
 };
 
 /** The series colour the cost chart uses for this driver, so the two views read as one. */

@@ -125,9 +125,7 @@ export function ComposerPicture({ id }: { readonly id: string }) {
           >
             <CircleAlertIcon aria-hidden="true" />
           </TooltipTrigger>
-          <TooltipPopup side="top">
-            This browser could not keep the picture, so it would be lost on a reload.
-          </TooltipPopup>
+          <TooltipPopup side="top">Not kept for a reload</TooltipPopup>
         </Tooltip>
       ) : null}
       {picture.failed ? (

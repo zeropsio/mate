@@ -291,7 +291,7 @@ function SayBox({
           value={pending?.body ?? said}
         />
         <SayVerb
-          explains="Adds it to the change's conversation, for everyone on it"
+          explains="Comment for everyone on the change"
           off={saying || empty}
           onPress={() => {
             void comment();
@@ -302,7 +302,7 @@ function SayBox({
         </SayVerb>
         {asker === undefined ? null : (
           <SayVerb
-            explains={`${asker.name} changes the code; your words stay on the change too`}
+            explains={`Comment, and ask ${asker.name} to change the code`}
             off={saying || empty}
             onPress={() => {
               void ask();

@@ -4623,7 +4623,7 @@ function MateSlot({
             </span>
             <span className="sr-only">{`Paused at a usage limit, available again ${upcoming}`}</span>
           </TooltipTrigger>
-          <TooltipPopup side="right">{`Paused at a usage limit. Available again ${upcoming}.`}</TooltipPopup>
+          <TooltipPopup side="right">{`Usage limit · available again ${upcoming}`}</TooltipPopup>
         </Tooltip>
       );
     }

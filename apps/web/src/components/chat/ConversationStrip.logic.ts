@@ -455,5 +455,5 @@ export function alsoWorkingLine(input: {
   );
   if (index < 0) return null;
   const where = index === 0 ? "your main chat" : `‘${input.chats[index]!.title}’`;
-  return `${input.mateName} is also working in ${where} — both change the same files.`;
+  return `${input.mateName} is also working in ${where}, on the same files`;
 }

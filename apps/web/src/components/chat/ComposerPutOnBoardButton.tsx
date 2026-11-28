@@ -32,9 +32,7 @@ export function ComposerPutOnBoardButton({
           </Button>
         }
       />
-      <TooltipPopup side="top">
-        Put on board, for whoever takes it, instead of doing it now
-      </TooltipPopup>
+      <TooltipPopup side="top">Put on board</TooltipPopup>
     </Tooltip>
   );
 }

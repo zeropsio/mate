@@ -4245,9 +4245,9 @@ function ConversationView(props: ChatViewProps) {
     ? !activeProject
       ? "Choose a project before compacting"
       : activeThreadShell?.crew != null
-        ? "A crewmate's conversation compacts on its own"
+        ? "A crewmate's chat compacts on its own"
         : !manualCompactionProviderAvailable
-          ? "Compaction is unavailable for this provider"
+          ? "This coding agent can't compact"
           : "Compacting is unavailable right now"
     : null;
   const resumeCompactionNoticeItem = useMemo<ConversationNotice | null>(() => {

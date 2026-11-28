@@ -104,20 +104,20 @@ interface RightPanelTabsProps {
 }
 
 const SURFACE_DISABLED_REASONS = {
-  terminal: "The terminal is available from a project's chat.",
-  files: "Files are only available when a project is open.",
-  agents: "Agents are only available from a thread.",
-  zerops: "The Zerops project map is only available from a thread.",
-  browser: "The Browser view is only available from a Zerops project thread.",
-  mac: "The Mac view is only available from a Zerops project thread.",
-  data: "Data is only available from a Zerops project thread.",
-  git: "Code is only available for Git repositories.",
-  crew: "The crew is only available from a Zerops project thread with crew mode on.",
-  mcp: "Tools are only available from a conversation.",
-  persona: "Update this Mate to give it a persona.",
-  express: "Adobe Express is not set up in this build.",
-  vault: "The vault is only available from a Zerops project thread.",
-  overview: "The overview opens from a Chief's conversation.",
+  terminal: "Opens from a project's chat",
+  files: "Opens while a project is open",
+  agents: "Opens from a chat",
+  zerops: "Opens from a chat",
+  browser: "Opens from a Mate's chat",
+  mac: "Opens from a Mate's chat",
+  data: "Opens from a Mate's chat",
+  git: "Only for Git repositories",
+  crew: "Opens from a Mate's chat in crew mode",
+  mcp: "Opens from a chat",
+  persona: "Update this Mate to give it a persona",
+  express: "Adobe Express isn't set up in this build",
+  vault: "Opens from a Mate's chat",
+  overview: "Opens from the Chief's chat",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /**
