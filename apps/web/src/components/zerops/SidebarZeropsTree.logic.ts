@@ -75,7 +75,7 @@ export function projectHeadingMenu(input: {
   /** Why the project takes no Mate now, known before the press (`newMateGate`); Add stands off. */
   readonly addMateWhy?: string | null | undefined;
   readonly onOpen: () => void;
-  /** Opens the project's page at its Board (`/group/$groupId/board`). */
+  /** Opens the project's Board, on its own page (`/group/$groupId/board`). */
   readonly onBoard: () => void;
   /** Opens the addresses sheet for its place (`addressesPlace`); absent while it has none. */
   readonly onAddresses?: (() => void) | undefined;
