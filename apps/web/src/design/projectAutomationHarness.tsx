@@ -18,7 +18,7 @@
 import type { AppIntakeRead, TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import { STRANDED_TAKE_WORDS } from "@t3tools/client-runtime/zerops";
 import type { MateTaskSource } from "@t3tools/contracts";
-import { StrictMode, useState, type ReactNode } from "react";
+import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { MateTaskCardView, MateTaskStatusView } from "~/components/zerops/MateTaskCard";
@@ -1098,6 +1098,57 @@ const STATES: ReadonlyArray<{
 ];
 
 /**
+ * The Board's page live: every two seconds Rhea's gift wrapping moves on — taken by Sol, then
+ * merged, then back in the queue — so its row's slide, a lane's arrival and the flash can be
+ * watched.
+ */
+function LiveBoardPage() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStep((at) => (at + 1) % 3);
+    }, 2000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+  const moved: HqAppTask =
+    step === 0
+      ? GIFT_WRAP
+      : step === 1
+        ? {
+            ...(({ position: _place, ...rest }) => rest)(GIFT_WRAP),
+            state: "working",
+            mate: by(SOL),
+            taker: { kind: "pool", mateProjectId: SOL.projectId },
+            startedAt: ago(1),
+            spentUsd: 0.02,
+            workedMs: 60_000,
+          }
+        : {
+            ...GIFT_WRAP,
+            state: "merged",
+            mate: by(SOL),
+            endedAt: ago(0),
+            spentUsd: 0.36,
+            ...pr(51),
+          };
+  return (
+    <BoardPageAt
+      admin={ADMIN}
+      open={null}
+      pool={BUSY_POOL}
+      view={board(
+        BOARD_TASKS.map((each) => (each.id === GIFT_WRAP.id ? moved : each)),
+        "$9.12 of $50",
+        { live: BOARD_LIVE },
+      )}
+      workingOf={working(SOL)}
+    />
+  );
+}
+
+/**
  * The Board's page, a task's panel open on each kind of task, by the name `?state=` draws it under:
  * what the reader answers here or in its conversation, Takes, works, reviews; what waits for others
  * or on a need that broke; what ended; a Stop asked; and as a member reads it.
@@ -1163,6 +1214,11 @@ const PAGE_STATES: ReadonlyArray<{
       />
     ),
   })),
+  {
+    id: "page-live",
+    title: "The Board's page live: a task moving from lane to lane",
+    view: <LiveBoardPage />,
+  },
   {
     id: "page-stop",
     title: "The Board's page, Stop asked in the panel",

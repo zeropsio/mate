@@ -31,6 +31,7 @@ import { Text } from "../../ui/text";
 import { MateFace, PersonAvatar } from "../primitives";
 import { SectionAction } from "../system";
 import { TaskGlyph } from "../board/TaskGlyph";
+import { useRowMotion } from "./useRowMotion";
 import type { BoardVerbs, BoardView } from "./boardView";
 import type { RowPress } from "./projectAutomation.logic";
 import {
@@ -394,7 +395,12 @@ function TaskRow({
     </>
   );
   return (
-    <li className={ROW} data-zerops-task={row.id} role={option === undefined ? undefined : "none"}>
+    <li
+      className={ROW}
+      data-state={`${row.lane}:${row.status}`}
+      data-zerops-task={row.id}
+      role={option === undefined ? undefined : "none"}
+    >
       {option !== undefined ? (
         <Row
           {...pressing}
@@ -498,7 +504,7 @@ export function LaneHeading({
 }) {
   return (
     // Sticky in the Board page's scroll, on the card's own ground, so the rows pass under it.
-    <div className={LANE_HEADING}>
+    <div className={LANE_HEADING} data-zerops-lane={name}>
       <SectionHeader
         action={action}
         count={
@@ -540,6 +546,7 @@ export function BoardLanes({
   const [cursor, setCursor] = useState<string | null>(null);
   const list = useRef<HTMLDivElement | null>(null);
   const ids = useId();
+  useRowMotion(list, read.state === "known");
   if (read.state === "none") return null;
   if (read.state === "failed") return <ReadFailed board={board} words={read.words} />;
   if (read.state === "reading") {
@@ -675,12 +682,18 @@ export function CompactBoard({
   readonly boardHref: string | undefined;
 }) {
   const { read } = board;
+  const list = useRef<HTMLDivElement | null>(null);
+  useRowMotion(list, read.state === "known");
   if (read.state === "none") return null;
   if (read.state === "failed") return <ReadFailed board={board} words={read.words} />;
   if (read.state === "known" && LANES.every((lane) => read.board.lanes[lane.id].length === 0))
     return <NoTasks waitsFor={waitsFor} />;
   return (
-    <div className="grid min-w-0" data-zerops-surface="project-automation-board">
+    <div
+      className="relative grid min-w-0"
+      data-zerops-surface="project-automation-board"
+      ref={list}
+    >
       {typeof rows === "number" ? (
         rows === 0 ? null : (
           <Placeholders count={rows} />
@@ -783,7 +796,7 @@ const META = "truncate text-line leading-4.5 text-muted-foreground tabular-nums"
 const SEAT = "z-1 col-start-3 row-start-1 ms-3 me-2.5 self-center justify-self-end";
 
 /** The lanes: each a group, 20 px under the last. */
-const LANES_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)]";
+const LANES_CLASS = "relative grid min-w-0 grid-cols-[minmax(0,1fr)]";
 const LANE = "grid min-w-0 [&+&]:mt-5";
 /** A lane's heading on the titles' edge, 6 px over its first row, held at the top as its rows scroll. */
 const LANE_HEADING = "sticky top-0 z-2 bg-card px-2.5 pt-1 pb-1.5";
