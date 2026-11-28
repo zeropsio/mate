@@ -10,7 +10,7 @@
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { EnvironmentId, MessageId, TurnId, type MateTaskSource } from "@t3tools/contracts";
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 
 import { assembleRecordCard, rowGap } from "~/components/chat/MessagesTimeline.logic";
 import type { MessagesTimelineRow, RecordItem } from "~/components/chat/MessagesTimeline.logic";
@@ -20,7 +20,14 @@ import {
   TimelineRowCtx,
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
-import { MateTaskCardView } from "~/components/zerops/MateTaskCard";
+import {
+  MateTaskBarView,
+  MateTaskCardView,
+  useTaskBarShown,
+  type TaskActs,
+} from "~/components/zerops/MateTaskCard";
+import { taskCardKey, useWatchTaskCard } from "~/components/zerops/taskCardSight";
+import type { TaskSession } from "~/zerops/taskSession.logic";
 import { BoardPlanCardView } from "~/components/zerops/board/BoardPlanCard";
 import { InventoryContext } from "~/zerops/inventoryContext";
 import { stepOf } from "~/zerops/runSteps/steps";
@@ -272,6 +279,11 @@ function Standins({ children }: { readonly children: ReactNode }) {
   );
 }
 
+/** Room for a task's bar, which stands over its column's top: here, over nothing. */
+export function BarFrame({ children }: { readonly children: ReactNode }) {
+  return <div className="relative h-16">{children}</div>;
+}
+
 export function TaskColumn() {
   return (
     <Standins>
@@ -325,6 +337,163 @@ export function TaskColumn() {
             {ROWS.map((row) => (
               <TimelineRowContent key={row.id} row={row} />
             ))}
+          </div>
+        </div>
+      </div>
+    </Standins>
+  );
+}
+
+/** A task a person took from the Board for their Mate, its change up for review. */
+const TAKEN_TASK: MateTaskSource = {
+  kind: "board",
+  putBy: "u-rhea",
+  title: "Keep guestbook entries to 500 characters, with a counter under the field",
+};
+const TAKEN_SESSION: TaskSession = {
+  status: "review",
+  taskId: "task-50",
+  stoppable: false,
+  workedMs: null,
+  spentUsd: null,
+  change: { repo: "guestbook", number: 7 },
+  pullRequest: null,
+};
+const ASKING_SESSION: TaskSession = {
+  status: "waiting",
+  taskId: "task-31",
+  stoppable: true,
+  workedMs: 61_000,
+  spentUsd: 0.04,
+  change: null,
+  pullRequest: null,
+};
+const ON_BOARD = (taskId: string) => ({ groupId: "nebius-demo", taskId });
+/** A second task the person took later, in the same long conversation. */
+const LATER_TASK: MateTaskSource = {
+  kind: "board",
+  putBy: "u-ales",
+  title: "Show the newest entries first",
+};
+const LATER_SESSION: TaskSession = {
+  ...TAKEN_SESSION,
+  status: "taken",
+  taskId: "task-51",
+  change: null,
+};
+
+/** The same rows again under other ids, so the conversation runs longer than the view. */
+const again = (rows: ReadonlyArray<MessagesTimelineRow>, suffix: string) =>
+  rows.map((row) => ({ ...row, id: `${row.id}:${suffix}` }) as MessagesTimelineRow);
+
+/**
+ * A task's conversation as the app lays it out: the column scrolls under the header, the task's
+ * card at its start, its bar over the column's top while the card is out of sight — the real
+ * watch (`useWatchTaskCard`) and the real rule (`useTaskBarShown`). `?unit=bar&task=taken` (a task
+ * a person took, up for review), `&task=automated` (an automated Mate's, asking) or `&task=two`
+ * (a second task taken later in the same conversation), `&scrolled` to open at the
+ * conversation's end, the cards scrolled away.
+ */
+export function TaskBarColumn({
+  kind,
+  scrolled,
+}: {
+  readonly kind: "taken" | "automated" | "two";
+  readonly scrolled: boolean;
+}) {
+  const taken = kind !== "automated";
+  const task = taken ? TAKEN_TASK : TASK;
+  const session = taken ? TAKEN_SESSION : ASKING_SESSION;
+  const acts: TaskActs = taken
+    ? { board: ON_BOARD("task-50"), onDone: nothing, onRelease: nothing }
+    : { board: ON_BOARD("task-31"), onStop: nothing };
+  const key = taskCardKey({
+    environmentId: "environment-local",
+    conversationId: `harness-${kind}`,
+    taskId: session.taskId,
+    source: task,
+  });
+  const watch = useWatchTaskCard(key);
+  const shown = useTaskBarShown(key);
+  // `two`: a second task the person took later in the same conversation, at work.
+  const laterKey = taskCardKey({
+    environmentId: "environment-local",
+    conversationId: `harness-${kind}`,
+    taskId: "task-51",
+    source: LATER_TASK,
+  });
+  const watchLater = useWatchTaskCard(laterKey);
+  const laterShown = useTaskBarShown(laterKey) && kind === "two";
+  const laterActs: TaskActs = { board: ON_BOARD("task-51"), onDone: nothing, onRelease: nothing };
+  const scroller = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (scrolled && scroller.current !== null)
+      scroller.current.scrollTop = scroller.current.scrollHeight;
+  }, [scrolled]);
+  const rows = taken
+    ? [...NORMAL_ROWS, ...again(NORMAL_ROWS, "2"), ...again(NORMAL_ROWS, "3")]
+    : [...ROWS, ...again(ROWS, "2")];
+  return (
+    <Standins>
+      <div className="flex h-screen bg-background text-foreground">
+        <div className="w-[435px] shrink-0 border-e border-border bg-sidebar" />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="h-13 shrink-0 border-b border-border bg-toolbar" />
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div
+              className="scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto px-3 pt-6 pb-24 sm:px-5"
+              data-harness={`bar-${kind}`}
+              ref={scroller}
+            >
+              <div className="mx-auto w-full max-w-3xl">
+                <MateTaskCardView
+                  acts={acts}
+                  cardRef={watch}
+                  origin={{ words: taken ? "Put on board by Rhea" : "Put on board by you" }}
+                  session={session}
+                  task={task}
+                  text={task.title}
+                />
+                {spaced(rows, TASK_ASK).map((row) => (
+                  <TimelineRowContent key={row.id} row={row} />
+                ))}
+                {kind === "two" ? (
+                  <>
+                    <div className="pt-16">
+                      <MateTaskCardView
+                        acts={laterActs}
+                        cardRef={watchLater}
+                        origin={{ words: "Put on board by you" }}
+                        session={LATER_SESSION}
+                        task={LATER_TASK}
+                        text={LATER_TASK.title}
+                      />
+                    </div>
+                    {spaced(
+                      [
+                        ...again(NORMAL_ROWS, "4"),
+                        ...again(NORMAL_ROWS, "5"),
+                        ...again(NORMAL_ROWS, "6"),
+                      ],
+                      TASK_ASK,
+                    ).map((row) => (
+                      <TimelineRowContent key={row.id} row={row} />
+                    ))}
+                  </>
+                ) : null}
+              </div>
+            </div>
+            {/* The newest live task out of sight leads; how many more stand behind it. */}
+            {laterShown ? (
+              <MateTaskBarView
+                acts={laterActs}
+                more={shown ? 1 : 0}
+                session={LATER_SESSION}
+                task={LATER_TASK}
+              />
+            ) : shown ? (
+              <MateTaskBarView acts={acts} session={session} task={task} />
+            ) : null}
           </div>
         </div>
       </div>

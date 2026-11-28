@@ -37,6 +37,14 @@
   }
 }
 
+/* A task's bar over its conversation, once its card scrolled away (`animate-task-bar-in`). */
+@keyframes task-bar-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
 @keyframes run-rise {
   from {
     translate: 0 6px;

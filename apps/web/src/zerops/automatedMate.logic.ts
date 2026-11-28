@@ -94,6 +94,29 @@ export function conversationTask(
 }
 
 /**
+ * Every task a conversation carried, in the order their briefs came, each once (the latest brief
+ * of it): a person's Mate is one long conversation that takes task after task, an automated
+ * Mate's one a turn per task; empty for a conversation no task came to.
+ */
+export function conversationTasks(
+  messages: ReadonlyArray<{
+    readonly role: string;
+    readonly task?: MateTaskSource | undefined;
+    readonly taskId?: string | undefined;
+  }>,
+): ReadonlyArray<ConversationTask> {
+  const byKey = new Map<string, ConversationTask>();
+  for (const message of messages) {
+    if (message.role !== "user" || message.task === undefined) continue;
+    const task = { source: message.task, taskId: message.taskId ?? null };
+    const key = task.taskId ?? message.task.title;
+    byKey.delete(key);
+    byKey.set(key, task);
+  }
+  return [...byKey.values()];
+}
+
+/**
  * What a pull request on GitHub is called on every surface: "PR #14", GitHub's own name for it.
  * One place, so the word is changed in one place (design-system.md §2 says "change" for Mate's own).
  */

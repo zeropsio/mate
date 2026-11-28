@@ -8,7 +8,8 @@
  * dialog's choice is `/design-newmate.html?automated=missing`. `?settle=pending` and
  * `?settle=landed` draw the sources besides GitHub while read and once read, as an unconnected
  * organization's: their sections stand at the same tops in both. `?unit=column` draws a task
- * conversation's column, its rows in the timeline's own frame (`taskColumnHarness`).
+ * conversation's column, its rows in the timeline's own frame (`taskColumnHarness`); `?unit=bar`
+ * (`&task=taken|automated`, `&scrolled`) a task's conversation with its card and its bar.
  *
  * Fixtures only. Nothing here ships — `design-automated.html` is not `index.html`, and no route
  * imports this module.
@@ -45,9 +46,9 @@ import {
   WebhooksSettingsView,
 } from "~/components/settings/TaskSourcesSettings";
 import {
+  MateTaskBarView,
   MateTaskCardView,
   MateTaskMessageRowView,
-  MateTaskStatusView,
   TaskQuestionView,
 } from "~/components/zerops/MateTaskCard";
 import { Button } from "~/components/ui/button";
@@ -55,7 +56,7 @@ import { taskMessageOrigin } from "~/components/zerops/mateTaskMessage.logic";
 import { MateFace } from "~/components/zerops/primitives";
 import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
 import type { TaskSession } from "~/zerops/taskSession.logic";
-import { TaskColumn } from "./taskColumnHarness";
+import { BarFrame, TaskBarColumn, TaskColumn } from "./taskColumnHarness";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -374,54 +375,51 @@ function Harness() {
         </Panel>
       </div>
       <div className="grid content-start gap-6">
-        <Panel title="The app bar's Review: a normal Mate, then an automated Mate's task conversation">
+        <Panel title="The app bar's Review: any Mate's, a task's conversation's too">
           <div className="grid max-w-2xl gap-3" data-harness="app-bar-review">
             <AppBar>
               <HeaderReviewDoor {...doorOf(RAYA_CHANGES.slice(1))} />
             </AppBar>
             <AppBar>
-              <MateTaskStatusView
-                board={{ groupId: "tea-shop", taskId: "task-8" }}
-                review={doorOf(RAYA_CHANGES.slice(1))}
+              <HeaderReviewDoor {...doorOf(RAYA_CHANGES)} />
+            </AppBar>
+          </div>
+        </Panel>
+        <Panel title="A task's bar over its conversation, once its card scrolled away">
+          <div className="grid max-w-2xl gap-3" data-harness="task-bars">
+            <BarFrame>
+              <MateTaskBarView
+                acts={{ board: { groupId: "tea-shop", taskId: "task-8" } }}
                 session={UP_FOR_REVIEW}
                 task={FOOTER_ISSUE}
               />
-            </AppBar>
-            <AppBar>
-              <MateTaskStatusView
-                board={{ groupId: "tea-shop", taskId: "task-8" }}
-                review={doorOf(RAYA_CHANGES)}
-                session={UP_FOR_REVIEW}
-                task={FOOTER_ISSUE}
-              />
-            </AppBar>
-            <AppBar>
-              <MateTaskStatusView
-                board={{ groupId: "tea-shop", taskId: "task-31" }}
-                review={doorOf(RAYA_CHANGES.slice(0, 1))}
+            </BarFrame>
+            <BarFrame>
+              <MateTaskBarView
+                acts={{ board: { groupId: "tea-shop", taskId: "task-31" } }}
                 session={{ ...DONE_TASK, change: null }}
                 task={BANNER_TASK}
               />
-            </AppBar>
-            <AppBar>
-              <MateTaskStatusView
-                board={{ groupId: "tea-shop", taskId: "task-12" }}
-                task={TEA_ISSUE}
-                onStop={nothing}
-                review={doorOf(RAYA_CHANGES.slice(0, 1))}
+            </BarFrame>
+            <BarFrame>
+              <MateTaskBarView
+                acts={{ board: { groupId: "tea-shop", taskId: "task-12" }, onStop: nothing }}
                 session={{ ...UP_FOR_REVIEW, status: "waiting", stoppable: true, change: null }}
+                task={TEA_ISSUE}
               />
-            </AppBar>
+            </BarFrame>
           </div>
         </Panel>
         <Panel title="One conversation, a turn per task: two finished, one at work">
           <div className="grid max-w-2xl gap-3">
-            {/* The header follows the conversation's current task. */}
-            <MateTaskStatusView
-              onStop={nothing}
-              session={ONE_CONVERSATION[2]!.session}
-              task={ONE_CONVERSATION[2]!.task}
-            />
+            {/* The bar follows the conversation's current task. */}
+            <BarFrame>
+              <MateTaskBarView
+                acts={{ board: null, onStop: nothing }}
+                session={ONE_CONVERSATION[2]!.session}
+                task={ONE_CONVERSATION[2]!.task}
+              />
+            </BarFrame>
             {ONE_CONVERSATION.map(({ task, text, session, reply }) => (
               <div className="grid gap-3" key={session.taskId}>
                 <MateTaskCardView
@@ -437,20 +435,8 @@ function Harness() {
         </Panel>
         <Panel title="A task's session, its ask, and a follow-up">
           <div className="grid max-w-2xl gap-3">
-            <MateTaskStatusView
-              onStop={nothing}
-              task={TEA_ISSUE}
-              session={{
-                status: "working",
-                taskId: "task-12",
-                stoppable: true,
-                workedMs: 754_000,
-                spentUsd: 0.42,
-                change: null,
-                pullRequest: null,
-              }}
-            />
             <MateTaskCardView
+              acts={{ board: { groupId: "tea-shop", taskId: "task-12" }, onStop: nothing }}
               onOpenChange={nothing}
               session={{
                 status: "working",
@@ -621,6 +607,19 @@ const unit = params.get("unit");
 
 function Page() {
   if (unit === "column") return <TaskColumn />;
+  if (unit === "bar")
+    return (
+      <TaskBarColumn
+        kind={
+          params.get("task") === "automated"
+            ? "automated"
+            : params.get("task") === "two"
+              ? "two"
+              : "taken"
+        }
+        scrolled={params.has("scrolled")}
+      />
+    );
   return settle === null ? <Harness /> : <Settle landed={settle === "landed"} />;
 }
 

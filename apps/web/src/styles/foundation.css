@@ -403,6 +403,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      where its face stood; the line's words cross-fade in place, the old rising 3 px out as the
      new rise 3 px in; a batch row's old words fade where they stood. */
   --animate-run-rise: run-rise var(--duration-slow) var(--ease-out-strong) backwards;
+  --animate-task-bar-in: task-bar-in var(--duration-quick) var(--ease-out-strong) backwards;
   --animate-run-mark-done: run-mark-done var(--duration-base) var(--ease-out-strong) both;
   --animate-run-now-in: run-now-in var(--duration-base) var(--ease-out-strong) backwards;
   --animate-run-now-out: run-now-out var(--duration-quick) var(--ease-out-strong) both;

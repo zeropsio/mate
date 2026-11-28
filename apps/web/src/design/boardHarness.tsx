@@ -27,8 +27,9 @@ import type { AskState } from "~/components/ask/ask.logic";
 import { ComposerPrimaryActions } from "~/components/chat/ComposerPrimaryActions";
 import { ComposerPutOnBoardButton } from "~/components/chat/ComposerPutOnBoardButton";
 import { NoticeLine } from "~/components/chat/ConversationRows";
+import { BarFrame } from "./taskColumnHarness";
 import { strandedTakeNotice } from "~/components/chat/conversationNotices";
-import { MateTaskCardView, MateTaskStatusView } from "~/components/zerops/MateTaskCard";
+import { MateTaskBarView, MateTaskCardView } from "~/components/zerops/MateTaskCard";
 import { BoardAskCardView } from "~/components/zerops/board/BoardAskCard";
 import { BoardPlanCardView } from "~/components/zerops/board/BoardPlanCard";
 import type { BoardAnswerState } from "~/components/zerops/board/BoardTaskRow";
@@ -492,6 +493,14 @@ const TAKEN_SESSION: TaskSession = {
 const TAKEN_SOURCE: MateTaskSource = { ...SOURCE, putBy: "u-rhea", mateProjectId: "p-moss" };
 /** Where the taken task's panel opens on its Board. */
 const TAKEN_ON_BOARD = { groupId: "acme-store", taskId: "50" } as const;
+/** A taken task's presses, from its chat: Mark done, Put back, and its panel on the Board. */
+const TAKEN_ACTS = { board: TAKEN_ON_BOARD, onDone: nothing, onRelease: nothing } as const;
+/** The same task once its taker's Mate linked a change: Up for review. */
+const TAKEN_IN_REVIEW: TaskSession = {
+  ...TAKEN_SESSION,
+  status: "review",
+  change: { repo: "shop", number: 47 },
+};
 /** A task Rhea put on the Board itself (New task): no conversation behind it. */
 const TAKEN_FROM_BOARD: MateTaskSource = { kind: "board", putBy: "u-rhea", title: TITLE };
 
@@ -550,21 +559,16 @@ const STATES: ReadonlyArray<{
     title: "A taken task's chat: the task, Mark done and Put back, and where it came from",
     view: (
       <div className="grid gap-3">
-        <div className="flex justify-end">
-          <MateTaskStatusView
-            board={TAKEN_ON_BOARD}
-            onDone={nothing}
-            onRelease={nothing}
-            session={TAKEN_SESSION}
-            task={TAKEN_SOURCE}
-          />
-        </div>
         <MateTaskCardView
+          acts={TAKEN_ACTS}
           origin={{ words: "Put on board by Rhea in Moss’s chat", onOpen: nothing }}
           session={TAKEN_SESSION}
           task={TAKEN_SOURCE}
           text={`${TITLE}\n\n${BRIEF}`}
         />
+        <BarFrame>
+          <MateTaskBarView acts={TAKEN_ACTS} session={TAKEN_SESSION} task={TAKEN_SOURCE} />
+        </BarFrame>
       </div>
     ),
   },
@@ -573,16 +577,8 @@ const STATES: ReadonlyArray<{
     title: "A taken task put on the Board itself: who put it, and no chat to go back to",
     view: (
       <div className="grid gap-3">
-        <div className="flex justify-end">
-          <MateTaskStatusView
-            board={TAKEN_ON_BOARD}
-            onDone={nothing}
-            onRelease={nothing}
-            session={TAKEN_SESSION}
-            task={TAKEN_FROM_BOARD}
-          />
-        </div>
         <MateTaskCardView
+          acts={TAKEN_ACTS}
           origin={{ words: "Put on board by Rhea" }}
           session={TAKEN_SESSION}
           task={TAKEN_FROM_BOARD}
@@ -624,21 +620,17 @@ const STATES: ReadonlyArray<{
     title: "A taken task's chat, its change up for review",
     view: (
       <div className="grid gap-3">
-        <div className="flex justify-end">
-          <MateTaskStatusView
-            onDone={nothing}
-            onRelease={nothing}
-            session={{ ...TAKEN_SESSION, status: "review", change: { repo: "shop", number: 47 } }}
-            task={SOURCE}
-          />
-        </div>
         <MateTaskCardView
+          acts={TAKEN_ACTS}
           onOpenChange={nothing}
           origin={{ words: "Put on board by you" }}
-          session={{ ...TAKEN_SESSION, status: "review", change: { repo: "shop", number: 47 } }}
+          session={TAKEN_IN_REVIEW}
           task={{ ...SOURCE }}
           text={`${TITLE}\n\n${BRIEF}`}
         />
+        <BarFrame>
+          <MateTaskBarView acts={TAKEN_ACTS} session={TAKEN_IN_REVIEW} task={SOURCE} />
+        </BarFrame>
       </div>
     ),
   },

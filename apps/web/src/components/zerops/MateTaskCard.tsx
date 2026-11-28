@@ -1,8 +1,9 @@
 /**
- * A task, as its conversation shows it: what it is and where it stands beside the Mate in the
- * header, a link to it on the Board, with its presses (`MateTaskStatus`); the conversation opening
- * with the task, the way an issue page opens — where it came from, its title, what its asker wrote,
- * how long it worked, what it cost, and the change and pull request it made (`MateTaskCard`); an
+ * A task, as its conversation shows it: the conversation opening with the task, the way an issue
+ * page opens — where it came from, its title, what its asker wrote, how long it worked, what it
+ * cost, the change and pull request it made, and at its foot where it stands on the Board with the
+ * reader's presses (`MateTaskCard`, `TaskStanding`); the same over the column while the card is
+ * scrolled away (`MateTaskBar`); an
  * automated Mate's question as the Mate asking (`TaskQuestionView`). The words the agent got with
  * it are its brief, never the person's, so they are never drawn; what people say about the task
  * afterwards, told to its Mate, is drawn as theirs, said where (`MateTaskMessageRow`).
@@ -26,11 +27,15 @@ import {
   WebhookIcon,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode, type Ref } from "react";
 
-import { pullRequestName, taskAskBeyondTitle } from "~/zerops/automatedMate.logic";
-import { spentWords, taskPillStatus, type TaskSession } from "~/zerops/taskSession.logic";
-import { TASK_STATUS_WORDS, type TaskTone, taskStatusTone, workedWords } from "~/zerops/taskStatus";
+import {
+  pullRequestName,
+  taskAskBeyondTitle,
+  type ConversationTask,
+} from "~/zerops/automatedMate.logic";
+import { spentWords, type TaskSession } from "~/zerops/taskSession.logic";
+import { type TaskTone, workedWords } from "~/zerops/taskStatus";
 import { useMateAppId, useTaskSession } from "~/zerops/useTaskSession";
 import { useOpenTaskConversation } from "~/zerops/useBoardTasks";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -38,7 +43,13 @@ import { useHqPersonNames, useViewerCalled } from "~/zerops/useZeropsMateOwners"
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { projectNameInApp, zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { putOrigin, TAKEN_TASK_PRESSES } from "./projectAutomation/taskBoard.logic";
+import {
+  laneOf,
+  laneState,
+  putOrigin,
+  TAKEN_TASK_PRESSES,
+} from "./projectAutomation/taskBoard.logic";
+import { taskCardKey, useTaskCardSight, useWatchTaskCard } from "./taskCardSight";
 import {
   taskMessageOrigin,
   taskMessageWords,
@@ -51,9 +62,6 @@ import { GitHubIcon } from "../Icons";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { Separator } from "../ui/separator";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { HeaderReviewDoor } from "./SidebarProjectReview";
-import { taskReviewItems } from "./SidebarProjectReview.logic";
 import { Card } from "~/components/ui/card";
 import { Text } from "~/components/ui/text";
 
@@ -108,207 +116,286 @@ function SourceMark({ source }: { readonly source: MateTaskSource }) {
   }
 }
 
-/** The app bar's Review, as a Mate's conversation header holds it (`HeaderReviewDoor`). */
-type TaskReviewDoor = Parameters<typeof HeaderReviewDoor>[0];
-
 /** Where a task stands on its application's Board: its panel opens there (`?task=`). */
 interface TaskOnBoard {
   readonly groupId: string;
   readonly taskId: string;
 }
 
-/**
- * The conversation's task, beside its Mate in the header — in sight however far the conversation
- * scrolls: what it is (where it came from, its title, where it stands), one press from its panel on
- * the Board; Stop, for an Owner or Admin while it can be stopped, asked first; for a task a person
- * took, Mark done and Put back. The app bar's Review its Mate's changes wait on comes after it, set
- * apart, so it never reads as the task's next state.
- */
-export function MateTaskStatus({
-  task,
-  taskId,
-  environmentId,
-  conversationId,
-  review = null,
-}: {
-  /** The conversation's current task (`conversationTask`): its latest brief's. */
-  readonly task: MateTaskSource;
-  /** HQ's id of it, as its brief says; `null`: the one the conversation's id names (`sessionTaskId`). */
-  readonly taskId: string | null;
-  readonly environmentId: EnvironmentId;
-  readonly conversationId: string;
-  /** Its Mate's app-bar Review (`headerReviewItems`); `null` while nothing waits there. */
-  readonly review?: TaskReviewDoor | null;
-}) {
-  const { session, appId, stop, done, release } = useTaskSession(
-    task,
-    environmentId,
-    conversationId,
-    taskId,
-  );
-  return (
-    <MateTaskStatusView
-      board={
-        appId === null || session.taskId === null
-          ? null
-          : { groupId: appId, taskId: session.taskId }
-      }
-      onDone={done ?? undefined}
-      onRelease={release ?? undefined}
-      onStop={stop ?? undefined}
-      review={review}
-      session={session}
-      task={task}
-    />
-  );
-}
-
-export function MateTaskStatusView({
-  task,
-  board = null,
-  session = NOT_KNOWN,
-  onStop,
-  onDone,
-  onRelease,
-  review = null,
-}: {
-  readonly task: MateTaskSource;
-  /** Where its panel opens on the Board; `null` while not known: the same room, nothing to press. */
-  readonly board?: TaskOnBoard | null;
-  /** Where it stands now (`taskSession`); not known: its room held, nothing said. */
-  readonly session?: TaskSession;
-  /** Stops the task, confirmed first; absent while it cannot be stopped from here. */
+/** What the reader may do with a task from its conversation; each absent where it is not offered. */
+export interface TaskActs {
+  /** Where its panel opens on the Board; `null` while not known: nothing to press. */
+  readonly board: TaskOnBoard | null;
+  /** Stops it, asked first: an automated Mate's task, for an Owner or Admin while it can stop. */
   readonly onStop?: (() => void) | undefined;
   /** A task the person took: marks it done (its taker), or puts it back on the Board's queue. */
   readonly onDone?: (() => void) | undefined;
   readonly onRelease?: (() => void) | undefined;
-  /**
-   * Its Mate's app-bar Review, led by this task's change (`taskReviewItems`); where it asks, the
-   * task does not say it is up for review again (`taskPillStatus`).
-   */
-  readonly review?: TaskReviewDoor | null;
+}
+
+const NO_ACTS: TaskActs = { board: null };
+
+/** A task's session and its presses, as its card and its bar read them (`useTaskSession`). */
+function useTaskActs(
+  task: ConversationTask,
+  environmentId: EnvironmentId,
+  conversationId: string,
+  announce = false,
+): { readonly session: TaskSession; readonly appId: string | null; readonly acts: TaskActs } {
+  const { session, appId, stop, done, release } = useTaskSession(
+    task.source,
+    environmentId,
+    conversationId,
+    task.taskId,
+    announce,
+  );
+  return {
+    session,
+    appId,
+    acts: {
+      board:
+        appId === null || session.taskId === null
+          ? null
+          : { groupId: appId, taskId: session.taskId },
+      onStop: stop ?? undefined,
+      onDone: done ?? undefined,
+      onRelease: release ?? undefined,
+    },
+  };
+}
+
+/**
+ * Where a task stands, in the word of the lane its Board stands it in and that lane's tone
+ * (`laneState`), and the reader's presses on it: Stop, asked first in place; for a task a person
+ * took, Mark done and Put back; and Open on the Board. One for the card's foot and the bar's end,
+ * so both say the same words. Until where it stands is read, the word keeps its room unseen.
+ */
+export function TaskStanding({
+  session,
+  acts,
+}: {
+  readonly session: TaskSession;
+  readonly acts: TaskActs;
 }) {
-  const items = review === null ? [] : taskReviewItems(review.review.items, session.change);
-  const status = taskPillStatus(session.status, items.length > 0);
+  const { status } = session;
+  const state = status === null ? null : laneState(laneOf(status), status);
   const [asking, setAsking] = useState(false);
+  const { board, onStop, onDone, onRelease } = acts;
   const confirming = asking && onStop !== undefined;
-  const words = (
+  return (
     <>
-      <SourceMark source={task} />
-      <span className="max-w-[28ch] min-w-0 truncate max-sm:max-w-[12ch]">{task.title}</span>
-      {status === undefined ? null : (
-        // Until its status is read, the label keeps its room unseen: nothing moves when it comes.
+      <span
+        className={cn("flex shrink-0", state === null && "invisible")}
+        data-zerops-surface="mate-task-status"
+      >
+        {/* Its blue is a change to look at, not work under way: it does not breathe. */}
+        <Badge dot pulse={false} tone={state === null ? "neutral" : TASK_DOT[state.tone]}>
+          <span data-zerops-surface="mate-task-status-words">
+            {state === null ? " " : state.words}
+          </span>
+        </Badge>
+      </span>
+      {confirming ? (
         <span
-          className={cn("flex shrink-0", status === null && "invisible")}
-          data-zerops-surface="mate-task-status"
+          className="ms-auto flex min-w-0 items-center gap-1"
+          data-zerops-surface="mate-task-stop-ask"
         >
-          {/* Its blue is a change to look at, not work under way: it does not breathe. */}
-          <Badge
-            dot
-            pulse={false}
-            tone={status === null ? "neutral" : TASK_DOT[taskStatusTone(status)]}
+          <span className="min-w-0 truncate text-muted-foreground">
+            Stop this task? Its Mate stops where it got to.
+          </span>
+          <Button
+            onClick={() => {
+              setAsking(false);
+            }}
+            size="sm"
+            variant="ghost"
           >
-            <span data-zerops-surface="mate-task-status-words">
-              {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
-            </span>
-          </Badge>
+            Keep
+          </Button>
+          <Button
+            onClick={() => {
+              setAsking(false);
+              onStop?.();
+            }}
+            size="sm"
+            variant="destructive"
+          >
+            Stop
+          </Button>
+        </span>
+      ) : (
+        <span className="ms-auto flex shrink-0 items-center gap-1">
+          {onStop === undefined ? null : (
+            <Button
+              onClick={() => {
+                setAsking(true);
+              }}
+              size="sm"
+              variant="secondary"
+            >
+              Stop
+            </Button>
+          )}
+          {onDone === undefined ? null : (
+            <Button onClick={onDone} size="sm" variant="secondary">
+              {TAKEN_TASK_PRESSES.done}
+            </Button>
+          )}
+          {onRelease === undefined ? null : (
+            <Button
+              aria-label={TAKEN_TASK_PRESSES.releaseName}
+              onClick={onRelease}
+              size="sm"
+              variant="ghost"
+            >
+              {TAKEN_TASK_PRESSES.release}
+            </Button>
+          )}
+          {board === null ? null : (
+            <Button
+              render={
+                <Link
+                  params={{ groupId: board.groupId }}
+                  search={{ task: board.taskId }}
+                  to="/group/$groupId/board"
+                />
+              }
+              size="sm"
+              variant="ghost"
+            >
+              Open on the Board
+            </Button>
+          )}
         </span>
       )}
     </>
   );
+}
+
+/**
+ * A conversation's tasks over the top of its column: the live ones (any not Done) whose card is out
+ * of sight (`taskCardSight`), the newest drawn whole — where it came from as a mark, its title,
+ * where it stands and its presses, the card's own (`TaskStanding`) — and how many more stand
+ * behind it. It overlays the timeline on the page's ground and moves nothing in it; it fades and
+ * rises in, and is gone again once the card is back. A refusal of a task's stop is said here,
+ * once: the bar's watch stands for every task of the conversation, its card mounted or not.
+ */
+export function MateTaskBar({
+  tasks,
+  environmentId,
+  conversationId,
+}: {
+  /** Every task the conversation carried, oldest first (`conversationTasks`). */
+  readonly tasks: ReadonlyArray<ConversationTask>;
+  readonly environmentId: EnvironmentId;
+  readonly conversationId: string;
+}) {
+  // Which tasks' bars stand, by their card's key, as each task's watch says it.
+  const [standing, setStanding] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+  const report = useCallback((key: string, stands: boolean) => {
+    setStanding((before) =>
+      (before.get(key) ?? false) === stands ? before : new Map(before).set(key, stands),
+    );
+  }, []);
+  const keys = tasks.map((task) => taskCardKey({ environmentId, conversationId, ...task }));
+  const stand = keys.filter((key) => standing.get(key) === true);
+  const lead = stand.at(-1);
+  return tasks.map((task, index) => (
+    <TaskBarWatch
+      acts={{ environmentId, conversationId, task }}
+      cardKey={keys[index]!}
+      key={keys[index]}
+      lead={keys[index] === lead}
+      more={stand.length - 1}
+      onStands={report}
+    />
+  ));
+}
+
+/** One task's watch: whether its bar stands, and the bar itself while it leads. */
+function TaskBarWatch({
+  acts: { task, environmentId, conversationId },
+  cardKey,
+  lead,
+  more,
+  onStands,
+}: {
+  readonly acts: {
+    readonly task: ConversationTask;
+    readonly environmentId: EnvironmentId;
+    readonly conversationId: string;
+  };
+  readonly cardKey: string;
+  readonly lead: boolean;
+  readonly more: number;
+  readonly onStands: (key: string, stands: boolean) => void;
+}) {
+  const { session, acts } = useTaskActs(task, environmentId, conversationId, true);
+  const shown = useTaskBarShown(cardKey);
+  const { status } = session;
+  const stands = shown && status !== null && laneOf(status) !== "done";
+  // Said before paint, so the lead changes in the same frame as what it leads.
+  useLayoutEffect(() => {
+    onStands(cardKey, stands);
+  }, [cardKey, onStands, stands]);
+  useLayoutEffect(() => () => onStands(cardKey, false), [cardKey, onStands]);
+  if (!lead || !stands) return null;
+  return <MateTaskBarView acts={acts} more={more} session={session} task={task.source} />;
+}
+
+/**
+ * Whether the bar of the task card `key` stands: while the card is out of sight, and while no card
+ * of it is mounted once the list had its first frame (the list let it go, scrolled far away).
+ */
+export function useTaskBarShown(key: string): boolean {
+  const inSight = useTaskCardSight(key);
+  const [settled, setSettled] = useState<string | null>(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setSettled(key));
+    return () => cancelAnimationFrame(frame);
+  }, [key]);
+  return inSight === false || (inSight === undefined && settled === key);
+}
+
+/** The bar itself, over the top of the conversation's column, on the cards' edges. */
+export function MateTaskBarView({
+  task,
+  session = NOT_KNOWN,
+  acts = NO_ACTS,
+  more = 0,
+}: {
+  readonly task: MateTaskSource;
+  readonly session?: TaskSession;
+  readonly acts?: TaskActs;
+  /** How many more live tasks' cards are out of sight behind it. */
+  readonly more?: number;
+}) {
   return (
-    <>
-      <span
-        className="flex min-w-0 items-center gap-2 text-line"
-        data-zerops-surface="mate-task-session"
+    // The timeline's own gutters, so the bar stands on the cards' edges.
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 sm:px-5">
+      <div
+        className="pointer-events-auto mx-auto w-full max-w-3xl bg-background pt-2 pb-1.5 motion-safe:animate-task-bar-in"
+        data-zerops-surface="mate-task-bar"
       >
-        {board === null ? (
-          <Button data-zerops-surface="mate-task-unit" render={<span />} size="sm" variant="ghost">
-            {words}
-          </Button>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  data-zerops-surface="mate-task-unit"
-                  render={
-                    <Link
-                      params={{ groupId: board.groupId }}
-                      search={{ task: board.taskId }}
-                      to="/group/$groupId/board"
-                    />
-                  }
-                  size="sm"
-                  variant="ghost"
-                />
-              }
-            >
-              {words}
-            </TooltipTrigger>
-            <TooltipPopup side="bottom">Open on the Board</TooltipPopup>
-          </Tooltip>
-        )}
-        {confirming ? (
-          <span className="flex items-center gap-1" data-zerops-surface="mate-task-stop-ask">
-            <span className="text-muted-foreground">
-              Stop this task? Its Mate stops where it got to.
-            </span>
-            <Button
-              onClick={() => {
-                setAsking(false);
-              }}
-              size="sm"
-              variant="ghost"
-            >
-              Keep
-            </Button>
-            <Button
-              onClick={() => {
-                setAsking(false);
-                onStop?.();
-              }}
-              size="sm"
-              variant="destructive"
-            >
-              Stop
-            </Button>
-          </span>
-        ) : onStop !== undefined ? (
-          <Button
-            onClick={() => {
-              setAsking(true);
-            }}
-            size="sm"
-            variant="secondary"
-          >
-            Stop
-          </Button>
-        ) : null}
-        {/* A task the person took: say it is done, or put it back on the Board for another. */}
-        {onDone === undefined ? null : (
-          <Button onClick={onDone} size="sm" variant="secondary">
-            {TAKEN_TASK_PRESSES.done}
-          </Button>
-        )}
-        {onRelease === undefined ? null : (
-          <Button
-            aria-label={TAKEN_TASK_PRESSES.releaseName}
-            onClick={onRelease}
-            size="sm"
-            variant="ghost"
-          >
-            {TAKEN_TASK_PRESSES.release}
-          </Button>
-        )}
-      </span>
-      {review === null ? null : (
-        <>
-          <Separator className="h-4" orientation="vertical" />
-          <HeaderReviewDoor held={review.held} review={{ ...review.review, items }} />
-        </>
-      )}
-    </>
+        <Card>
+          <div className="flex min-h-11 min-w-0 items-center gap-2 py-1.5 ps-3.75 pe-2 text-line max-sm:ps-2.75">
+            <SourceMark source={task} />
+            <span className="min-w-0 truncate font-medium text-foreground">{task.title}</span>
+            {more > 0 ? (
+              <Text
+                aria-label={`and ${String(more)} more ${more === 1 ? "task" : "tasks"}`}
+                className="shrink-0 tabular-nums"
+                render={<span />}
+                variant="meta"
+              >
+                +{more}
+              </Text>
+            ) : null}
+            <TaskStanding acts={acts} session={session} />
+          </div>
+        </Card>
+      </div>
+    </div>
   );
 }
 
@@ -338,14 +425,24 @@ export function MateTaskCard({
     readonly number: number;
   }) => void;
 }) {
-  const { session, appId } = useTaskSession(task, environmentId, conversationId, taskId);
+  const { session, appId, acts } = useTaskActs(
+    { source: task, taskId },
+    environmentId,
+    conversationId,
+  );
   const origin = usePutOrigin(task);
+  // Watched while mounted: its bar stands in for it once it scrolled away (`MateTaskBar`).
+  const watch = useWatchTaskCard(
+    taskCardKey({ environmentId, conversationId, taskId, source: task }),
+  );
   const openChange =
     onOpenChange === undefined || appId === null || session.change === null
       ? undefined
       : () => onOpenChange({ appId, ...session.change! });
   return (
     <MateTaskCardView
+      acts={acts}
+      cardRef={watch}
       origin={origin}
       session={session}
       task={task}
@@ -395,9 +492,14 @@ export function MateTaskCardView({
   origin,
   text = "",
   session = NOT_KNOWN,
+  acts = NO_ACTS,
+  cardRef,
   onOpenChange,
 }: {
   readonly task: MateTaskSource;
+  /** Its presses, at its foot beside where it stands (`TaskStanding`). */
+  readonly acts?: TaskActs;
+  readonly cardRef?: Ref<HTMLDivElement> | undefined;
   /** Where it came from in the reader's words, a Put on board's (`usePutOrigin`); else its source's. */
   readonly origin?: TaskCardOrigin | undefined;
   readonly text?: string;
@@ -420,7 +522,7 @@ export function MateTaskCardView({
     return () => observer.disconnect();
   }, []);
   return (
-    <Card data-zerops-surface="mate-task-card" render={<article />}>
+    <Card data-zerops-surface="mate-task-card" ref={cardRef} render={<article />}>
       {/* Its words 16 px inside its edge, on the run card's inset. */}
       <div className="flex flex-col gap-1.5 px-3.75 pt-3.5 pb-3 max-sm:px-2.75">
         <Text className="flex min-w-0 items-center gap-2" render={<div />} variant="remark">
@@ -500,6 +602,14 @@ export function MateTaskCardView({
             )}
           </span>
         </Text>
+      </div>
+      <Separator />
+      {/* Its foot: where it stands on the Board, and the reader's presses on it. */}
+      <div
+        className="flex min-h-11 min-w-0 items-center gap-2 py-1.5 ps-3.75 pe-2 text-line max-sm:ps-2.75"
+        data-zerops-surface="mate-task-foot"
+      >
+        <TaskStanding acts={acts} session={session} />
       </div>
     </Card>
   );

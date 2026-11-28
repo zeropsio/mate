@@ -1,4 +1,4 @@
-next: MN158
+next: MN159
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -146,4 +146,4 @@ next: MN158
 - MN155 — A change's review names the Board task it does: the task whose own change it is or whose taker's Mate linked it, by repository and number, the latest put where several do, and none where no task links it; breaks: a change reads as another repository's task, or as none it was made for
 - MN156 — The Board's door counts only the tasks Waiting for the reader, never one queued, held for others or at work; breaks: the project page says Board 5 for five queued tasks nobody needs to act on
 - MN157 — A follow-up says whether the reader wrote it, and leads to where it was said: an answer to a Board, conversation, webhook or schedule task to its panel on the Board, a thread reply to the thread, an issue comment or edit to the issue, a review comment nowhere; breaks: the reader's own answer reads as a stranger's 'replied in the thread', linked nowhere
-- MN+1 — Open its conversation for a task a person took opens the conversation of their Mate that carries it, where the reader's page holds it, and where HQ's link leads otherwise; breaks: the press opens the Mate's newest conversation, another task's
+- MN158 — Open its conversation for a task a person took opens the conversation of their Mate that carries it, where the reader's page holds it, and where HQ's link leads otherwise; breaks: the press opens the Mate's newest conversation, another task's

@@ -211,6 +211,7 @@ import { conversationPanelWidth } from "./chat/conversationPanelStandIn.logic";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { useYourAppHas } from "./zerops/useYourAppHas";
 import { DraftPanels } from "./zerops/DraftPanel";
+import { MateTaskBar } from "./zerops/MateTaskCard";
 import { useMateAddresses } from "../zerops/useMateAddresses";
 import { useCrewValue } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
@@ -224,7 +225,11 @@ import { useExpressGate } from "./express/useExpressGate";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
-import { automatedMateEntries, conversationTask } from "../zerops/automatedMate.logic";
+import {
+  automatedMateEntries,
+  conversationTask,
+  conversationTasks,
+} from "../zerops/automatedMate.logic";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
@@ -1674,6 +1679,11 @@ function ConversationView(props: ChatViewProps) {
   );
   const activeThreadTask = useMemo(
     () => conversationTask(activeThreadMessages ?? []),
+    [activeThreadMessages],
+  );
+  // Every task it carried: each live one's bar stands while its card is out of sight.
+  const activeThreadTasks = useMemo(
+    () => conversationTasks(activeThreadMessages ?? []),
     [activeThreadMessages],
   );
   // An automated Mate runs on the organization's key: no agent a person signs in is offered.
@@ -7497,6 +7507,19 @@ function ConversationView(props: ChatViewProps) {
                   }}
                 />
               </OpenMateProvider>
+
+              {/* The conversation's live tasks over the column's top once their cards scrolled
+                  away, keyed by the conversation so one never shows another's. */}
+              {activeThreadTasks.length > 0 &&
+              isServerThread &&
+              activeThreadEnvironmentId !== null ? (
+                <MateTaskBar
+                  conversationId={activeThread.id}
+                  environmentId={activeThreadEnvironmentId}
+                  key={routeThreadKey}
+                  tasks={activeThreadTasks}
+                />
+              ) : null}
 
               <ScrollToEndButton
                 showScrollToBottom={showScrollToBottom}

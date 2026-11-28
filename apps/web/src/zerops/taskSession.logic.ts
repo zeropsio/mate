@@ -1,5 +1,5 @@
 /**
- * A task's session, as its conversation's header draws it: where the task stands in one word, what
+ * A task's session, as its conversation's card and bar draw it: where the task stands in one word, what
  * it cost and how long it worked as its Mate last reported, the change and pull request it made,
  * and whether a person can stop it now. The Mate's latest task is read from HQ's navigation (live);
  * a task before it from the task's own record (`HqAppTask`, the application's task board).
@@ -161,19 +161,6 @@ export function taskSession(input: TaskSessionInput): TaskSession {
                   : "open",
           }),
   };
-}
-
-/**
- * What the task's pill beside its Mate says, where the app bar's Review door may stand beside it:
- * the door already says the change waits for review, so the pill does not, nor holds room for a
- * word not known yet. `null`: room held, nothing said; `undefined`: no pill.
- */
-export function taskPillStatus(
-  status: TaskStatus | null,
-  reviewDoor: boolean,
-): TaskStatus | null | undefined {
-  if (reviewDoor && (status === null || status === "review")) return undefined;
-  return status;
 }
 
 /** What a task cost in US dollars, to the cent: "$0.42", "<$0.01". */

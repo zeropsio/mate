@@ -1,7 +1,6 @@
 import { useMateVoice } from "../../zerops/mateVoiceContext";
 import { mateStatus, type MateStatusAsk } from "../../zerops/mateStatus.logic";
 import { taskTitle, type ConversationTask } from "../../zerops/automatedMate.logic";
-import { MateTaskStatus } from "../zerops/MateTaskCard";
 import { MateLinkMarker } from "../zerops/MateLinkMarker";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
 import { useTryMateAgain } from "../../zerops/accountEnvironments";
@@ -99,9 +98,8 @@ interface ChatHeaderProps {
   activeThreadId: ThreadId;
   activeThreadTitle: string;
   /**
-   * The task this conversation works now, on an automated Mate (`conversationTask`): the
-   * conversation is named by it ("#12 Fix the checkout total"), and its status and Stop are its;
-   * absent for any other.
+   * The task this conversation works now (`conversationTask`): the Mate's subject on the strip is
+   * its title, never the brief its first message carried; absent for any other.
    */
   activeThreadTask?: ConversationTask | undefined;
   /**
@@ -705,26 +703,10 @@ export const ChatHeader = memo(function ChatHeader({
               }
               subject={crewOrigin === null && spoken ? headline : null}
               trailing={
-                // What waits on the person, right after the Mate: its Review; in a task's
-                // conversation the task first (what it is, where it stands, its presses, a link
-                // to it on the Board), then the same Review, set apart so it never reads as the
-                // task's next state.
-                activeThreadTask !== undefined && isServerThread ? (
-                  <MateTaskStatus
-                    conversationId={activeThreadId}
-                    environmentId={activeThreadEnvironmentId}
-                    review={
-                      reviewTags.value === null
-                        ? null
-                        : {
-                            review: { ...reviewTags.value, items: headerChanges },
-                            held: reviewTags.held,
-                          }
-                    }
-                    task={activeThreadTask.source}
-                    taskId={activeThreadTask.taskId}
-                  />
-                ) : reviewTags.value === null ? (
+                // What waits on the person, right after the Mate: its Review. A task's
+                // conversation is headed as any other: the task stands in it, on its card and,
+                // once that scrolls away, its bar (`MateTaskBar`).
+                reviewTags.value === null ? (
                   reviewComes && doorSeat !== undefined ? (
                     <HeaderReviewSeat width={doorSeat} />
                   ) : null

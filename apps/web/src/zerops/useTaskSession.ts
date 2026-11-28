@@ -52,6 +52,11 @@ export function useTaskSession(
   conversationId: string,
   /** HQ's id of the task its brief carries; `null` where it carries none (an older server's). */
   brief: string | null,
+  /**
+   * This reader says HQ's refusal of the stop: the one surface that stands for the task whatever
+   * scrolled (its bar's host), so a refusal is said once however many surfaces read the session.
+   */
+  announce = false,
 ): TaskSessionView {
   const { projectId, placements } = useMatePlacement(environmentId);
   const working = useProjectMateActivity(projectId ?? "")?.kind === "working";
@@ -82,9 +87,9 @@ export function useTaskSession(
   useEffect(() => {
     if (stop === said.current) return;
     said.current = stop;
-    if (stop?.kind === "failed" || stop?.kind === "unresolved")
+    if (announce && (stop?.kind === "failed" || stop?.kind === "unresolved"))
       toastManager.add({ type: "error", title: stop.words });
-  }, [stop]);
+  }, [announce, stop]);
   const offer = taskId === null ? undefined : offers?.tasks?.[taskId];
   const writes = useBoardTaskWrites(appId);
   // A taken task's chat offers Done and Release; its Stop stays on the Board.

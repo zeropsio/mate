@@ -21,7 +21,8 @@ import type { MateTaskSource } from "@t3tools/contracts";
 import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { MateTaskCardView, MateTaskStatusView } from "~/components/zerops/MateTaskCard";
+import { MateTaskBarView, MateTaskCardView } from "~/components/zerops/MateTaskCard";
+import { BarFrame } from "./taskColumnHarness";
 import {
   ProjectAutomationView,
   SourceDialog,
@@ -1572,12 +1573,19 @@ function Harness() {
           {SESSIONS.map(([label, session]) => (
             <div className="grid gap-1" key={label}>
               <p className="text-caption text-muted-foreground">{label}</p>
-              <MateTaskStatusView
-                onStop={session.stoppable ? nothing : undefined}
+              <MateTaskCardView
+                acts={{ board: null, onStop: session.stoppable ? nothing : undefined }}
+                onOpenChange={nothing}
                 session={session}
                 task={ISSUE}
               />
-              <MateTaskCardView onOpenChange={nothing} session={session} task={ISSUE} />
+              <BarFrame>
+                <MateTaskBarView
+                  acts={{ board: null, onStop: session.stoppable ? nothing : undefined }}
+                  session={session}
+                  task={ISSUE}
+                />
+              </BarFrame>
             </div>
           ))}
         </div>
