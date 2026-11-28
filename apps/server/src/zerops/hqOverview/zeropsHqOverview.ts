@@ -409,6 +409,7 @@ function crewOf(
         threadId: mate.currentThreadId,
         threadKind: thread === undefined ? null : crewmateKindOf(thread),
         loginKey: loginKeyOf(mate.login),
+        ...(thread?.latestTurn == null ? {} : { turnId: thread.latestTurn.turnId }),
       };
     }),
     attention: crew.attention

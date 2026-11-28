@@ -285,6 +285,12 @@ export const CrewDigest = Schema.Struct({
       threadKind: Schema.NullOr(MateThreadKind),
       /** The login its turns spend, resolved by the Mate. */
       loginKey: Schema.NullOr(TrimmedNonEmptyString),
+      /**
+       * Its current chat's latest turn: a chat that asks again asks in a new turn, so it is the
+       * revision of what the chat asks (`snoozeOf`). Absent before its first turn, and from a Mate
+       * older than it.
+       */
+      turnId: Schema.optionalKey(OrchestrationLatestTurn.fields.turnId),
     }),
   ).check(atMost(MATE_CREW_BOUNDS.crewmates)),
   attention: Schema.Array(
