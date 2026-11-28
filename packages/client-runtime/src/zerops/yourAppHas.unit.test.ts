@@ -39,7 +39,7 @@ const merged: ReadonlyArray<YourAppChange> = [
 ];
 
 // witness: packages/client-runtime/src/zerops/yourAppHas.ts | sameCommit(commit, change.headSha) || sameCommit(commit, change.mergeCommitSha) → sameCommit(commit, change.headSha)
-it("ZV+1: Your app names a version only when its commit matches the head or merge commit of the Mate's own added change in that stage's repository. An unmatched commit leaves the line blank. Without a commit the newest-merge rule still applies; breaks: a merge-commit deploy loses its change title or a Review build loses its added line", () => {
+it("ZV220: Your app names a version only when its commit matches the head or merge commit of the Mate's own added change in that stage's repository. An unmatched commit leaves the line blank. Without a commit the newest-merge rule still applies; breaks: a merge-commit deploy loses its change title or a Review build loses its added line", () => {
   const at = "2026-11-27T11:00:00Z";
   const cases = [
     // One stage: every change of the Mate is its.

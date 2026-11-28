@@ -1,4 +1,4 @@
-next: ZV220
+next: ZV221
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -182,4 +182,4 @@ next: ZV220
 - ZV217 — The change a call hands the person is the one zcp's answer to its open-change or describe-change names, by the repository its address names and the number it answers, and none for its close-change, an unfinished or failed call, or another tool's; breaks: a finishing message's Open draft opens a closed change, or another change than the one its turn handed over
 - ZV218 — Of several drafts, each line goes by its title, and one HQ is adding says what its addition does in place of it; breaks: the line over the composer names the change by its number with only Adding after it
 - ZV219 — A conversation's own changes are each one its runs pushed or a finished zcp handover named, though no message links it, and never one a call is still opening or closes; breaks: after Add to your app the conversation draws no row saying the app has the change
-- ZV+1 — Your app names a version only when its commit matches the head or merge commit of the Mate's own added change in that stage's repository. An unmatched commit leaves the line blank. Without a commit the newest-merge rule still applies; breaks: a merge-commit deploy loses its change title or a Review build loses its added line
+- ZV220 — Your app names a version only when its commit matches the head or merge commit of the Mate's own added change in that stage's repository. An unmatched commit leaves the line blank. Without a commit the newest-merge rule still applies; breaks: a merge-commit deploy loses its change title or a Review build loses its added line

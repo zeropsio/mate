@@ -2,7 +2,8 @@
  * A project's places on its row — the environment tag and the globe — and the popover they open,
  * in the states a project really reaches: production down with a fix to ask for, a release that
  * failed, a dev on three ports, a stage coming up, a big project with a dozen addresses (its
- * filter), a Mate on dev pools with no workspace running, and one with no address anywhere.
+ * filter), a Mate on dev pools with no workspace running, one with no address anywhere, and
+ * `?state=version` for the commit Your app runs.
  *
  * Served by the dev server at `/design-sites.html` (`?theme=dark`). Open it at 1786 × 1000; the
  * menu is the owner's 435 px. Each row shows its hover actions, as a pointed-at row does.
@@ -10,11 +11,15 @@
  * Fixtures only, invented names. Nothing here ships — `design-sites.html` is not `index.html`, and
  * no route imports this module.
  */
-import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
-import { RunningNowFixture } from "~/zerops/activity/useRunningNow";
+import { RegistryContext } from "@effect/atom-react";
+import { makeAccountStore, shownHqAppChangesAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
-import { EnvironmentId } from "@t3tools/contracts";
+import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
+import { EnvironmentId, ZeropsStateEnvelope } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
+import type { HqChange } from "@t3tools/shared/hqChanges";
+import { AtomRegistry } from "effect/reactivity";
+import * as Schema from "effect/Schema";
 import { MoreHorizontalIcon } from "lucide-react";
 import { StrictMode, type CSSProperties, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -31,8 +36,13 @@ import {
   type SitesMate,
 } from "~/components/zerops/SidebarProjectSites";
 import { MateFace } from "~/components/zerops/primitives";
+import { AccountDataContext, type AccountData } from "~/zerops/accountData";
+import { RunningNowFixture } from "~/zerops/activity/useRunningNow";
+import { zeropsFeeds } from "~/zerops/feeds";
+import { zeropsMateIdentityOf } from "~/zerops/mateIdentities";
 import { OpenInMatePanelContext, type OpenInMatePanel } from "~/zerops/openInMatePanel";
 import { ZeropsSessionContext } from "~/zerops/sessionContext";
+import { zeropsMatesAtom } from "~/zerops/useZeropsMates";
 import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import "../index.css";
 
@@ -125,6 +135,110 @@ const base = (groupId: string, projectName: string): ProjectSitesInput => ({
   onAskToFix: () => {},
   onOpenStop: () => () => {},
 });
+
+const VERSION_APP = "sprig";
+const VERSION_MATE = mate(VERSION_APP, "Elli", "olive", {
+  routes: [route("appstage", "appstage.sprig.example")],
+  hostnames: ["apppool", "appstage"],
+  pools: ["apppool"],
+});
+const VERSION_FIXTURE: Fixture = {
+  title: "The version Your app runs",
+  input: { ...base(VERSION_APP, "Sprig"), mates: [VERSION_MATE] },
+};
+
+/** Seed the same two reads Sites joins, with the stage deployed by its change's merge commit. */
+function versionFixtureReads() {
+  const orgId = "sites-fixture";
+  const { candidate } = VERSION_MATE;
+  const environmentId = candidate.environmentId!;
+  const copies = zeropsFeeds.copies(environmentId);
+  const at = new Date().toISOString();
+  const commit = "abc1234".padEnd(40, "0");
+  const snapshot = { status: "ACTIVE", bootstrapped: true };
+  const envelope = Schema.decodeUnknownSync(ZeropsStateEnvelope)({
+    phase: "idle",
+    environment: "container",
+    project: { id: candidate.project.id, name: VERSION_MATE.name },
+    generated: at,
+    leases: [],
+    services: [
+      {
+        ...snapshot,
+        hostname: "apppool",
+        typeVersion: "swarm@1",
+        runtimeClass: "pool",
+        stages: [{ hostname: "appstage" }],
+      },
+      {
+        ...snapshot,
+        hostname: "appstage",
+        typeVersion: "bun@1.3",
+        runtimeClass: "dynamic",
+        version: { id: "sprig-version", commit, at },
+      },
+    ],
+  });
+  const registry = AtomRegistry.make({
+    initialValues: [
+      [shownHqAppChangesAtom, { [VERSION_APP]: [] }],
+      [zeropsMatesAtom, new Map([[environmentId, zeropsMateIdentityOf(candidate, new Map())]])],
+      [
+        copies,
+        {
+          state: "known",
+          value: { services: envelope.services, leases: envelope.leases },
+          asOf: { ordinal: 1, atMs: Date.parse(at) },
+          coverage: "complete",
+          freshness: { kind: "settled" },
+        },
+      ],
+    ],
+  });
+  // Sites reads these when the popover opens. Keep the seeded reads mounted for this page.
+  registry.mount(shownHqAppChangesAtom);
+  registry.mount(zeropsMatesAtom);
+  registry.mount(copies);
+  const store = makeAccountStore(registry);
+  const change: HqChange = {
+    appId: VERSION_APP,
+    repo: "apppool",
+    number: 1,
+    mateProjectId: candidate.project.id,
+    branch: "colours",
+    title: "Colours",
+    body: "",
+    state: "merged",
+    head: "a".repeat(40),
+    mergedSha: commit,
+    landedHead: null,
+    openedAt: at,
+    mergedAt: at,
+    closedAt: at,
+    updatedAt: at,
+    mergeability: "unknown",
+    behind: false,
+    ready: true,
+    comments: 0,
+  };
+  const id = `${VERSION_APP}/changes`;
+  store.dispatch({
+    kind: "baseline-commit",
+    scope: `hq:${orgId}:hq-app-detail:${VERSION_APP}`,
+    generation: 0,
+    via: "hq-stream",
+    members: [id],
+    rows: [
+      {
+        family: "hqAppDetail",
+        id,
+        value: { kind: "changes", value: [change] },
+        revision: { kind: "hq", incarnation: "fixture", revision: 1 },
+      },
+    ],
+  });
+  return { registry, account: { orgId, data: store.data } as AccountData };
+}
 
 const DOWN: ProductionChip = { label: "prod", state: "down", version: "v2.3.0" };
 const HEALTHY_STAGE: ProductionChip = { label: "stage", state: "ok", version: "main" };
@@ -431,7 +545,7 @@ function Row({ fixture, face }: { readonly fixture: Fixture; readonly face: Reac
 /** A Mate's rows draw as they open its side panel; there is no panel here to open. */
 const openNowhere: OpenInMatePanel = () => {};
 
-function Harness() {
+function Harness({ fixtures }: { readonly fixtures: ReadonlyArray<Fixture> }) {
   return (
     <OpenInMatePanelContext value={openNowhere}>
       <RunningNowFixture.Provider value={runningIn}>
@@ -441,7 +555,7 @@ function Harness() {
             data-sites-harness="menu"
             style={{ width: 435 }}
           >
-            {FIXTURES.map((fixture) => (
+            {fixtures.map((fixture) => (
               <Row
                 face={
                   <MateFace
@@ -462,16 +576,27 @@ function Harness() {
   );
 }
 
-/** The signed-in viewer Your app's reads ask for; HQ is not reached here, so its changes stay unread. */
+/** The signed-in viewer Sites' reads ask for. The flow reports only fixture data. */
 const VIEWER = {
   user: { id: "u-harness" },
   activeOrganization: null,
 } as unknown as ZeropsSessionValue;
 
+const version = new URLSearchParams(location.search).get("state") === "version";
+const versionReads = version ? versionFixtureReads() : undefined;
+
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <ZeropsSessionContext.Provider value={VIEWER}>
-      <Harness />
+      {versionReads === undefined ? (
+        <Harness fixtures={FIXTURES} />
+      ) : (
+        <RegistryContext.Provider value={versionReads.registry}>
+          <AccountDataContext.Provider value={versionReads.account}>
+            <Harness fixtures={[VERSION_FIXTURE]} />
+          </AccountDataContext.Provider>
+        </RegistryContext.Provider>
+      )}
     </ZeropsSessionContext.Provider>
   </StrictMode>,
 );
