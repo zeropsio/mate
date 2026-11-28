@@ -88,10 +88,7 @@ import { AppChannelView, AppIntakeView, AppSchedulesView, AppWebhooksView } from
 import { NewBoardTask } from "./NewBoardTask";
 import {
   boardOf,
-  boardTotals,
   boardWaitingCount,
-  compactPredicted,
-  compactRows,
   heldOnItsChange,
   poolSummary,
   predictedBoard,
@@ -895,14 +892,6 @@ export function ProjectAutomationView({
               board={board}
               boardHref={boardHref}
               onOpenBoard={onOpenBoard}
-              rows={
-                board.read.state === "known"
-                  ? compactRows(board.read.board)
-                  : board.read.state === "reading"
-                    ? compactPredicted(board.read.predicted)
-                    : []
-              }
-              totals={board.read.state === "known" ? boardTotals(board.read.board) : null}
               waitsFor={waitsFor}
             />
           ) : (

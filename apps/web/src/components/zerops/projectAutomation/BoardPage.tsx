@@ -20,7 +20,7 @@ import { PageTrail, usePageTrail } from "../system";
 import { useGroupName } from "../ZeropsGroupDetail";
 import type { BoardView } from "./boardView";
 import { BoardAutomation, useAppBoard } from "./ProjectAutomation";
-import { LANES, type BoardRow } from "./taskBoard.logic";
+import { LANES, openCount, type BoardRow } from "./taskBoard.logic";
 import { TaskPanel } from "./TaskPanel";
 
 /**
@@ -108,7 +108,8 @@ export function BoardPageView({
     });
   };
   useRevealPicked(body, row?.id);
-  const total = board.read.state === "known" ? rows.size : undefined;
+  // What is still open: finished work is not counted as outstanding; none open, no count.
+  const open = board.read.state === "known" ? openCount(board.read.board) : 0;
   const panel =
     row === undefined ? null : (
       <TaskPanel
@@ -136,7 +137,7 @@ export function BoardPageView({
         close();
       }}
     >
-      <PageHeader count={total} title="Board" trail={trail} />
+      <PageHeader count={open === 0 ? undefined : open} title="Board" trail={trail} />
       {/* The list holds its width and place whether a panel stands beside it or not: the
           panel's column is kept, empty, until a task opens. */}
       <div

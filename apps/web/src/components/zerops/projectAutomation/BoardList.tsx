@@ -9,10 +9,11 @@
 import { OPEN_TAKEN_LABEL } from "@t3tools/client-runtime/zerops";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import {
+  useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
-  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -28,13 +29,16 @@ import { Row } from "../../ui/row";
 import { SectionHeader } from "../../ui/section";
 import { Skeleton } from "../../ui/skeleton";
 import { Text } from "../../ui/text";
-import { MateFace, PersonAvatar } from "../primitives";
+import { MateFace } from "../primitives";
 import { SectionAction } from "../system";
 import { TaskGlyph } from "../board/TaskGlyph";
 import { useRowMotion } from "./useRowMotion";
 import type { BoardVerbs, BoardView } from "./boardView";
 import type { RowPress } from "./projectAutomation.logic";
 import {
+  activeTask,
+  compactBoard,
+  compactPredicted,
   LANES,
   RECENT_SHOWN,
   rowLead,
@@ -48,7 +52,7 @@ import {
 
 const RESTS: RowPress = { kind: "idle" };
 
-/** Who has a task, wearing its state, or the task's own mark, in a lead of `size`. */
+/** The Mate that has a task, wearing its state, or the task's own mark, in a lead of `size`. */
 export function TaskLead({
   lead,
   face,
@@ -59,7 +63,6 @@ export function TaskLead({
   readonly size?: 20 | 24;
 }) {
   if (lead.kind === "glyph") return <TaskGlyph glyph={lead.glyph} />;
-  if (lead.kind === "person") return <PersonAvatar name={lead.name} size={size} />;
   return (
     <MateFace shape={face?.shape} size={size} state={lead.state} tint={face?.tint ?? "slate"} />
   );
@@ -428,7 +431,8 @@ function TaskRow({
         </Row>
       )}
       {verbs === undefined || primary === null ? null : (
-        <span className={SEAT}>
+        // Picked, its panel's foot holds the press: one press for one act, the row's room kept.
+        <span aria-hidden={picked ? true : undefined} className={cn(SEAT, picked && "invisible")}>
           <VerbPress
             board={board}
             row={row}
@@ -529,8 +533,8 @@ export function LaneHeading({
 
 /**
  * Every lane of the Board, Waiting for you first, each led by its sticky heading: one list of
- * options the keyboard walks — ↑ ↓ or j k from row to row across the lanes, Enter or Space opens
- * the task's panel. Done shows its latest few until the rest are asked for, in place. While the
+ * options the keyboard walks as soon as the page shows — ↑ ↓ or j k from row to row across the
+ * lanes, Enter or Space opens the row it stands on (`activeTask`). Done shows its latest few until the rest are asked for, in place. While the
  * Board reads, each lane holds the rows navigation says will land.
  */
 export function BoardLanes({
@@ -547,7 +551,78 @@ export function BoardLanes({
   const [cursor, setCursor] = useState<string | null>(null);
   const list = useRef<HTMLDivElement | null>(null);
   const ids = useId();
+  const keys = useRef<{
+    readonly shown: ReadonlyArray<string>;
+    readonly stop: string | null;
+    readonly onPick: BoardView["onPick"];
+  }>({ shown: [], stop: null, onPick: undefined });
   useRowMotion(list, read.state === "known");
+  // A task opened by a press is where the keyboard stands from then on; one the address opened,
+  // until it moves.
+  const selected = board.selected ?? null;
+  const onPick = board.onPick;
+  const view: BoardView =
+    onPick === undefined
+      ? board
+      : {
+          ...board,
+          onPick: (taskId, answer) => {
+            setCursor(taskId);
+            onPick(taskId, answer);
+          },
+        };
+  const lanesRead = read.state === "known" ? read.board.lanes : null;
+  const shownOf = (lane: (typeof LANES)[number]) =>
+    lanesRead === null
+      ? []
+      : lane.id === "done" && !all
+        ? lanesRead.done.slice(0, RECENT_SHOWN)
+        : lanesRead[lane.id];
+  const shown = LANES.flatMap((lane) => shownOf(lane).map((row) => row.id));
+  const stop = activeTask(shown, cursor, selected);
+  // What the page's keys read as they are pressed: the last paint's rows and where the keyboard
+  // stands.
+  useLayoutEffect(() => {
+    keys.current = { shown, stop, onPick: view.onPick };
+  });
+  // The page's keys work as soon as it shows, wherever the focus is, unless a field types them or
+  // a dialog or a menu stands over the page.
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const step =
+        event.key === "ArrowDown" || event.key === "j"
+          ? 1
+          : event.key === "ArrowUp" || event.key === "k"
+            ? -1
+            : 0;
+      const open = event.key === "Enter" || event.key === " ";
+      if (step === 0 && !open) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(TYPED) != null) return;
+      // Enter and Space on a press are that press's own.
+      if (open && target?.closest(PRESSED) != null && target.getAttribute("role") !== "option")
+        return;
+      if (document.querySelector(OVER) !== null) return;
+      const { shown, stop, onPick } = keys.current;
+      if (stop === null) return;
+      event.preventDefault();
+      if (open) {
+        onPick?.(stop);
+        return;
+      }
+      const next = activeTask(shown, stop, null, step);
+      if (next === null) return;
+      setCursor(next);
+      list.current
+        ?.querySelector<HTMLElement>(`[data-zerops-task="${CSS.escape(next)}"] [role=option]`)
+        ?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
   if (read.state === "none") return null;
   if (read.state === "failed") return <ReadFailed board={board} words={read.words} />;
   if (read.state === "reading") {
@@ -571,40 +646,11 @@ export function BoardLanes({
   }
   const { lanes } = read.board;
   if (LANES.every((lane) => lanes[lane.id].length === 0)) return <NoTasks waitsFor={waitsFor} />;
-  const shownOf = (lane: (typeof LANES)[number]) =>
-    lane.id === "done" && !all ? lanes.done.slice(0, RECENT_SHOWN) : lanes[lane.id];
-  const shown = LANES.flatMap((lane) => shownOf(lane).map((row) => row.id));
-  const stop =
-    (board.selected != null && shown.includes(board.selected) ? board.selected : null) ??
-    (cursor !== null && shown.includes(cursor) ? cursor : null) ??
-    shown[0];
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const options = [...(list.current?.querySelectorAll<HTMLElement>("[role=option]") ?? [])];
-    const at = options.findIndex((option) => option === document.activeElement);
-    if (at === -1) return;
-    const step =
-      event.key === "ArrowDown" || event.key === "j"
-        ? 1
-        : event.key === "ArrowUp" || event.key === "k"
-          ? -1
-          : 0;
-    if (step !== 0) {
-      event.preventDefault();
-      options[Math.min(options.length - 1, Math.max(0, at + step))]?.focus();
-      return;
-    }
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      const id = options[at]?.closest<HTMLElement>("[data-zerops-task]")?.dataset.zeropsTask;
-      if (id !== undefined) board.onPick?.(id);
-    }
-  };
   return (
     <div
       aria-label="Tasks"
       className={LANES_CLASS}
       data-zerops-surface="project-automation-board"
-      onKeyDown={onKeyDown}
       ref={list}
       role="listbox"
     >
@@ -629,7 +675,7 @@ export function BoardLanes({
             <ul className={ROWS} role="none">
               {shownOf(lane).map((row) => (
                 <TaskRow
-                  board={board}
+                  board={view}
                   key={row.id}
                   option={{
                     tabIndex: row.id === stop ? 0 : -1,
@@ -662,22 +708,17 @@ export function BoardLanes({
 }
 
 /**
- * The project page's Board: the few rows that need the reader (`compactRows`), each opening the
- * Board's page at its task, then the way to the Board with its totals (`boardTotals`).
+ * The project page's Board (`compactBoard`): the few rows that need the reader, each opening the
+ * Board's page at its task, or a quiet line where none does, then always the way to the Board with
+ * the rest of its totals.
  */
 export function CompactBoard({
   board,
-  rows,
-  totals,
   waitsFor,
   onOpenBoard,
   boardHref,
 }: {
   readonly board: BoardView;
-  /** The rows it shows, or how many will land while the Board reads. */
-  readonly rows: ReadonlyArray<BoardRow> | number;
-  /** The whole Board in one line; `null` while it reads. */
-  readonly totals: string | null;
   readonly waitsFor: ReadonlyArray<string> | undefined;
   readonly onOpenBoard: (() => void) | undefined;
   readonly boardHref: string | undefined;
@@ -686,32 +727,35 @@ export function CompactBoard({
   const list = useRef<HTMLDivElement | null>(null);
   useRowMotion(list, read.state === "known");
   if (read.state === "none") return null;
-  if (read.state === "failed") return <ReadFailed board={board} words={read.words} />;
-  if (read.state === "known" && LANES.every((lane) => read.board.lanes[lane.id].length === 0))
-    return <NoTasks waitsFor={waitsFor} />;
+  const shown = read.state === "known" ? compactBoard(read.board) : null;
   return (
     <div
       className="relative grid min-w-0"
       data-zerops-surface="project-automation-board"
       ref={list}
     >
-      {typeof rows === "number" ? (
-        rows === 0 ? null : (
-          <Placeholders count={rows} />
+      {read.state === "failed" ? (
+        <ReadFailed board={board} words={read.words} />
+      ) : read.state === "reading" ? (
+        compactPredicted(read.predicted) === 0 ? null : (
+          <Placeholders count={compactPredicted(read.predicted)} />
         )
-      ) : rows.length === 0 ? (
+      ) : shown?.quiet === "no-tasks" ? (
+        <NoTasks waitsFor={waitsFor} />
+      ) : shown?.quiet === "nothing-waits" ? (
         // Tasks on the Board, none of them the reader's to act on: said once, quietly.
         <Text className="m-0 px-2.5 pt-1.5 pb-2" render={<p />} variant="description">
           Nothing waits for you.
         </Text>
       ) : (
         <ul className={ROWS}>
-          {rows.map((row) => (
+          {shown?.rows.map((row) => (
             <TaskRow board={board} key={row.id} picked={false} row={row} />
           ))}
         </ul>
       )}
-      <OpenBoard href={boardHref} onOpen={onOpenBoard} totals={totals} />
+      {/* Always its foot: the way to the Board's page, its sources and its history. */}
+      <OpenBoard href={boardHref} onOpen={onOpenBoard} totals={shown?.totals ?? null} />
     </div>
   );
 }
@@ -815,6 +859,13 @@ const MORE = "flex min-h-8 items-center ps-11.5 pe-2.5 pt-0.5";
 
 /** A line in the card: the read that failed. */
 const LINE = "flex min-h-10 items-center gap-2 px-2.5 py-1.5";
+
+/** Where the page's keys are a field's own: what types. */
+const TYPED = "input, textarea, select, [contenteditable]:not([contenteditable=false])";
+/** Where Enter and Space are a press's own. */
+const PRESSED = "button, a[href], summary, [role=button], [role=menuitem], [role=tab]";
+/** What stands over the page, open: its keys are its own. */
+const OVER = "[role=dialog][data-open], [role=alertdialog][data-open], [role=menu][data-open]";
 
 /** The rows' anatomy, for the Board's other lists (its sources) to stand on the same edges. */
 export const BOARD_ROW = {

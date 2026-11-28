@@ -681,6 +681,20 @@ const STATES: ReadonlyArray<{
     ),
   },
   {
+    id: "project-empty",
+    title:
+      "The project page's Board with no task and no automated Mate: New task, and the way to the Board",
+    view: (
+      <ProjectBoard
+        admin={{ onAddMate: nothing }}
+        board={board([], "$0.00 of $50")}
+        onOpenMate={nothing}
+        pool={[]}
+        workingOf={working()}
+      />
+    ),
+  },
+  {
     id: "project-reading",
     title: "The project page's Board while it reads: the rows navigation says will land",
     view: (

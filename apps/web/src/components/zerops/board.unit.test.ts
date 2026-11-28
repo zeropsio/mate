@@ -2,7 +2,10 @@ import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { expect, it } from "vite-plus/test";
 
 import {
+  activeTask,
   boardOf,
+  compactBoard,
+  openCount,
   compactPredicted,
   compactRows,
   LANES,
@@ -172,8 +175,8 @@ it("MN147: The project page's Board shows what waits for the reader, then what w
   }).toEqual({ shown: ["w1", "w2", "w3", "w4", "w5", "r1"], predicted: 3 });
 });
 
-// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   if (holder?.kind === "pool" && row.lane !== "queued") →   if (holder?.kind === "pool")
-it("MN148: A row leads with who has the task wearing its state — a pool Mate at work, asking or at rest, a person — and, where nobody has it now, the task's own mark: queued, waiting for others, done, failed, stopped or closed; breaks: an ended task wears its Mate's face and its failure cannot be told from a merge at a glance, or a task back in the queue still shows the Mate that dropped it", () => {
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   if (holder !== null && row.lane !== "queued") →   if (holder?.kind === "pool" && row.lane !== "queued")
+it("MN148: A row leads with the Mate that has the task wearing its state — a pool Mate or the Mate a person took it into, at work, asking or at rest, never the person — and, where no Mate has it now, the task's own mark: queued, waiting for others, done, failed, stopped or closed; breaks: a person's Mate's work wears the person's face, an ended task wears its Mate's face and its failure cannot be told from a merge at a glance, or a task back in the queue still shows the Mate that dropped it", () => {
   const { lanes } = boardOf(
     [
       task({ id: "work", state: "working", mate: sol }),
@@ -195,15 +198,12 @@ it("MN148: A row leads with who has the task wearing its state — a pool Mate a
   );
   const lead = (row: (typeof lanes.done)[number]) => {
     const said = rowLead(row);
-    return [
-      row.id,
-      said.kind === "mate" ? said.state : said.kind === "glyph" ? said.glyph : said.name,
-    ];
+    return [row.id, said.kind === "mate" ? said.state : said.glyph];
   };
   expect(LANES.flatMap((lane) => lanes[lane.id].map(lead))).toEqual([
     ["ask", "needs"],
     ["work", "working"],
-    ["took", "Ivo"],
+    ["took", "working"],
     ["rev", "idle"],
     ["q", "queued"],
     ["h", "held"],
@@ -327,4 +327,46 @@ it("MN150: A task's history says where it came from, who took it or which Mate i
     merged: ["put", "handed", "ended"],
     taken: ["taken", "put"],
   });
+});
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |     (count, lane) => (lane.id === "done" ? count : count + board.lanes[lane.id].length), →     (count, lane) => count + board.lanes[lane.id].length,
+it("MN151: The Board's page counts its open tasks beside its title, every lane's but Done's, and none where none is open; breaks: a Board of finished work reads as work outstanding", () => {
+  const ended = (id: string) =>
+    task({ id, state: "merged", mate: sol, endedAt: "2026-11-27T11:00:00Z" });
+  const of = (tasks: ReadonlyArray<HqAppTask>) => openCount(boardOf(tasks, NOW, { appId: "shop" }));
+  expect({
+    some: of([task({ id: "q", state: "queued", position: 1 }), ended("1"), ended("2"), ended("3")]),
+    none: of([ended("1"), ended("2")]),
+  }).toEqual({ some: 1, none: 0 });
+});
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |     return { rows, quiet: "no-tasks", totals: null }; →     return { rows, quiet: "no-tasks", totals: boardTotals(board) };
+it("MN152: The project page's Board always ends in the way to the Board's page: with no task it says the Board is empty and carries no totals, with tasks none of which waits on the reader it says nothing waits and carries the rest's totals, and with rows it says neither; breaks: an empty Board ends in a blank band, or a count of nothing", () => {
+  const of = (tasks: ReadonlyArray<HqAppTask>) => {
+    const shown = compactBoard(boardOf(tasks, NOW, { appId: "shop" }));
+    return [shown.rows.length, shown.quiet, shown.totals !== null];
+  };
+  expect({
+    empty: of([]),
+    calm: of([task({ id: "q", state: "queued", position: 1 })]),
+    asking: of([task({ id: "w", state: "waiting", mate: sol })]),
+  }).toEqual({
+    empty: [0, "no-tasks", false],
+    calm: [0, "nothing-waits", true],
+    asking: [1, null, true],
+  });
+});
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   const at = [cursor, selected].find((id): id is string => id !== null && shown.includes(id)); →   const at = [selected, cursor].find((id): id is string => id !== null && shown.includes(id));
+it("MN153: The Board's keyboard stands on the row it was moved to last, else the task open in its panel, else the first row, and moves one row at a time, held at the list's ends; breaks: Enter reopens a task the reader moved away from, or the keys do nothing until a row is clicked", () => {
+  const shown = ["a", "b", "c"];
+  expect({
+    fresh: activeTask(shown, null, null),
+    opened: activeTask(shown, null, "b"),
+    moved: activeTask(shown, "c", "b"),
+    gone: activeTask(shown, "x", "b"),
+    down: activeTask(shown, "b", null, 1),
+    top: activeTask(shown, null, null, -1),
+    bottom: activeTask(shown, "c", null, 1),
+  }).toEqual({ fresh: "a", opened: "b", moved: "c", gone: "b", down: "c", top: "a", bottom: "c" });
 });

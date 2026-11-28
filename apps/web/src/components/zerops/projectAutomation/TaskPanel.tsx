@@ -132,11 +132,8 @@ export function TaskPanel({
                   <span className="grid size-5 shrink-0 place-items-center">
                     <TaskLead
                       face={face}
-                      lead={
-                        row.holder.kind === "person"
-                          ? { kind: "person", name: row.holder.called ?? row.holder.name }
-                          : { kind: "mate", projectId: row.holder.projectId, state: "idle" }
-                      }
+                      // Its Mate at rest: the head's face already wears the task's state.
+                      lead={{ kind: "mate", projectId: row.holder.projectId, state: "idle" }}
                       size={20}
                     />
                   </span>

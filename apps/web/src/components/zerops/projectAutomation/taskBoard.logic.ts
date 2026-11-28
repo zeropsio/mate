@@ -532,6 +532,31 @@ export function compactRows(board: Board): ReadonlyArray<BoardRow> {
   return COMPACT_LANES.flatMap((lane) => board.lanes[lane]).slice(0, COMPACT_SHOWN);
 }
 
+/**
+ * The project page's Board, read: the rows it shows (`compactRows`); what it says where it shows
+ * none — that the Board holds no task yet, or that none of its tasks waits on the reader; and the
+ * rest of the Board's totals beside the way to its page (`boardTotals`), none while it holds no
+ * task. The way to the Board's page always ends it: its sources and its history are there.
+ */
+export function compactBoard(board: Board): {
+  readonly rows: ReadonlyArray<BoardRow>;
+  readonly quiet: "no-tasks" | "nothing-waits" | null;
+  readonly totals: string | null;
+} {
+  const rows = compactRows(board);
+  if (LANES.every((lane) => board.lanes[lane.id].length === 0))
+    return { rows, quiet: "no-tasks", totals: null };
+  return { rows, quiet: rows.length === 0 ? "nothing-waits" : null, totals: boardTotals(board) };
+}
+
+/** How many of the Board's tasks are open, every lane's but Done's: the count beside its page's title. */
+export function openCount(board: Board): number {
+  return LANES.reduce(
+    (count, lane) => (lane.id === "done" ? count : count + board.lanes[lane.id].length),
+    0,
+  );
+}
+
 /** How many rows the project page's Board will show while the Board reads (`compactRows`). */
 export function compactPredicted(predicted: PredictedBoard): number {
   return Math.min(
@@ -560,8 +585,9 @@ export function boardTotals(board: Board): string {
 export type TaskGlyph = "queued" | "held" | "done" | "failed" | "stopped" | "closed";
 
 /**
- * What leads a row: who has it, wearing the task's state — a pool Mate at work, asking, or at rest;
- * a person — and where nobody has it now (queued, waiting for others, ended), the task's glyph.
+ * What leads a row: the Mate that has it, wearing the task's state — at work, asking, or at rest —
+ * a pool Mate or the Mate a person took it into (the work is the Mate's: the person is said in
+ * words); and where no Mate has it now (queued, waiting for others, ended), the task's glyph.
  */
 export type RowLead =
   | {
@@ -569,19 +595,22 @@ export type RowLead =
       readonly projectId: string;
       readonly state: "working" | "needs" | "idle";
     }
-  | { readonly kind: "person"; readonly name: string }
   | { readonly kind: "glyph"; readonly glyph: TaskGlyph };
 
 /** The lead of a row (`RowLead`). */
 export function rowLead(row: Pick<BoardRow, "lane" | "status" | "holder">): RowLead {
   if (row.lane === "done") return { kind: "glyph", glyph: endedGlyph(row.status) };
   const { holder } = row;
-  if (holder?.kind === "person") return { kind: "person", name: holder.called ?? holder.name };
-  if (holder?.kind === "pool" && row.lane !== "queued")
+  if (holder !== null && row.lane !== "queued")
     return {
       kind: "mate",
       projectId: holder.projectId,
-      state: row.lane === "waiting" ? "needs" : row.status === "working" ? "working" : "idle",
+      state:
+        row.lane === "waiting"
+          ? "needs"
+          : row.status === "working" || row.status === "taken"
+            ? "working"
+            : "idle",
     };
   if (row.status === "held") return { kind: "glyph", glyph: "held" };
   return { kind: "glyph", glyph: row.lane === "review" ? "done" : "queued" };
@@ -737,6 +766,22 @@ export function brokenWords(broken: ReadonlyArray<BoardNeed>): string {
 function listed(said: ReadonlyArray<string>): string {
   if (said.length <= 1) return said.join("");
   return `${said.slice(0, -1).join(", ")} and ${said.at(-1) ?? ""}`;
+}
+
+/**
+ * The row the keyboard stands on, among the rows shown in order: the one it was moved to last,
+ * else the task open in its panel, else the first; `step` moves it one row down (1) or up (-1),
+ * held at the list's ends. Enter opens this row, never another.
+ */
+export function activeTask(
+  shown: ReadonlyArray<string>,
+  cursor: string | null,
+  selected: string | null,
+  step: -1 | 0 | 1 = 0,
+): string | null {
+  const at = [cursor, selected].find((id): id is string => id !== null && shown.includes(id));
+  const from = at === undefined ? 0 : shown.indexOf(at);
+  return shown[Math.min(shown.length - 1, Math.max(0, from + step))] ?? null;
 }
 
 /** A press the reader makes on a task. */
