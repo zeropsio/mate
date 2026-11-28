@@ -23,10 +23,14 @@ export function ComposerPutOnBoardButton({
             variant="ghost"
             aria-label="Put on board"
             data-chat-composer-board=""
-            disabled={disabled}
+            // Held back while there is nothing to put, never hidden from hover: it still says what
+            // it does.
+            aria-disabled={disabled || undefined}
             // The caret stays where it was in the text.
             onPointerDown={(event) => event.preventDefault()}
-            onClick={onPress}
+            onClick={() => {
+              if (!disabled) onPress();
+            }}
           >
             <SquareKanbanIcon aria-hidden="true" />
           </Button>

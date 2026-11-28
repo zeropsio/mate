@@ -495,17 +495,17 @@ const TAKEN_ON_BOARD = { groupId: "acme-store", taskId: "50" } as const;
 /** A task Rhea put on the Board itself (New task): no conversation behind it. */
 const TAKEN_FROM_BOARD: MateTaskSource = { kind: "board", putBy: "u-rhea", title: TITLE };
 
-function Composer({ board }: { readonly board: boolean }) {
+function Composer({ board, empty = false }: { readonly board: boolean; readonly empty?: boolean }) {
   return (
     <div className="flex items-center justify-end gap-2 rounded-card border border-border bg-card px-3 py-2">
       <span className="me-auto text-body text-muted-foreground">
-        Offer gift wrapping at checkout
+        {empty ? "Ask Moss anything" : "Offer gift wrapping at checkout"}
       </span>
-      {board ? <ComposerPutOnBoardButton disabled={false} onPress={nothing} /> : null}
+      {board ? <ComposerPutOnBoardButton disabled={empty} onPress={nothing} /> : null}
       <ComposerPrimaryActions
         away={null}
         compact={false}
-        hasSendableContent
+        hasSendableContent={!empty}
         isConnecting={false}
         isPreparingWorktree={false}
         isRunning={false}
@@ -514,7 +514,7 @@ function Composer({ board }: { readonly board: boolean }) {
         onInterrupt={nothing}
         onPreviousPendingQuestion={nothing}
         pendingAction={null}
-        promptHasText
+        promptHasText={!empty}
         sendDisabledReason={null}
         showPlanFollowUpPrompt={false}
         unavailableAgentName={null}
@@ -529,6 +529,11 @@ const STATES: ReadonlyArray<{
   readonly view: ReactNode;
 }> = [
   { id: "composer", title: "Send, with Put on board beside it", view: <Composer board /> },
+  {
+    id: "composer-empty",
+    title: "An empty draft: Put on board held back, its tooltip still there",
+    view: <Composer board empty />,
+  },
   {
     id: "composer-plain",
     title: "Send where the Mate cannot put on a Board",
