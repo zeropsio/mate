@@ -69,20 +69,21 @@ export function crewLandingOptions(
 }
 
 /**
- * The dialog's choices: the last run's, else the first run's with no budget picked. A crew that
- * can't keep a budget (a crewmate's agent reports no spend, `crewSpendBlocker`) starts on No
- * limit, the one spend choice that starts it.
+ * The choices the dialog shows and starts: a crew that can't keep a budget (a crewmate's agent
+ * reports no spend, `crewSpendBlocker`) reads No limit, the one spend choice that starts it, until
+ * the person picks a spend themself — whether that is known as the dialog opens or a moment later,
+ * once the crew's agents are read.
  */
-export function crewRunDraft(
-  lastRun: CrewRun | null,
-  hasLead: boolean,
+export function crewDraftShown(
+  draft: CrewRunDraft,
   spendBlocked: boolean,
+  budgetPicked: boolean,
 ): CrewRunDraft {
-  const draft = draftOf(lastRun, hasLead);
-  return spendBlocked ? { ...draft, budget: "unlimited", budgetText: "" } : draft;
+  return spendBlocked && !budgetPicked ? { ...draft, budget: "unlimited", budgetText: "" } : draft;
 }
 
-function draftOf(lastRun: CrewRun | null, hasLead: boolean): CrewRunDraft {
+/** The dialog's choices as it opens: the last run's, else the first run's with no budget picked. */
+export function crewRunDraft(lastRun: CrewRun | null, hasLead: boolean): CrewRunDraft {
   if (lastRun === null) {
     return {
       budget: null,

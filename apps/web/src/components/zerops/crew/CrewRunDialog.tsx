@@ -59,6 +59,7 @@ import {
   crewResumeCommand,
   crewResumeDraft,
   crewResumeLimit,
+  crewDraftShown,
   crewRunDraft,
   crewPlanOf,
   crewSpendBlocker,
@@ -150,7 +151,7 @@ export function CrewRunDialog({
             current={current}
             error={commands.error}
             hasLead={hasLead}
-            initial={crewRunDraft(run, hasLead, spendBlocker !== null)}
+            initial={crewRunDraft(run, hasLead)}
             mateName={mateName}
             plan={plan}
             spendBlocker={spendBlocker}
@@ -271,9 +272,12 @@ export function CrewStartBody(props: {
   readonly onStart: (command: CrewCommand) => void;
   readonly onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(props.initial);
-  const command = crewStartCommand(draft, props.hasLead, props.spendBlocker !== null);
-  const blocker = crewStartBlocker(draft, props.spendBlocker !== null, props.current);
+  const [chosen, setDraft] = useState(props.initial);
+  const [budgetPicked, setBudgetPicked] = useState(false);
+  const blocked = props.spendBlocker !== null;
+  const draft = crewDraftShown(chosen, blocked, budgetPicked);
+  const command = crewStartCommand(draft, props.hasLead, blocked);
+  const blocker = crewStartBlocker(draft, blocked, props.current);
   return (
     <>
       <DialogHeader>
@@ -286,7 +290,10 @@ export function CrewStartBody(props: {
             <LimitField
               kind={draft.budget}
               label={CREW_RUN_WORDS.spent}
-              onChange={(budget, budgetText) => setDraft({ ...draft, budget, budgetText })}
+              onChange={(budget, budgetText) => {
+                setBudgetPicked(true);
+                setDraft({ ...chosen, budget, budgetText });
+              }}
               prefix="$"
               text={draft.budgetText}
             />
@@ -294,7 +301,7 @@ export function CrewStartBody(props: {
             <LimitField
               kind={draft.time}
               label={CREW_RUN_WORDS.after}
-              onChange={(time, timeText) => setDraft({ ...draft, time, timeText })}
+              onChange={(time, timeText) => setDraft({ ...chosen, time, timeText })}
               suffix={CREW_RUN_WORDS.hours}
               text={draft.timeText}
             />
@@ -302,7 +309,7 @@ export function CrewStartBody(props: {
               <Checkbox
                 checked={draft.usageStop}
                 className="mt-0.5"
-                onCheckedChange={(checked) => setDraft({ ...draft, usageStop: checked })}
+                onCheckedChange={(checked) => setDraft({ ...chosen, usageStop: checked })}
               />
               <span className="text-body">{crewUsageStopWord(draft.usagePercent, props.plan)}</span>
             </Choice>
@@ -313,7 +320,7 @@ export function CrewStartBody(props: {
             <RadioGroup
               aria-label={CREW_RUN_WORDS.whenDone}
               onValueChange={(value) =>
-                setDraft({ ...draft, landing: value as CrewRunDraft["landing"] })
+                setDraft({ ...chosen, landing: value as CrewRunDraft["landing"] })
               }
               value={draft.landing}
             >
@@ -337,7 +344,7 @@ export function CrewStartBody(props: {
                 <Checkbox
                   checked={draft.leadMayStart}
                   className="mt-0.5"
-                  onCheckedChange={(checked) => setDraft({ ...draft, leadMayStart: checked })}
+                  onCheckedChange={(checked) => setDraft({ ...chosen, leadMayStart: checked })}
                 />
                 <span className="text-body">{CREW_RUN_WORDS.leadMayStart}</span>
               </Choice>
@@ -346,7 +353,7 @@ export function CrewStartBody(props: {
               <Checkbox
                 checked={draft.devGrant}
                 className="mt-0.5"
-                onCheckedChange={(checked) => setDraft({ ...draft, devGrant: checked })}
+                onCheckedChange={(checked) => setDraft({ ...chosen, devGrant: checked })}
               />
               <span className="text-body">{crewDevGrantWord(props.mateName)}</span>
             </Choice>
