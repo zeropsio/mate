@@ -25,6 +25,7 @@ import {
   TimerIcon,
   WebhookIcon,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import { pullRequestName, taskAskBeyondTitle } from "~/zerops/automatedMate.logic";
@@ -44,6 +45,8 @@ import { cn } from "~/lib/utils";
 import { GitHubIcon } from "../Icons";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
+import { Separator } from "../ui/separator";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { HeaderReviewDoor } from "./SidebarProjectReview";
 import { taskReviewItems } from "./SidebarProjectReview.logic";
 import { Card } from "~/components/ui/card";
@@ -103,10 +106,18 @@ function SourceMark({ source }: { readonly source: MateTaskSource }) {
 /** The app bar's Review, as a Mate's conversation header holds it (`HeaderReviewDoor`). */
 type TaskReviewDoor = Parameters<typeof HeaderReviewDoor>[0];
 
+/** Where a task stands on its application's Board: its panel opens there (`?task=`). */
+interface TaskOnBoard {
+  readonly groupId: string;
+  readonly taskId: string;
+}
+
 /**
- * Where a task stands, beside its Mate in the conversation's header — in sight however far the
- * conversation scrolls — after the app bar's Review its Mate's changes wait on, as a normal Mate's
- * header has it, and Stop, for an Owner or Admin while it can be stopped, asked first.
+ * The conversation's task, beside its Mate in the header — in sight however far the conversation
+ * scrolls: what it is (where it came from, its title, where it stands), one press from its panel on
+ * the Board; Stop, for an Owner or Admin while it can be stopped, asked first; for a task a person
+ * took, Mark done and Put back. The app bar's Review its Mate's changes wait on comes after it, set
+ * apart, so it never reads as the task's next state.
  */
 export function MateTaskStatus({
   task,
@@ -124,7 +135,7 @@ export function MateTaskStatus({
   /** Its Mate's app-bar Review (`headerReviewItems`); `null` while nothing waits there. */
   readonly review?: TaskReviewDoor | null;
 }) {
-  const { session, stop, done, release } = useTaskSession(
+  const { session, appId, stop, done, release } = useTaskSession(
     task,
     environmentId,
     conversationId,
@@ -132,32 +143,43 @@ export function MateTaskStatus({
   );
   return (
     <MateTaskStatusView
+      board={
+        appId === null || session.taskId === null
+          ? null
+          : { groupId: appId, taskId: session.taskId }
+      }
       onDone={done ?? undefined}
       onRelease={release ?? undefined}
       onStop={stop ?? undefined}
       review={review}
       session={session}
+      task={task}
     />
   );
 }
 
 export function MateTaskStatusView({
+  task,
+  board = null,
   session = NOT_KNOWN,
   onStop,
   onDone,
   onRelease,
   review = null,
 }: {
+  readonly task: MateTaskSource;
+  /** Where its panel opens on the Board; `null` while not known: the same room, nothing to press. */
+  readonly board?: TaskOnBoard | null;
   /** Where it stands now (`taskSession`); not known: its room held, nothing said. */
   readonly session?: TaskSession;
   /** Stops the task, confirmed first; absent while it cannot be stopped from here. */
   readonly onStop?: (() => void) | undefined;
-  /** A task the person took: marks it done (its taker), or gives it back to the queue. */
+  /** A task the person took: marks it done (its taker), or puts it back on the Board's queue. */
   readonly onDone?: (() => void) | undefined;
   readonly onRelease?: (() => void) | undefined;
   /**
    * Its Mate's app-bar Review, led by this task's change (`taskReviewItems`); where it asks, the
-   * pill does not say the task is up for review again (`taskPillStatus`).
+   * task does not say it is up for review again (`taskPillStatus`).
    */
   readonly review?: TaskReviewDoor | null;
 }) {
@@ -165,41 +187,62 @@ export function MateTaskStatusView({
   const status = taskPillStatus(session.status, items.length > 0);
   const [asking, setAsking] = useState(false);
   const confirming = asking && onStop !== undefined;
-  const door =
-    review === null ? null : (
-      <HeaderReviewDoor held={review.held} review={{ ...review.review, items }} />
-    );
-  if (
-    status === undefined &&
-    onStop === undefined &&
-    onDone === undefined &&
-    onRelease === undefined
-  )
-    return door;
+  const words = (
+    <>
+      <SourceMark source={task} />
+      <span className="max-w-[28ch] min-w-0 truncate max-sm:max-w-[12ch]">{task.title}</span>
+      {status === undefined ? null : (
+        // Until its status is read, the label keeps its room unseen: nothing moves when it comes.
+        <span
+          className={cn("flex shrink-0", status === null && "invisible")}
+          data-zerops-surface="mate-task-status"
+        >
+          {/* Its blue is a change to look at, not work under way: it does not breathe. */}
+          <Badge
+            dot
+            pulse={false}
+            tone={status === null ? "neutral" : TASK_DOT[taskStatusTone(status)]}
+          >
+            <span data-zerops-surface="mate-task-status-words">
+              {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
+            </span>
+          </Badge>
+        </span>
+      )}
+    </>
+  );
   return (
     <>
-      {door}
       <span
-        className="flex min-w-0 shrink-0 items-center gap-2 text-line"
+        className="flex min-w-0 items-center gap-2 text-line"
         data-zerops-surface="mate-task-session"
       >
-        {status === undefined ? null : (
-          // Until its status is read, the label keeps its room unseen: nothing moves when it comes.
-          <span
-            className={cn("flex shrink-0", status === null && "invisible")}
-            data-zerops-surface="mate-task-status"
-          >
-            {/* Its blue is a change to look at, not work under way: it does not breathe. */}
-            <Badge
-              dot
-              pulse={false}
-              tone={status === null ? "neutral" : TASK_DOT[taskStatusTone(status)]}
+        {board === null ? (
+          <Button data-zerops-surface="mate-task-unit" render={<span />} size="sm" variant="ghost">
+            {words}
+          </Button>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  data-zerops-surface="mate-task-unit"
+                  render={
+                    <Link
+                      params={{ groupId: board.groupId }}
+                      search={{ task: board.taskId }}
+                      to="/group/$groupId/board"
+                    />
+                  }
+                  size="sm"
+                  variant="ghost"
+                />
+              }
             >
-              <span data-zerops-surface="mate-task-status-words">
-                {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
-              </span>
-            </Badge>
-          </span>
+              {words}
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">Open on the Board</TooltipPopup>
+          </Tooltip>
         )}
         {confirming ? (
           <span className="flex items-center gap-1" data-zerops-surface="mate-task-stop-ask">
@@ -237,18 +280,24 @@ export function MateTaskStatusView({
             Stop
           </Button>
         ) : null}
-        {/* A task the person took: give it back to the queue, or say it is done. */}
-        {onRelease === undefined ? null : (
-          <Button onClick={onRelease} size="sm" variant="ghost">
-            Release
-          </Button>
-        )}
+        {/* A task the person took: say it is done, or put it back on the Board for another. */}
         {onDone === undefined ? null : (
           <Button onClick={onDone} size="sm" variant="secondary">
-            Done
+            Mark done
+          </Button>
+        )}
+        {onRelease === undefined ? null : (
+          <Button aria-label="Put back on the Board" onClick={onRelease} size="sm" variant="ghost">
+            Put back
           </Button>
         )}
       </span>
+      {review === null ? null : (
+        <>
+          <Separator className="h-4" orientation="vertical" />
+          <HeaderReviewDoor held={review.held} review={{ ...review.review, items }} />
+        </>
+      )}
     </>
   );
 }

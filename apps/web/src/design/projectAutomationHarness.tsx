@@ -1575,6 +1575,7 @@ function Harness() {
               <MateTaskStatusView
                 onStop={session.stoppable ? nothing : undefined}
                 session={session}
+                task={ISSUE}
               />
               <MateTaskCardView onOpenChange={nothing} session={session} task={ISSUE} />
             </div>

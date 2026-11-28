@@ -7,7 +7,8 @@
  * 1786 × 1000. The menu's automated rows are the sidebar harness's Tea Shop; the New Mate
  * dialog's choice is `/design-newmate.html?automated=missing`. `?settle=pending` and
  * `?settle=landed` draw the sources besides GitHub while read and once read, as an unconnected
- * organization's: their sections stand at the same tops in both.
+ * organization's: their sections stand at the same tops in both. `?unit=column` draws a task
+ * conversation's column, its rows in the timeline's own frame (`taskColumnHarness`).
  *
  * Fixtures only. Nothing here ships — `design-automated.html` is not `index.html`, and no route
  * imports this module.
@@ -21,6 +22,12 @@ import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { MateTaskSource } from "@t3tools/contracts";
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -44,6 +51,7 @@ import {
 import { MateFace } from "~/components/zerops/primitives";
 import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
 import type { TaskSession } from "~/zerops/taskSession.logic";
+import { TaskColumn } from "./taskColumnHarness";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -252,6 +260,21 @@ const UP_FOR_REVIEW: TaskSession = {
   pullRequest: null,
 };
 
+/** Raya's task up for review: its change is the app bar Review's first. */
+const FOOTER_ISSUE: MateTaskSource = {
+  ...TEA_ISSUE,
+  number: 8,
+  title: "Add a Back to top link in the footer",
+};
+
+/** A task put on the Board that Raya finished: done, with its change waiting in Review. */
+const BANNER_TASK: MateTaskSource = {
+  kind: "board",
+  putBy: "u-ales",
+  title: "Pick a number for the welcome banner",
+};
+const DONE_TASK: TaskSession = { ...UP_FOR_REVIEW, status: "done", taskId: "task-31" };
+
 /** The conversation's app bar as far as its Mate's line goes: face, name, then what follows it. */
 function AppBar({ children }: { readonly children: ReactNode }) {
   return (
@@ -342,13 +365,33 @@ function Harness() {
               <HeaderReviewDoor {...doorOf(RAYA_CHANGES.slice(1))} />
             </AppBar>
             <AppBar>
-              <MateTaskStatusView review={doorOf(RAYA_CHANGES.slice(1))} session={UP_FOR_REVIEW} />
-            </AppBar>
-            <AppBar>
-              <MateTaskStatusView review={doorOf(RAYA_CHANGES)} session={UP_FOR_REVIEW} />
+              <MateTaskStatusView
+                board={{ groupId: "tea-shop", taskId: "task-8" }}
+                review={doorOf(RAYA_CHANGES.slice(1))}
+                session={UP_FOR_REVIEW}
+                task={FOOTER_ISSUE}
+              />
             </AppBar>
             <AppBar>
               <MateTaskStatusView
+                board={{ groupId: "tea-shop", taskId: "task-8" }}
+                review={doorOf(RAYA_CHANGES)}
+                session={UP_FOR_REVIEW}
+                task={FOOTER_ISSUE}
+              />
+            </AppBar>
+            <AppBar>
+              <MateTaskStatusView
+                board={{ groupId: "tea-shop", taskId: "task-31" }}
+                review={doorOf(RAYA_CHANGES.slice(0, 1))}
+                session={{ ...DONE_TASK, change: null }}
+                task={BANNER_TASK}
+              />
+            </AppBar>
+            <AppBar>
+              <MateTaskStatusView
+                board={{ groupId: "tea-shop", taskId: "task-12" }}
+                task={TEA_ISSUE}
                 onStop={nothing}
                 review={doorOf(RAYA_CHANGES.slice(0, 1))}
                 session={{ ...UP_FOR_REVIEW, status: "waiting", stoppable: true, change: null }}
@@ -359,7 +402,11 @@ function Harness() {
         <Panel title="One conversation, a turn per task: two finished, one at work">
           <div className="grid max-w-2xl gap-3">
             {/* The header follows the conversation's current task. */}
-            <MateTaskStatusView onStop={nothing} session={ONE_CONVERSATION[2]!.session} />
+            <MateTaskStatusView
+              onStop={nothing}
+              session={ONE_CONVERSATION[2]!.session}
+              task={ONE_CONVERSATION[2]!.task}
+            />
             {ONE_CONVERSATION.map(({ task, text, session, reply }) => (
               <div className="grid gap-3" key={session.taskId}>
                 <MateTaskCardView
@@ -377,6 +424,7 @@ function Harness() {
           <div className="grid max-w-2xl gap-3">
             <MateTaskStatusView
               onStop={nothing}
+              task={TEA_ISSUE}
               session={{
                 status: "working",
                 taskId: "task-12",
@@ -533,12 +581,24 @@ function Settle({ landed }: { readonly landed: boolean }) {
 }
 
 const settle = params.get("settle");
+const unit = params.get("unit");
+
+function Page() {
+  if (unit === "column") return <TaskColumn />;
+  return settle === null ? <Harness /> : <Settle landed={settle === "landed"} />;
+}
+
+// The links the task's surfaces draw (to its Board) need a router; nothing here navigates.
+const router = createRouter({
+  routeTree: createRootRoute({ component: Page }),
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+});
 
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      {settle === null ? <Harness /> : <Settle landed={settle === "landed"} />}
+      <RouterProvider router={router} />
     </StrictMode>,
   );
 }

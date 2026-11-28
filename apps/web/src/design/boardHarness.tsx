@@ -15,6 +15,12 @@
 import type { ConversationSource, MateTaskSource } from "@t3tools/contracts";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { StrictMode, type ReactNode } from "react";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { createRoot } from "react-dom/client";
 
 import type { AskState } from "~/components/ask/ask.logic";
@@ -484,6 +490,8 @@ const TAKEN_SESSION: TaskSession = {
   pullRequest: null,
 };
 const TAKEN_SOURCE: MateTaskSource = { ...SOURCE, putBy: "u-rhea", mateProjectId: "p-moss" };
+/** Where the taken task's panel opens on its Board. */
+const TAKEN_ON_BOARD = { groupId: "acme-store", taskId: "50" } as const;
 /** A task Rhea put on the Board itself (New task): no conversation behind it. */
 const TAKEN_FROM_BOARD: MateTaskSource = { kind: "board", putBy: "u-rhea", title: TITLE };
 
@@ -534,11 +542,17 @@ const STATES: ReadonlyArray<{
   ...PLAN_STATES,
   {
     id: "taken",
-    title: "A taken task's chat: Done and Release, and where it came from",
+    title: "A taken task's chat: the task, Mark done and Put back, and where it came from",
     view: (
       <div className="grid gap-3">
         <div className="flex justify-end">
-          <MateTaskStatusView onDone={nothing} onRelease={nothing} session={TAKEN_SESSION} />
+          <MateTaskStatusView
+            board={TAKEN_ON_BOARD}
+            onDone={nothing}
+            onRelease={nothing}
+            session={TAKEN_SESSION}
+            task={TAKEN_SOURCE}
+          />
         </div>
         <MateTaskCardView
           origin={{ words: "Put on board by Rhea in Moss’s chat", onOpen: nothing }}
@@ -555,7 +569,13 @@ const STATES: ReadonlyArray<{
     view: (
       <div className="grid gap-3">
         <div className="flex justify-end">
-          <MateTaskStatusView onDone={nothing} onRelease={nothing} session={TAKEN_SESSION} />
+          <MateTaskStatusView
+            board={TAKEN_ON_BOARD}
+            onDone={nothing}
+            onRelease={nothing}
+            session={TAKEN_SESSION}
+            task={TAKEN_FROM_BOARD}
+          />
         </div>
         <MateTaskCardView
           origin={{ words: "Put on board by Rhea" }}
@@ -604,6 +624,7 @@ const STATES: ReadonlyArray<{
             onDone={nothing}
             onRelease={nothing}
             session={{ ...TAKEN_SESSION, status: "review", change: { repo: "shop", number: 47 } }}
+            task={SOURCE}
           />
         </div>
         <MateTaskCardView
@@ -636,11 +657,17 @@ function Harness() {
   );
 }
 
+// The links the task's surfaces draw (to its Board) need a router; nothing here navigates.
+const router = createRouter({
+  routeTree: createRootRoute({ component: Harness }),
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+});
+
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      <Harness />
+      <RouterProvider router={router} />
     </StrictMode>,
   );
 }

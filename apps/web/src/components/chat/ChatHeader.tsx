@@ -705,9 +705,10 @@ export const ChatHeader = memo(function ChatHeader({
               }
               subject={crewOrigin === null && spoken ? headline : null}
               trailing={
-                // What waits on the person, right after the Mate: its Review, the same door for
-                // an automated Mate's task conversation, where the task's state and its Stop
-                // follow it (the owner, 2026-10-19: "why is this different from the normal mate?").
+                // What waits on the person, right after the Mate: its Review; in a task's
+                // conversation the task first (what it is, where it stands, its presses, a link
+                // to it on the Board), then the same Review, set apart so it never reads as the
+                // task's next state.
                 activeThreadTask !== undefined && isServerThread ? (
                   <MateTaskStatus
                     conversationId={activeThreadId}
