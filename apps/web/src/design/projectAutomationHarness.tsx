@@ -1192,7 +1192,7 @@ const PAGE_STATES: ReadonlyArray<{
       ["page", "nothing open", null],
       ["page-queued", "a queued task: Take", GIFT_WRAP.id],
       ["page-working", "a pool Mate at work", DATES.id],
-      ["page-taken", "a task you took: Done, Release", REPOT.id],
+      ["page-taken", "a task you took: Mark done, Put back", REPOT.id],
       ["page-asks-chat", "a question answered in its conversation", FERTILISER.id],
       ["page-review", "a change up for review", WISHLIST.id],
       ["page-merged", "a merged task", SORT.id],

@@ -784,14 +784,25 @@ export function activeTask(
   return shown[Math.min(shown.length - 1, Math.max(0, from + step))] ?? null;
 }
 
+/**
+ * A taken task's presses, in the words every surface that offers them says — its Board row, its
+ * panel, its conversation's header: Mark done, and Put back (on the Board's queue, for another).
+ */
+export const TAKEN_TASK_PRESSES = {
+  done: "Mark done",
+  release: "Put back",
+  /** Put back's accessible name: where it goes. */
+  releaseName: "Put back on the Board",
+} as const;
+
 /** A press the reader makes on a task. */
 export type TaskVerb = "open" | "drop" | "take" | "review" | "done" | "answer";
 
 /**
  * What the reader may do with a task, as its row and its panel offer it: the one press that is
  * their next act (`primary`, the row's only press) — open a Take whose conversation did not open,
- * drop a need that broke, Take, Review its change, mark it Done, Answer its Mate — and beside it in
- * the panel, the rest the rules let them: Release, Done, Stop, and opening its conversation. A
+ * drop a need that broke, Take, Review its change, Mark done, Answer its Mate — and beside it in
+ * the panel, the rest the rules let them: Put back, Mark done, Stop, and opening its conversation. A
  * write under way offers nothing until it lands.
  */
 export function taskVerbs(input: {

@@ -38,7 +38,7 @@ import { useHqPersonNames, useViewerCalled } from "~/zerops/useZeropsMateOwners"
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { projectNameInApp, zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { putOrigin } from "./projectAutomation/taskBoard.logic";
+import { putOrigin, TAKEN_TASK_PRESSES } from "./projectAutomation/taskBoard.logic";
 import {
   taskMessageOrigin,
   taskMessageWords,
@@ -288,12 +288,17 @@ export function MateTaskStatusView({
         {/* A task the person took: say it is done, or put it back on the Board for another. */}
         {onDone === undefined ? null : (
           <Button onClick={onDone} size="sm" variant="secondary">
-            Mark done
+            {TAKEN_TASK_PRESSES.done}
           </Button>
         )}
         {onRelease === undefined ? null : (
-          <Button aria-label="Put back on the Board" onClick={onRelease} size="sm" variant="ghost">
-            Put back
+          <Button
+            aria-label={TAKEN_TASK_PRESSES.releaseName}
+            onClick={onRelease}
+            size="sm"
+            variant="ghost"
+          >
+            {TAKEN_TASK_PRESSES.release}
           </Button>
         )}
       </span>

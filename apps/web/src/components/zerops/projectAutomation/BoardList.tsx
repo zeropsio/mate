@@ -47,6 +47,7 @@ import {
   type MetaPart,
   type RowLead,
   type TaskVerb,
+  TAKEN_TASK_PRESSES,
 } from "./taskBoard.logic";
 
 const RESTS: RowPress = { kind: "idle" };
@@ -287,7 +288,7 @@ export function VerbPress({
           size={size}
           variant={variant}
         >
-          Done
+          {TAKEN_TASK_PRESSES.done}
         </Button>
       );
     case "review": {

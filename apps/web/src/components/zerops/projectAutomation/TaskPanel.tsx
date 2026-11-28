@@ -33,6 +33,7 @@ import {
   type BoardNeed,
   type BoardRow,
   type BoardTaskRef,
+  TAKEN_TASK_PRESSES,
 } from "./taskBoard.logic";
 
 const RESTS: RowPress = { kind: "idle" };
@@ -405,8 +406,8 @@ function Question({
 
 /**
  * The panel's foot: Stop on its own at the start (asked first, in place: Keep or Stop), the rest at
- * the end — Release, Done, its conversation — and the reader's next act last, in the primary ink,
- * where the foot holds it (Take, Review, Done, Drop the need, a stranded Take's conversation); where
+ * the end — Put back, Mark done, its conversation — and the reader's next act last, in the primary
+ * ink, where the foot holds it (Take, Review, Mark done, Drop the need, a stranded Take's conversation); where
  * the body holds it (an answer), every press here is secondary. A refusal is said over them in HQ's
  * words; a write under way, in its own.
  */
@@ -475,13 +476,14 @@ function Actions({
             ) : null}
             {verbs !== undefined && can.release ? (
               <Button
+                aria-label={TAKEN_TASK_PRESSES.releaseName}
                 onClick={() => {
                   verbs.onRelease(row.id);
                 }}
                 size="sm"
                 variant="secondary"
               >
-                Release
+                {TAKEN_TASK_PRESSES.release}
               </Button>
             ) : null}
             {verbs !== undefined && can.done ? (
@@ -492,7 +494,7 @@ function Actions({
                 size="sm"
                 variant="secondary"
               >
-                Done
+                {TAKEN_TASK_PRESSES.done}
               </Button>
             ) : null}
             {can.conversation && row.route !== null ? (
