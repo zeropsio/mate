@@ -4,17 +4,25 @@ import { cn } from "~/lib/utils";
 
 /**
  * A key or a chord's key. `muted` stands on the page, a menu or a sentence; `ink` sits inside a
- * press, a chip in the press's own ink (a primary's ⌘↵), so it reads on any of its grounds.
+ * press or a tooltip, a chip in its own ink (a primary's ⌘↵), so it reads on any of its grounds.
+ * `sm` fits a line of caption type, as a tooltip's key does.
  */
 function Kbd({
   className,
   tone = "muted",
+  size = "default",
   ...props
-}: React.ComponentProps<"kbd"> & { readonly tone?: "muted" | "ink" }) {
+}: React.ComponentProps<"kbd"> & {
+  readonly tone?: "muted" | "ink";
+  readonly size?: "default" | "sm";
+}) {
   return (
     <kbd
       className={cn(
-        "pointer-events-none inline-flex h-5 min-w-5 select-none items-center justify-center gap-1 rounded-mark px-1 font-medium font-sans text-caption [&_svg:not([class*='size-'])]:size-3",
+        "pointer-events-none inline-flex select-none items-center justify-center gap-1 rounded-mark font-medium font-sans [&_svg:not([class*='size-'])]:size-3",
+        size === "sm"
+          ? "h-4 min-w-4 gap-px px-1 text-2xs tabular-nums"
+          : "h-5 min-w-5 px-1 text-caption",
         tone === "muted" ? "bg-muted text-muted-foreground" : "bg-current/18",
         className,
       )}

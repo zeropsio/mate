@@ -6,16 +6,31 @@ import {
   useEffect,
   useRef,
   type ComponentProps,
+  type ReactNode,
   type RefObject,
 } from "react";
 
 import { isFollowScroll } from "~/lib/followScroll";
 import { cn } from "~/lib/utils";
+import { Kbd } from "~/components/ui/kbd";
 import { gatedPortal } from "~/components/ui/portal-gate";
 
 const TooltipPortal = gatedPortal(TooltipPrimitive.Portal);
 
-const TooltipProvider = TooltipPrimitive.Provider;
+/**
+ * The app's tooltip timing: a short wait before the first one opens, then the next trigger's opens
+ * at once while the pointer moves along a row of them, and none lingers once it leaves.
+ */
+function TooltipProvider({
+  delay = 350,
+  closeDelay = 0,
+  timeout = 400,
+  ...props
+}: TooltipPrimitive.Provider.Props) {
+  return (
+    <TooltipPrimitive.Provider closeDelay={closeDelay} delay={delay} timeout={timeout} {...props} />
+  );
+}
 /** One tooltip for many triggers (a chart's bars): each trigger names it and passes its payload. */
 const TooltipCreateHandle = TooltipPrimitive.createHandle;
 
@@ -103,12 +118,32 @@ function TooltipTrigger(props: TooltipPrimitive.Trigger.Props) {
   );
 }
 
+/** How a tooltip draws what it holds: a label, a paragraph or card, a preview, a command. */
+type TooltipVariant = "default" | "rich" | "glass" | "code";
+
+const TOOLTIP_LOOK: Record<TooltipVariant, string> = {
+  // A label in the page's inverse: no edge, a soft lift, one line until it is long. Words inside
+  // that ask for the page's ink or its muted ink get the inverse's, so a second line stays quiet.
+  default:
+    "max-w-72 bg-tooltip text-pretty font-medium text-tooltip-foreground shadow-tooltip [--color-foreground:var(--color-tooltip-foreground)] [--color-muted-foreground:color-mix(in_oklab,var(--color-tooltip-foreground)_72%,transparent)]",
+  // A paragraph or a small card (a description, a preview, a chart's readout) on the popup's ground.
+  rich: "max-w-80 text-pretty",
+  glass: "dropdown-glass text-popover-foreground shadow-popup",
+  // Paths and commands: monospace that breaks anywhere, with room for a long one.
+  code: "max-w-120 text-left font-mono text-[11px] leading-relaxed",
+};
+
+/** The popup's own card, under `rich` and `code`: its ground, its edge and a small lift. */
+const TOOLTIP_CARD =
+  "border bg-popover bg-clip-ground text-popover-foreground shadow-md/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-control)-1px)] before:shadow-edge";
+
 function TooltipPopup({
   className,
   align = "center",
-  sideOffset = 4,
+  sideOffset = 6,
   side = "top",
   variant = "default",
+  shortcut,
   anchor,
   children,
   ...props
@@ -116,8 +151,13 @@ function TooltipPopup({
   align?: TooltipPrimitive.Positioner.Props["align"];
   side?: TooltipPrimitive.Positioner.Props["side"];
   sideOffset?: TooltipPrimitive.Positioner.Props["sideOffset"];
-  /** `code` renders monospace content that breaks anywhere, for paths and commands. */
-  variant?: "default" | "glass" | "code";
+  /**
+   * `default` is a label: the control's name in a few words. `rich` holds a paragraph or a small
+   * card; `code` a path or a command; `glass` a preview over the menu.
+   */
+  variant?: TooltipVariant;
+  /** The key that does the same, as this platform writes it (`⌘K`), after the label. */
+  shortcut?: ReactNode;
   anchor?: TooltipPrimitive.Positioner.Props["anchor"];
 }) {
   return (
@@ -132,24 +172,29 @@ function TooltipPopup({
       >
         <TooltipPrimitive.Popup
           className={cn(
-            "relative flex h-(--popup-height,auto) w-(--popup-width,auto) origin-(--transform-origin) text-balance rounded-control text-popover-foreground text-caption transition-[width,height,scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-control)-1px)] before:shadow-edge data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 data-instant:duration-0",
-            variant === "glass"
-              ? "dropdown-glass shadow-popup before:hidden"
-              : "border bg-popover bg-clip-ground shadow-md/5",
-            // One wrap width for prose; code dumps get more room and break anywhere.
-            variant === "code"
-              ? "max-w-120 wrap-anywhere text-left font-mono text-[11px] leading-relaxed"
-              : "max-w-80 wrap-anywhere whitespace-normal leading-snug",
+            "relative flex h-(--popup-height,auto) w-(--popup-width,auto) origin-(--transform-origin) whitespace-normal wrap-anywhere rounded-control text-caption transition-[width,height,opacity] duration-150 ease-out-strong data-ending-style:opacity-0 data-starting-style:opacity-0 data-instant:duration-0",
+            (variant === "rich" || variant === "code") && TOOLTIP_CARD,
+            TOOLTIP_LOOK[variant],
             className,
           )}
           data-slot="tooltip-popup"
+          data-variant={variant}
           {...props}
         >
           <TooltipPrimitive.Viewport
             className="relative size-full overflow-clip px-(--viewport-inline-padding) py-1 [--viewport-inline-padding:--spacing(2)] data-instant:transition-none **:data-current:data-ending-style:opacity-0 **:data-current:data-starting-style:opacity-0 **:data-previous:data-ending-style:opacity-0 **:data-previous:data-starting-style:opacity-0 **:data-current:w-[calc(var(--popup-width)-2*var(--viewport-inline-padding)-2px)] **:data-previous:w-[calc(var(--popup-width)-2*var(--viewport-inline-padding)-2px)] **:data-previous:truncate **:data-current:opacity-100 **:data-previous:opacity-100 **:data-current:transition-opacity **:data-previous:transition-opacity"
             data-slot="tooltip-viewport"
           >
-            {children}
+            {shortcut === undefined || shortcut === null ? (
+              children
+            ) : (
+              <span className="flex items-start gap-2">
+                <span className="min-w-0">{children}</span>
+                <Kbd aria-hidden="true" size="sm" tone="ink">
+                  {shortcut}
+                </Kbd>
+              </span>
+            )}
           </TooltipPrimitive.Viewport>
         </TooltipPrimitive.Popup>
       </TooltipPrimitive.Positioner>

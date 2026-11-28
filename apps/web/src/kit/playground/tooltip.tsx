@@ -12,25 +12,26 @@ export default definePlayground({
   controls: {
     variant: {
       kind: "enum",
-      options: ["default", "glass", "code"],
-      note: "code for paths and commands",
+      options: ["default", "rich", "glass", "code"],
+      note: "rich for a paragraph, code for paths and commands",
     },
+    shortcut: { kind: "text", note: "the key that does the same" },
     side: { kind: "enum", options: ["top", "right", "bottom", "left"] },
     text: { kind: "text" },
     open: { kind: "boolean", note: "held open to read it" },
   },
-  initial: { variant: "default", side: "top", text: "Deploys main", open: true },
-  render: ({ variant, side, text, open }) => (
+  initial: { variant: "default", side: "top", text: "Deploy main", shortcut: "", open: true },
+  render: ({ variant, side, text, shortcut, open }) => (
     <Tooltip open={open ? true : undefined}>
       <TooltipTrigger render={<Button aria-label="About deploys" size="icon-md" variant="ghost" />}>
         <InfoIcon />
       </TooltipTrigger>
-      <TooltipPopup side={side} variant={variant}>
+      <TooltipPopup shortcut={shortcut === "" ? undefined : shortcut} side={side} variant={variant}>
         {text}
       </TooltipPopup>
     </Tooltip>
   ),
-  jsx: ({ variant, side, text }) =>
+  jsx: ({ variant, side, text, shortcut }) =>
     jsxElement(
       "Tooltip",
       {},
@@ -38,16 +39,22 @@ export default definePlayground({
         '<TooltipTrigger render={<Button aria-label="About deploys" size="icon-md" variant="ghost" />}>',
         "  <InfoIcon />",
         "</TooltipTrigger>",
-        jsxElement("TooltipPopup", { side, variant }, text, { side: "top", variant: "default" }),
+        jsxElement("TooltipPopup", { side, variant, shortcut }, text, {
+          side: "top",
+          variant: "default",
+          shortcut: "",
+        }),
       ].join("\n"),
     ),
   usage: {
     do: [
       "Name an icon-only press in the same words as its aria-label.",
-      "Keep it to a line; the press's label already says the action.",
+      "Keep it to a label: verb and object, sentence case, no period.",
+      "Put the press's key in `shortcut`, never in the words.",
     ],
     dont: [
       "Hide something the person needs to act in a tooltip.",
+      "Write a paragraph in a label; when the paragraph is the point, use `rich`.",
       "Use the browser's title attribute instead.",
     ],
   },

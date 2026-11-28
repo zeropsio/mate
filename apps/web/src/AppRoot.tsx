@@ -12,6 +12,7 @@ import { RouterProvider } from "@tanstack/react-router";
 
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
 import { RenderErrorBoundary } from "./components/RenderErrorBoundary";
+import { TooltipProvider } from "./components/ui/tooltip";
 import { ZeropsAppFailed } from "./components/zerops/landing/ZeropsAppFailed";
 import { ZeropsDataStartupFailure } from "./components/zerops/landing/ZeropsDataStartupFailure";
 import { ZeropsFrameWait } from "./components/zerops/landing/ZeropsLandingShell";
@@ -87,10 +88,13 @@ export function AppRoot({ router }: { readonly router: AppRouter }) {
   // A throw above the router says so, rather than leaving the boot frame with nothing to say.
   return (
     <RenderErrorBoundary fallback={<ZeropsAppFailed onReload={() => window.location.reload()} />}>
-      <ZeropsSessionProvider>
-        <AccountProductBoundary router={router} />
-        <ZeropsHqOverlay />
-      </ZeropsSessionProvider>
+      {/* One timing for every tooltip, so moving along a row of them opens each at once. */}
+      <TooltipProvider>
+        <ZeropsSessionProvider>
+          <AccountProductBoundary router={router} />
+          <ZeropsHqOverlay />
+        </ZeropsSessionProvider>
+      </TooltipProvider>
     </RenderErrorBoundary>
   );
 }

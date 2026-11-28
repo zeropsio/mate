@@ -531,6 +531,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      surface it sits in, which sets --table-ground. */
   --color-table-ground: var(--table-ground, var(--color-card));
   --shadow-popup: var(--zerops-shadow-popup);
+  --shadow-tooltip: var(--zerops-shadow-tooltip);
   --shadow-edge: var(--zerops-shadow-edge);
   /* A handle dragged over a colour plane: a white ring with a dark hairline, alike in both
      appearances, since what lies under it is the colour itself. */
@@ -547,6 +548,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-segment-hover: var(--zerops-segment-hover);
   --color-item-hover: var(--zerops-item-hover);
   --color-item-picked: var(--zerops-item-picked);
+  --color-tooltip: var(--zerops-tooltip);
+  --color-tooltip-foreground: var(--zerops-tooltip-foreground);
   --color-shimmer: var(--zerops-shimmer);
   /* The glossary's update role (teal), the spine work is drawn on, and the ink a Mate's face
      draws its eyes and mouth in. */

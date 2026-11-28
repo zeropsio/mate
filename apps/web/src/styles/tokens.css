@@ -74,6 +74,11 @@
   --zerops-shadow-tab: 0 -8px 24px -18px rgb(0 0 0 / 45%);
   --zerops-shadow-dialog: 0 24px 64px -24px rgb(0 0 0 / 65%);
   --zerops-shadow-card: 0 1px 2px rgb(0 0 0 / 4%), 0 8px 24px -12px rgb(0 0 0 / 8%);
+  /* A tooltip: a label in the page's inverse, the ink's ground with the page's ink on it, so it
+     reads over anything in either appearance; its lift a contact shade and a short fall. */
+  --zerops-tooltip: var(--foreground);
+  --zerops-tooltip-foreground: var(--background);
+  --zerops-shadow-tooltip: 0 1px 2px rgb(0 0 0 / 12%), 0 4px 12px -4px rgb(0 0 0 / 24%);
   /* A dim behind a dialog that leaves the page readable under it. */
   --zerops-scrim: rgb(0 0 0 / 8%);
   /* A press's shade over a solid fill (the blue Release tag, the review door): darker ink, alike
@@ -194,6 +199,7 @@
     --zerops-shadow-tab: 0 -10px 28px -18px rgb(0 0 0 / 80%);
     --zerops-shadow-dialog: inset 0 1px rgb(255 255 255 / 4%), 0 24px 72px -20px rgb(0 0 0 / 90%);
     --zerops-shadow-card: 0 1px 2px rgb(0 0 0 / 20%), 0 8px 24px -12px rgb(0 0 0 / 40%);
+    --zerops-shadow-tooltip: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 16px -4px rgb(0 0 0 / 60%);
     --zerops-scrim: rgb(0 0 0 / 30%);
     --zerops-seam-shade: rgb(0 0 0 / 18%);
     --zerops-attachment-lift: rgb(255 255 255 / 2%);

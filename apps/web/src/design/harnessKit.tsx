@@ -13,6 +13,7 @@ import {
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { TooltipProvider } from "~/components/ui/tooltip";
 import { kitSearchQuery, validateKitSearch, type KitSearch } from "~/kit/kitAppearance";
 import { KIT_FLOWS } from "~/kit/kitFlows";
 import { KitPage } from "~/kit/KitPage";
@@ -54,7 +55,9 @@ const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      <RouterProvider router={router} />
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
     </StrictMode>,
   );
 }
