@@ -21,7 +21,7 @@ import { StatusPage } from "../ui/status-page";
 
 type Taking =
   | { readonly kind: "waiting" }
-  | { readonly kind: "linked"; readonly link: HqChatLink }
+  | { readonly kind: "linked"; readonly provider: HqChatLink["provider"] }
   | { readonly kind: "refused"; readonly words: string }
   | { readonly kind: "uncertain" };
 
@@ -57,7 +57,7 @@ export function ChatLinkPage() {
     if (orgId === null || operations === null) return said({ kind: "refused", words: HQ_NOT_OPEN });
     said({ kind: "waiting" });
     const { progress, link } = await operations.takeChatLink(orgId, code);
-    if (link !== undefined) said({ kind: "linked", link });
+    if (link !== undefined) said({ kind: "linked", provider: link.provider });
     else if (progress.stage === "uncertain") said({ kind: "uncertain" });
     else
       said({
@@ -78,7 +78,28 @@ export function ChatLinkPage() {
     void take();
   }, [live, take, waited]);
 
-  if (code === null && taking.kind === "waiting")
+  return (
+    <ChatLinkView
+      hasCode={code !== null}
+      onRetry={() => void take()}
+      organizationName={organization?.name}
+      taking={taking}
+    />
+  );
+}
+
+export function ChatLinkView({
+  hasCode,
+  onRetry,
+  organizationName,
+  taking,
+}: {
+  readonly hasCode: boolean;
+  readonly onRetry: () => void;
+  readonly organizationName: string | undefined;
+  readonly taking: Taking;
+}) {
+  if (!hasCode && taking.kind === "waiting")
     return (
       <StatusPage data-chat-link="no-code" title="This page needs a link from Mate">
         <p>Open the link Mate sent you in Slack or Discord again.</p>
@@ -94,11 +115,11 @@ export function ChatLinkPage() {
         />
       );
     case "linked": {
-      const platform = PLATFORM[taking.link.provider];
+      const platform = PLATFORM[taking.provider];
       return (
         <StatusPage data-chat-link="linked" title={`Your ${platform.name} account is linked`}>
           <p>
-            It speaks for you in {organization?.name ?? "this organization"}. {platform.ask}
+            It speaks for you in {organizationName ?? "this organization"}. {platform.ask}
           </p>
         </StatusPage>
       );
@@ -115,12 +136,12 @@ export function ChatLinkPage() {
     case "refused":
       return (
         <StatusPage
-          actions={code === null ? null : <Button onClick={() => void take()}>Try again</Button>}
+          actions={hasCode ? <Button onClick={onRetry}>Try again</Button> : null}
           data-chat-link="refused"
           title="Your chat account isn't linked"
         >
           <p>{taking.words}</p>
-          <p>You are signed in to {organization?.name ?? "no organization"}.</p>
+          <p>You are signed in to {organizationName ?? "no organization"}.</p>
         </StatusPage>
       );
   }
