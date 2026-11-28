@@ -655,7 +655,7 @@ const STATES: ReadonlyArray<{
   {
     id: "project",
     title:
-      "The project page's Board: what needs you, then what waits for review, then what is under way, at most six, and the way to the Board",
+      "The project page's Board: what needs you, then what waits for review, at most six, and the way to the Board with the rest in its totals",
     view: (
       <ProjectBoard
         admin={{ onAddMate: nothing }}
@@ -668,7 +668,8 @@ const STATES: ReadonlyArray<{
   },
   {
     id: "project-calm",
-    title: "The project page's Board with nothing that needs you: only the way to the Board",
+    title:
+      "The project page's Board with nothing that needs you: one quiet line, and the way to the Board",
     view: (
       <ProjectBoard
         admin={{ onAddMate: nothing }}

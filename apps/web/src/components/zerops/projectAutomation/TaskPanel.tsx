@@ -8,7 +8,7 @@
  */
 import { taskStatusTone, type TaskTone } from "~/zerops/taskStatus";
 import { ArrowUpRightIcon, XIcon } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type Ref } from "react";
 
 import { takeAnswerOnArrival } from "~/zerops/useBoardTasks";
 import { cn } from "~/lib/utils";
@@ -25,6 +25,7 @@ import type { BoardVerbs, BoardView } from "./boardView";
 import { faceOfRow, holderName, OpenPress, TaskLead, VerbPress } from "./BoardList";
 import type { RowPress } from "./projectAutomation.logic";
 import {
+  brokenWords,
   refLead,
   rowLead,
   taskStateWords,
@@ -51,12 +52,15 @@ export function TaskPanel({
   board,
   rows,
   onClose,
+  headingRef,
 }: {
   readonly row: BoardRow;
   readonly board: BoardView;
   /** Every row of the Board by its task, for the tasks it needs and those waiting on it. */
   readonly rows: ReadonlyMap<string, BoardRow>;
   readonly onClose: () => void;
+  /** Its title, which takes the focus as a sheet opens it, so no press lights a ring unasked. */
+  readonly headingRef?: Ref<HTMLHeadingElement> | undefined;
 }) {
   const { verbs } = board;
   const face = faceOfRow(row, board);
@@ -87,7 +91,11 @@ export function TaskPanel({
       </div>
       <ScrollArea className="min-h-0 flex-1" scrollFade>
         <div className="grid min-w-0 gap-6 px-5 pt-1 pb-6">
-          <h2 className="m-0 text-title leading-7 font-semibold text-balance text-foreground">
+          <h2
+            className="m-0 text-title leading-7 font-semibold text-balance text-foreground outline-none"
+            ref={headingRef}
+            tabIndex={-1}
+          >
             {row.title}
           </h2>
           {row.question !== null && row.lane === "waiting" ? (
@@ -111,11 +119,8 @@ export function TaskPanel({
           ) : row.broken.length > 0 ? (
             <Card size="sm" tone="attention" variant="wash">
               <Text render={<p />} variant="description">
-                <span className="text-foreground">
-                  {row.broken.length === 1 ? "A task it needs" : "Tasks it needs"} ended without its
-                  work.
-                </span>{" "}
-                Drop the need and it goes on without it, or stop it.
+                <span className="text-foreground">{`${brokenWords(row.broken)}.`}</span> Drop the
+                need and it goes on without it, or stop this task.
               </Text>
             </Card>
           ) : null}
@@ -136,7 +141,12 @@ export function TaskPanel({
                     />
                   </span>
                   <span className="min-w-0 tabular-nums">
-                    {[holderWords(row, face), row.time, row.cost]
+                    {[
+                      holderWords(row, face),
+                      row.time,
+                      row.worked === null ? null : `worked ${row.worked}`,
+                      row.cost,
+                    ]
                       .filter((said) => said !== null && said !== "")
                       .join(" · ")}
                   </span>
@@ -391,8 +401,10 @@ function Question({
 
 /**
  * The panel's foot: Stop on its own at the start (asked first, in place: Keep or Stop), the rest at
- * the end — Release, Done, its conversation — and the reader's next act last, in the primary ink. A
- * refusal is said over them in HQ's words; a write under way, in its own.
+ * the end — Release, Done, its conversation — and the reader's next act last, in the primary ink,
+ * where the foot holds it (Take, Review, Done, Drop the need, a stranded Take's conversation); where
+ * the body holds it (an answer), every press here is secondary. A refusal is said over them in HQ's
+ * words; a write under way, in its own.
  */
 function Actions({
   row,
@@ -485,7 +497,7 @@ function Actions({
                 label="Open its conversation"
                 onOpen={board.onOpen}
                 size="sm"
-                variant={primary === null ? "primary" : "secondary"}
+                variant="secondary"
               />
             ) : null}
             {verbs === undefined || primary === null ? null : (

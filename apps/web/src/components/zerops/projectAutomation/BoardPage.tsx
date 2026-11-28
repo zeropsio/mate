@@ -1,8 +1,9 @@
 /**
  * An application's Board on its own page, `/group/$groupId/board`: the whole Board using the width
  * (`BoardAutomation`), and the task picked (`?task=<id>`, so a task can be linked and survives a
- * reload) open in its panel beside it (`TaskPanel`). With room for both (1280 px of content) the
- * panel is a pane that pushes the list; with less, a sheet over it; on a phone, the screen's. Esc
+ * reload) open in its panel beside it (`TaskPanel`). The list runs to 880 px from the page's left
+ * edge; with room for both (1280 px of content) the panel stands beside it in a column kept for it,
+ * so the list never moves as it opens; with less, a sheet over it; on a phone, from the foot. Esc
  * closes it and gives the keyboard back to its row.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -22,7 +23,10 @@ import { BoardAutomation, useAppBoard } from "./ProjectAutomation";
 import { LANES, type BoardRow } from "./taskBoard.logic";
 import { TaskPanel } from "./TaskPanel";
 
-/** How wide the page's content must be for the panel to stand beside the list. */
+/**
+ * How wide the page's content must be for the panel to stand beside the list: the panel's 440 px,
+ * the 16 px between them and a list of at least 824 px (it runs to 880 where there is room).
+ */
 const PANE_ROOM = 1280;
 
 export function BoardPage({
@@ -89,6 +93,7 @@ export function BoardPageView({
   const rows = rowsOf(board);
   const row = board.selected == null ? undefined : rows.get(board.selected);
   const body = useRef<HTMLDivElement | null>(null);
+  const heading = useRef<HTMLHeadingElement | null>(null);
   const wide = useWide(body);
   const phone = useIsMobile();
   // The row the panel was opened from gets the keyboard back as it closes.
@@ -106,7 +111,14 @@ export function BoardPageView({
   const total = board.read.state === "known" ? rows.size : undefined;
   const panel =
     row === undefined ? null : (
-      <TaskPanel board={board} key={row.id} onClose={close} row={row} rows={rows} />
+      <TaskPanel
+        board={board}
+        headingRef={heading}
+        key={row.id}
+        onClose={close}
+        row={row}
+        rows={rows}
+      />
     );
   return (
     <div
@@ -125,19 +137,19 @@ export function BoardPageView({
       }}
     >
       <PageHeader count={total} title="Board" trail={trail} />
+      {/* The list holds its width and place whether a panel stands beside it or not: the
+          panel's column is kept, empty, until a task opens. */}
       <div
         className={cn(
-          "grid min-w-0 items-start transition-[grid-template-columns] duration-200 ease-out-strong motion-reduce:transition-none",
-          wide && panel !== null
-            ? "grid-cols-[minmax(0,1fr)_calc(440px+--spacing(4))]"
-            : "grid-cols-[minmax(0,1fr)_0px]",
+          "grid min-w-0 items-start justify-start gap-4",
+          wide ? "grid-cols-[minmax(0,880px)_440px]" : "grid-cols-[minmax(0,880px)]",
         )}
         ref={body}
       >
         <Card>{list}</Card>
         {wide && panel !== null ? (
           // A pane beside the list, held in view as the list scrolls under the page's top.
-          <div className="sticky top-6 flex max-h-[calc(100dvh-3rem)] min-w-0 flex-col ps-4 motion-safe:animate-board-panel-in">
+          <div className="sticky top-6 flex max-h-[calc(100dvh-3rem)] min-w-0 flex-col motion-safe:animate-board-panel-in">
             <Card className="flex min-h-0 flex-col">{panel}</Card>
           </div>
         ) : null}
@@ -149,7 +161,11 @@ export function BoardPageView({
           }}
           open={panel !== null}
         >
-          <SheetPopup showCloseButton={false} side={phone ? "bottom" : "right"}>
+          <SheetPopup
+            initialFocus={heading}
+            showCloseButton={false}
+            side={phone ? "bottom" : "right"}
+          >
             {panel}
           </SheetPopup>
         </Sheet>

@@ -152,13 +152,14 @@ it("MN+1: The Board draws Waiting for you first, then In progress, Up for review
   expect(LANES.map((lane) => lane.id)).toEqual(["waiting", "progress", "review", "queued", "done"]);
 });
 
-// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | const COMPACT_LANES: ReadonlyArray<Lane> = ["waiting", "review", "progress"]; → const COMPACT_LANES: ReadonlyArray<Lane> = ["progress", "review", "waiting"];
-it("MN+2: The project page's Board shows what waits for the reader, then what waits for their review, then what is under way, at most six rows and never a queued or ended task, and holds as many rows while the Board reads; breaks: a question to the reader falls off the project page behind work under way, or the page grows by the whole Board", () => {
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | const COMPACT_LANES: ReadonlyArray<Lane> = ["waiting", "review"]; → const COMPACT_LANES: ReadonlyArray<Lane> = ["review", "waiting"];
+it("MN+2: The project page's Board shows what waits for the reader, then what waits for their review, at most six rows and never a task under way, queued or ended, and holds as many rows while the Board reads; breaks: a question to the reader falls off the project page behind another's review, or the page grows by the whole Board", () => {
   const { lanes, ...board } = boardOf(
     [
-      ...["1", "2", "3", "4", "5"].map((id) => task({ id, state: "working", mate: sol })),
-      task({ id: "w", state: "waiting", mate: sol, detail: "Paid at checkout?" }),
-      task({ id: "r", state: "done", mate: sol, change: { repo: "shop", number: 4 } }),
+      task({ id: "r1", state: "done", mate: sol, change: { repo: "shop", number: 4 } }),
+      task({ id: "r2", state: "done", mate: sol, change: { repo: "shop", number: 5 } }),
+      ...["w1", "w2", "w3", "w4", "w5"].map((id) => task({ id, state: "waiting", mate: sol })),
+      task({ id: "p", state: "working", mate: sol }),
       task({ id: "q", state: "queued", position: 1 }),
       task({ id: "d", state: "merged", mate: sol, endedAt: "2026-11-27T11:00:00Z" }),
     ],
@@ -168,7 +169,7 @@ it("MN+2: The project page's Board shows what waits for the reader, then what wa
   expect({
     shown: compactRows({ lanes, ...board }).map((row) => row.id),
     predicted: compactPredicted({ queued: 3, progress: 4, waiting: 2, review: 1, done: 5 }),
-  }).toEqual({ shown: ["w", "r", "1", "2", "3", "4"], predicted: 6 });
+  }).toEqual({ shown: ["w1", "w2", "w3", "w4", "w5", "r1"], predicted: 3 });
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   if (holder?.kind === "pool" && row.lane !== "queued") →   if (holder?.kind === "pool")
@@ -215,7 +216,7 @@ it("MN+3: A row leads with who has the task wearing its state — a pool Mate at
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   if (row.lane === "waiting") { →   if (row.lane === "waiting" && row.question === null) {
-it("MN+4: The line under a row's title says, in place of the rest, what its Mate asks and of whom, which need broke, what it waits for, why it failed, or that it waits for review with its change; else where it came from, who has it and for how long, and its cost, an ended task saying how it ended and its change first; breaks: a question to the reader is hidden behind where the task came from, or a failure reads like any other ended task", () => {
+it("MN+4: The line under a row's title says, in place of the rest, what its Mate asks and of whom, which need broke, what it waits for, why it failed, or that it waits for review with its change where no lane's heading says so, else its change, who has it and its cost; else where it came from, who has it and for how long, and its cost, an ended task saying how it ended and its change first; breaks: a question to the reader is hidden behind where the task came from, a failure reads like any other ended task, or a row under Up for review says so a second time", () => {
   const { lanes } = boardOf(
     [
       task({ id: "a", state: "waiting", mate: sol, detail: "Paid at checkout?", source: put }),
@@ -253,7 +254,7 @@ it("MN+4: The line under a row's title says, in place of the rest, what its Mate
   const meta = (id: string) => {
     const row = all.find((each) => each.id === id);
     if (row === undefined) return null;
-    const said = rowMeta(row, IDLE, "Sol");
+    const said = rowMeta(row, IDLE, "Sol", false);
     return {
       tone: said.tone,
       kinds: said.parts.map((part) => part.kind),
@@ -270,6 +271,12 @@ it("MN+4: The line under a row's title says, in place of the rest, what its Mate
     failed: meta("f")?.tone,
     failedWhy: meta("f")?.words.includes("No catalogue file."),
     review: meta("r")?.kinds,
+    reviewInLane: (() => {
+      const row = all.find((each) => each.id === "r");
+      return row === undefined
+        ? null
+        : rowMeta(row, IDLE, "Sol", true).parts.map((part) => part.kind);
+    })(),
     working: meta("w")?.kinds,
     merged: meta("m")?.kinds,
   }).toEqual({
@@ -282,6 +289,7 @@ it("MN+4: The line under a row's title says, in place of the rest, what its Mate
     failed: "failed",
     failedWhy: true,
     review: ["words", "change"],
+    reviewInLane: ["change", "words", "words"],
     working: ["origin", "words", "words"],
     merged: ["words", "change", "words", "words"],
   });

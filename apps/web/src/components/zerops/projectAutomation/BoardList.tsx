@@ -352,7 +352,8 @@ function TaskRow({
   const { verbs } = board;
   const face = faceOfRow(row, board);
   const press = verbs?.pressOf(row.id) ?? RESTS;
-  const meta = rowMeta(row, press, holderName(row, face));
+  // On the Board's page a row stands under its lane's heading; on the project page, alone.
+  const meta = rowMeta(row, press, holderName(row, face), option !== undefined);
   const { primary } = taskVerbs({
     row,
     offer: verbs?.offerOf(row.id),
@@ -698,7 +699,12 @@ export function CompactBoard({
         rows === 0 ? null : (
           <Placeholders count={rows} />
         )
-      ) : rows.length === 0 ? null : (
+      ) : rows.length === 0 ? (
+        // Tasks on the Board, none of them the reader's to act on: said once, quietly.
+        <Text className="m-0 px-2.5 pt-1.5 pb-2" render={<p />} variant="description">
+          Nothing waits for you.
+        </Text>
+      ) : (
         <ul className={ROWS}>
           {rows.map((row) => (
             <TaskRow board={board} key={row.id} picked={false} row={row} />
@@ -795,11 +801,14 @@ const META = "truncate text-line leading-4.5 text-muted-foreground tabular-nums"
 /** The reader's one press, on the row's end, inside its ground. */
 const SEAT = "z-1 col-start-3 row-start-1 ms-3 me-2.5 self-center justify-self-end";
 
-/** The lanes: each a group, 20 px under the last. */
+/**
+ * The lanes: each a group, 24 px under the last — with its heading's room, its words stand more than
+ * twice as far from the rows above as from its own.
+ */
 const LANES_CLASS = "relative grid min-w-0 grid-cols-[minmax(0,1fr)]";
-const LANE = "grid min-w-0 [&+&]:mt-5";
-/** A lane's heading on the titles' edge, 6 px over its first row, held at the top as its rows scroll. */
-const LANE_HEADING = "sticky top-0 z-2 bg-card px-2.5 pt-1 pb-1.5";
+const LANE = "grid min-w-0 [&+&]:mt-6";
+/** A lane's heading on the rows' edge, hugging its first row, held at the top as its rows scroll. */
+const LANE_HEADING = "sticky top-0 z-2 bg-card px-2.5 pt-1";
 
 /** Done past its latest few, and its stand-in while read. */
 const MORE = "flex min-h-8 items-center ps-11.5 pe-2.5 pt-0.5";

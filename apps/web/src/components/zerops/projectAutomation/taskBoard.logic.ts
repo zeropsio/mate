@@ -150,10 +150,15 @@ export interface BoardRow {
   readonly state: string | null;
   /** Whom its Mate asks while it waits on a person: "you", or the person who put it. */
   readonly asks: string | null;
-  /** Whose and how long or when: "Sol · 12m", "Lark · 6d", "Pim · 3h ago", "4m". */
+  /** Whose and how long or when (`time`): "Sol · 12m", "Lark · 6d", "Pim · 3h ago", "4m". */
   readonly who: string;
-  /** How long or when alone: "12m", "6d", "3h ago"; empty where not known. */
+  /**
+   * How long or when alone: queued for "4m", its holder has had it for "12m", it ended "3h ago";
+   * empty where not known.
+   */
   readonly time: string;
+  /** How long its pool Mate reports it worked ("9m"), which is not how long it has had it; `null`: none. */
+  readonly worked: string | null;
   readonly cost: string;
   /** Its conversation in Mate, as an in-app path; `null` while none. */
   readonly route: string | null;
@@ -441,11 +446,9 @@ export function boardOf(
         ? shortAge(task.createdAt, nowMs)
         : lane === "done"
           ? (endedWords(task.endedAt, nowMs) ?? "—")
-          : holder?.kind === "person"
-            ? shortAge(task.takenAt ?? null, nowMs)
-            : workedMs == null
-              ? "—"
-              : workedWords(workedMs);
+          : // How long its holder has had it, on the history's clock: since a person took it, or
+            // since HQ handed it to a pool Mate.
+            shortAge((holder?.kind === "person" ? task.takenAt : task.startedAt) ?? null, nowMs);
     const holderName = holder?.kind === "person" ? holder.mate : (holder?.name ?? null);
     // Done with its change open: a Mate HQ holds waits for it while navigation still names it.
     if (status === "review" && holder?.kind === "pool" && change !== null) {
@@ -471,6 +474,8 @@ export function boardOf(
       asks: lane === "waiting" && broken.length === 0 ? askedOf(task, context) : null,
       who: whoWords(holderName, time),
       time: time === "—" ? "" : time,
+      // A pool Mate's own count of the minutes it worked, which its panel says as such.
+      worked: holder?.kind === "pool" && workedMs != null ? workedWords(workedMs) : null,
       // Nothing spent while queued; a person's own Mate spends their subscription, never the
       // organization's budget.
       cost:
@@ -516,11 +521,12 @@ export function boardWaitingCount(
 export const COMPACT_SHOWN = 6;
 
 /** The lanes the project page's Board shows rows of, in its order. */
-const COMPACT_LANES: ReadonlyArray<Lane> = ["waiting", "review", "progress"];
+const COMPACT_LANES: ReadonlyArray<Lane> = ["waiting", "review"];
 
 /**
  * The rows the project page's Board shows: what waits for the reader, then what waits for their
- * review, then what is under way, at most {@link COMPACT_SHOWN}; the rest are on the Board's page.
+ * review, at most {@link COMPACT_SHOWN}; the rest are on the Board's page, its totals beside its way
+ * there (`boardTotals`).
  */
 export function compactRows(board: Board): ReadonlyArray<BoardRow> {
   return COMPACT_LANES.flatMap((lane) => board.lanes[lane]).slice(0, COMPACT_SHOWN);
@@ -534,15 +540,20 @@ export function compactPredicted(predicted: PredictedBoard): number {
   );
 }
 
-/** The Board in one line, beside its door: "14 tasks · 3 queued · 5 done". */
+/**
+ * The rest of the Board in one line, beside its way there on the project page: what is under way,
+ * queued and done — "3 in progress · 3 queued · 3 done" — or how many tasks it holds where none is.
+ */
 export function boardTotals(board: Board): string {
-  const all = LANES.reduce((count, lane) => count + board.lanes[lane.id].length, 0);
-  const { queued, done } = board.lanes;
-  return [
-    counted(all, "task", "tasks"),
+  const { progress, queued, done } = board.lanes;
+  const parts = [
+    ...(progress.length > 0 ? [`${String(progress.length)} in progress`] : []),
     ...(queued.length > 0 ? [`${String(queued.length)} queued`] : []),
     ...(done.length > 0 ? [`${String(done.length)} done`] : []),
-  ].join(" · ");
+  ];
+  if (parts.length > 0) return parts.join(" · ");
+  const all = LANES.reduce((count, lane) => count + board.lanes[lane.id].length, 0);
+  return counted(all, "task", "tasks");
 }
 
 /** A task's own mark, where no face carries its state. */
@@ -629,22 +640,21 @@ const words = (said: string): MetaPart => ({ kind: "words", words: said });
 /**
  * The line under a row's title. Where it matters, one thing in place of the rest: the reader's
  * write under way or refused; a need that broke; what its Mate asks (`asker`, its name); what it
- * waits for; why it failed or stopped; that it waits for review, and its change. Else where it came
+ * waits for; why it failed or stopped; that it waits for review and its change, where no lane's
+ * heading says it waits (`inLane`), else its change, who has it and its cost. Else where it came
  * from, its state, who has it and for how long, and its cost — an ended task saying how it ended
  * first.
  */
-export function rowMeta(row: BoardRow, press: RowPress, asker: string | null): RowMeta {
+export function rowMeta(
+  row: BoardRow,
+  press: RowPress,
+  asker: string | null,
+  /** The row stands under its lane's heading, which says what its state's words would. */
+  inLane: boolean,
+): RowMeta {
   if (press.kind === "refused") return { tone: "failed", parts: [words(press.words)] };
   if (press.kind === "working") return { tone: null, parts: [words(press.words ?? "…")] };
-  if (row.broken.length > 0)
-    return {
-      tone: "attention",
-      parts: [
-        words(
-          `Needed ${listed(row.broken.map((need) => `${quoted(need.title)} (${need.ended ?? "ended"})`))}`,
-        ),
-      ],
-    };
+  if (row.broken.length > 0) return { tone: "attention", parts: [words(brokenWords(row.broken))] };
   if (row.lane === "waiting") {
     const mate = asker ?? "Its Mate";
     const whom = row.asks === null || row.asks === "you" ? "" : ` ${row.asks}`;
@@ -680,30 +690,47 @@ export function rowMeta(row: BoardRow, press: RowPress, asker: string | null): R
     };
   if (row.status === "stopped" && row.why !== null)
     return { tone: null, parts: [words(`Stopped: ${row.why}`)] };
+  const said = (text: string | null): ReadonlyArray<MetaPart> =>
+    text === null || text === "" ? [] : [words(text)];
+  const change: ReadonlyArray<MetaPart> = row.change === null ? [] : [{ kind: "change" }];
   if (row.lane === "review")
     return {
       tone: null,
-      parts: [
-        words(TASK_STATUS_WORDS.review),
-        ...(row.change === null ? [] : [{ kind: "change" } as const]),
-      ],
+      parts: inLane
+        ? [...change, ...said(row.who), ...said(row.cost)]
+        : [words(TASK_STATUS_WORDS.review), ...change],
     };
-  const said = (text: string | null): ReadonlyArray<MetaPart> =>
-    text === null || text === "" ? [] : [words(text)];
   if (row.lane === "done")
     return {
       tone: null,
-      parts: [
-        ...said(row.state),
-        ...(row.change === null ? [] : [{ kind: "change" } as const]),
-        ...said(row.who),
-        ...said(row.cost),
-      ],
+      parts: [...said(row.state), ...change, ...said(row.who), ...said(row.cost)],
     };
   return {
     tone: null,
     parts: [{ kind: "origin" }, ...said(row.state), ...said(row.who), ...said(row.cost)],
   };
+}
+
+/**
+ * What broke of a held task's needs, as its row and its panel say it: “Store balances” was
+ * stopped, “A” failed and “B” was closed unmerged.
+ */
+export function brokenWords(broken: ReadonlyArray<BoardNeed>): string {
+  return listed(
+    broken.map((need) => {
+      const what = quoted(need.title);
+      switch (need.ended) {
+        case "failed":
+          return `${what} failed`;
+        case "stopped":
+          return `${what} was stopped`;
+        case "closed unmerged":
+          return `${what} was closed unmerged`;
+        default:
+          return `${what} ended`;
+      }
+    }),
+  );
 }
 
 /** “A”, “A and B”, “A, B and C”. */

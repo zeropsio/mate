@@ -58,7 +58,7 @@ export function BoardSources({
   const count = rows.filter((row) => row.kind !== "failed").length;
   return (
     <div
-      className={cn(BOARD_ROW.lane, "mt-5")}
+      className={cn(BOARD_ROW.lane, "mt-6")}
       data-zerops-board="Takes tasks from"
       data-zerops-surface="project-automation-sources"
     >
