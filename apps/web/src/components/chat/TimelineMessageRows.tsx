@@ -466,7 +466,12 @@ function MateProseWords({
       ) : (
         <>
           {asked.rest === "" ? null : prose(asked.rest)}
-          <TaskQuestion question={asked.question} task={ctx.automatedTask} turnId={turnId} />
+          <TaskQuestion
+            alone={asked.rest === ""}
+            question={asked.question}
+            task={ctx.automatedTask}
+            turnId={turnId}
+          />
         </>
       )}
     </>
@@ -475,13 +480,19 @@ function MateProseWords({
 
 /**
  * The Mate asking, as a card on the column's edges like the run's, out of the prose's inset; with
- * the way to answer while it is the latest turn's and its task still waits on it.
+ * the way to answer while it is the latest turn's and its task still waits on it. It keeps the
+ * turn's rhythm though it stands in a row of words: the row's room above (`part-words`) and under
+ * it (`turn-after-words`) count on a line's leading the card has not, so it takes that leading as
+ * its margin, and stands a part's room under words before it.
  */
 function TaskQuestion({
+  alone,
   question,
   task,
   turnId,
 }: {
+  /** It is all the row says: no words stand above it. */
+  readonly alone: boolean;
   readonly question: string;
   readonly task: ConversationTask;
   readonly turnId: TurnId | null;
@@ -490,7 +501,7 @@ function TaskQuestion({
   const { latestTurnId } = use(TimelineRowActivityCtx);
   const latest = turnId !== null && turnId === latestTurnId && ctx.threadRef !== null;
   return (
-    <div className={cn(TEXT_EDGE_OUT, "mt-3")}>
+    <div className={cn(TEXT_EDGE_OUT, alone ? "mt-0.75" : "mt-5.25", "pb-0.75")}>
       <TaskQuestionView
         answer={
           !latest || ctx.threadRef === null ? null : (
