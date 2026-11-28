@@ -21,7 +21,7 @@ import {
 import type { BoardFace } from "~/zerops/useBoardTasks";
 import { cn } from "~/lib/utils";
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Dot } from "../../ui/dot";
 import { Failure } from "../../ui/failure";
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
@@ -30,7 +30,6 @@ import { SectionHeader } from "../../ui/section";
 import { Skeleton } from "../../ui/skeleton";
 import { Text } from "../../ui/text";
 import { MateFace } from "../primitives";
-import { SectionAction } from "../system";
 import { TaskGlyph } from "../board/TaskGlyph";
 import { useRowMotion } from "./useRowMotion";
 import type { BoardVerbs, BoardView } from "./boardView";
@@ -689,16 +688,23 @@ export function BoardLanes({
               ))}
             </ul>
             {lane.id === "done" && rows.length > RECENT_SHOWN ? (
-              // Done past its latest few: opened in place, on the titles' edge.
-              <div className={MORE}>
-                <SectionAction
+              // Done past its latest few: opened in place, its words on the titles' edge in the
+              // rows' meta ink, so it reads as the list going on rather than a link of its own.
+              <Text className={MORE} render={<div />} variant="remark">
+                <InlineButton
+                  aria-expanded={all}
                   onClick={() => {
                     setAll(!all);
                   }}
+                  tone="muted"
                 >
                   {all ? "Show fewer" : `Show all ${String(rows.length)}`}
-                </SectionAction>
-              </div>
+                  <ChevronDownIcon
+                    aria-hidden="true"
+                    className={cn("transition-transform duration-150", all && "rotate-180")}
+                  />
+                </InlineButton>
+              </Text>
             ) : null}
           </div>
         );
