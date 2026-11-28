@@ -472,8 +472,8 @@ export const EngineSendInput = Schema.Struct({
   about: Schema.optionalKey(MessageAbout),
   /**
    * A task of the Board the person took for this Mate (HQ's `take` answered first): the message is
-   * its brief, drawn as the task's card, and the conversation is the task's from then on — a change
-   * it opens is linked to the task. Only a conversation's first message carries it.
+   * its brief, drawn as the task's card, into a new conversation or one under way, whose task in
+   * hand it is from then on — a change the conversation opens is linked to it.
    */
   taken: Schema.optionalKey(TakenTask),
 });

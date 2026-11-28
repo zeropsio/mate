@@ -1156,8 +1156,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
   /** What a page wrote it about (`MessageAbout`): its Mate's row works on it while its run is on. */
   about: Schema.optional(MessageAbout),
   /**
-   * A task of the Board the person took for this Mate: the message is its brief and the
-   * conversation is the task's (`EngineSendInput.taken`). Only a new conversation's first message.
+   * A task of the Board the person took for this Mate: the message is its brief, and the task is
+   * the conversation's task in hand from then on (`EngineSendInput.taken`).
    */
   taken: Schema.optional(TakenTask),
   createdAt: IsoDateTime,
@@ -1190,8 +1190,8 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   /** What a page wrote it about (`MessageAbout`): its Mate's row works on it while its run is on. */
   about: Schema.optional(MessageAbout),
   /**
-   * A task of the Board the person took for this Mate: the message is its brief and the
-   * conversation is the task's (`EngineSendInput.taken`). Only a new conversation's first message.
+   * A task of the Board the person took for this Mate: the message is its brief, and the task is
+   * the conversation's task in hand from then on (`EngineSendInput.taken`).
    */
   taken: Schema.optional(TakenTask),
   createdAt: IsoDateTime,

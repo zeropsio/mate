@@ -79,6 +79,20 @@ const said = (
   return next === undefined ? state : withRun(state, id, (run) => ({ ...run, lastSaid: next }));
 };
 
+/**
+ * A taken task's brief, in a conversation that is not the Mate's tasks one, takes the task into it:
+ * it becomes the task in hand, last of `takenTasks`, where a second Take of it moves it.
+ */
+const takenInto = (
+  state: ConversationState,
+  body: Extract<ItemBody, { kind: "person" }>,
+): ConversationState => {
+  const taskId = body.taskId;
+  if (taskId === undefined || isMateTaskConversation(state.conversationId)) return state;
+  if (state.takenTasks.at(-1) === taskId) return state;
+  return { ...state, takenTasks: [...state.takenTasks.filter((id) => id !== taskId), taskId] };
+};
+
 /** What a question asked by message asks, by question id: its answer's message names each. */
 const askedQuestions = (
   questions: ReadonlyArray<unknown>,
@@ -314,20 +328,14 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         };
         // Only a message waiting for its own run is newer work; another Mate's is never the
         // person writing, so it holds back no resume or continuation of theirs.
-        // A taken task's brief opens its conversation: the conversation is the task's from then on.
-        const taken =
-          body.taskId !== undefined &&
-          answered.takenTask === undefined &&
-          !isMateTaskConversation(answered.conversationId)
-            ? { ...answered, takenTask: body.taskId }
-            : answered;
+        const taken = takenInto(answered, body);
         return body.delivery.state === "queued" && body.mateMessage === undefined
           ? { ...taken, lastPersonSeq: event.seq }
           : taken;
       }
       // A steered message joins the run, open with it: its steer's outcome may still change it.
       return {
-        ...counted,
+        ...(body.kind === "person" ? takenInto(counted, body) : counted),
         items: {
           ...counted.items,
           [event.itemId]: {

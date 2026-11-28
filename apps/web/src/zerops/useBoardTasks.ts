@@ -119,7 +119,7 @@ export const strandedTakesAtom = Atom.make((get): ReadonlyArray<StrandedTake> =>
       listed: get(environmentShell.threadsListedAtom(environmentId)),
       namesTaken:
         get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-          .conversationTakenTask === true,
+          .conversationTakenTasks === true,
       carried: get(mateTakenTasksAtom(environmentId)).map((each) => each.taskId),
     };
     for (const task of strandedTakes(taken, conversations))

@@ -46,9 +46,10 @@ export const KEPT_ENDED_RUNS = 16;
  * instance its latest admission ask was for (`preparedFor`) and how many it made (`prepareAsks`).
  * 21 keeps the last context reading recorded at a turn end. 22 keeps the usage refusal and its credential.
  * 23 drops the history import's progress. 24 keeps closed items by run. 25 refolds notices with
- * their failure sources after the stored events have been brought to the current shape.
+ * their failure sources after the stored events have been brought to the current shape. 26 keeps
+ * every task taken into it (`takenTasks`), not only its first.
  */
-export const STATE_VERSION = 25;
+export const STATE_VERSION = 26;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -354,12 +355,12 @@ export interface ConversationState {
    */
   readonly sessionTask: string | null;
   /**
-   * The task of the Board a person took for this Mate that this conversation works (its first
-   * message's `taskId`, in a conversation that is not the Mate's tasks one): a change it opens is
-   * linked to that task (`task.change`). Read loosely: absent from a snapshot before it, and
-   * from every other conversation.
+   * The tasks of the Board a person took for this Mate into this conversation (each brief's
+   * `taskId`, in a conversation that is not the Mate's tasks one), in the order of their latest
+   * Take: the last is the task in hand (`taskInHand`), which a change it opens is linked to
+   * (`task.change`).
    */
-  readonly takenTask?: string;
+  readonly takenTasks: ReadonlyArray<string>;
   /**
    * A usage limit holds the queue until then; `"unknown"` until a probe or a known reset ends it,
    * or the person writes again.
@@ -421,6 +422,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   brief: null,
   lastNativeRef: null,
   sessionTask: null,
+  takenTasks: [],
   pausedUntil: null,
   usageLimit: null,
   usageProbeMs: null,
@@ -436,6 +438,9 @@ export const initialState = (conversationId: ConversationId): ConversationState 
 
 export const activeRun = (state: ConversationState): RunRecord | undefined =>
   state.activeRunId === null ? undefined : state.runs[state.activeRunId];
+
+/** The task in hand: the task taken into the conversation last; none where none was. */
+export const taskInHand = (state: ConversationState): string | undefined => state.takenTasks.at(-1);
 
 /** A short digest of a body's content: a signal delivered again carries the same one. */
 export const contentDigest = (value: unknown): string => {

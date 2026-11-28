@@ -4,7 +4,6 @@
  * @module engine/domain/decide.send
  */
 import {
-  isMateTaskConversation,
   itemId as deriveItemId,
   runId as deriveRunId,
   type RunId,
@@ -28,13 +27,6 @@ export const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>
   if (b.state.archived) throw new Rejected("archived");
   const attachments = command.attachments ?? [];
   if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
-  // A taken task's brief opens a conversation of its own: never a message into one under way.
-  if (
-    command.taskId !== undefined &&
-    !isMateTaskConversation(b.state.conversationId) &&
-    (b.state.lastPersonSeq > 0 || b.state.takenTask !== undefined)
-  )
-    throw new Rejected("unknown", "A task taken from the Board opens a conversation of its own.");
   refuseOverWork(b);
   // The agent hears the context with the words; the person's item keeps only what they typed.
   const told =
@@ -42,11 +34,26 @@ export const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>
     (command.maintenance === true || command.card !== undefined
       ? command.text
       : toldWith(command.text, command.context));
+  // A task's brief or follow-up names its task wherever it goes: queued, or into a sleeping turn.
+  const tasked = {
+    ...(command.task === undefined ? {} : { task: command.task }),
+    ...(command.taskAsk === undefined ? {} : { taskAsk: command.taskAsk }),
+    ...(command.taskId === undefined ? {} : { taskId: command.taskId }),
+  };
   // A Mate's message waits for the turn asleep on the person's answer: it is never that answer.
   const sleeping = command.mateMessage === undefined ? sleepingTurn(b) : undefined;
   if (sleeping !== undefined) {
     // Queued behind it, the message would never come: the turn waits for it.
-    steerInto(b, sleeping.run, sleeping.sessionId, command.text, attachments, told, command.about);
+    steerInto(
+      b,
+      sleeping.run,
+      sleeping.sessionId,
+      command.text,
+      attachments,
+      told,
+      command.about,
+      tasked,
+    );
     return;
   }
   const ordinal = b.state.nextRunOrdinal;
@@ -77,10 +84,8 @@ export const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>
             sendId: b.envelope.commandId,
             ...(command.fromPanel === true ? { fromPanel: true as const } : {}),
             ...(command.about === undefined ? {} : { about: command.about }),
-            ...(command.task === undefined ? {} : { task: command.task }),
-            ...(command.taskAsk === undefined ? {} : { taskAsk: command.taskAsk }),
+            ...tasked,
             ...(command.taskMessage === undefined ? {} : { taskMessage: command.taskMessage }),
-            ...(command.taskId === undefined ? {} : { taskId: command.taskId }),
             ...(command.mateMessage === undefined ? {} : { mateMessage: command.mateMessage }),
             delivery: { state: "queued", at: null },
           }

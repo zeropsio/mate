@@ -135,9 +135,9 @@ export function mateBoardProtocolOf(source: MateTaskSource): number {
 }
 
 /**
- * A task of the Board a person took for one of their own Mates, as its conversation's first message
- * carries it: HQ's id of the task and where it came from. The message is its brief, sent as the
- * person, and the conversation is the task's from then on.
+ * A task of the Board a person took for one of their own Mates, as its brief carries it: HQ's id of
+ * the task and where it came from. The brief is sent as the person into the conversation it is
+ * taken into, whose task in hand it is from then on (`ConversationRow.takenTasks`).
  */
 export const TakenTask = Schema.Struct({ taskId: TrimmedNonEmptyString, source: MateTaskSource });
 export type TakenTask = typeof TakenTask.Type;

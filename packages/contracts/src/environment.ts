@@ -125,10 +125,11 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       servers, which refuse the field: a setup filled in from a card writes it only where this
       is true, and the card then says only that the Mate has a crew. */
   crewCardAsk: Schema.optionalKey(Schema.Boolean),
-  /** Server names on each conversation's row the Board task it was opened for
-      (`ConversationRow.takenTask`). Absent on older servers, whose rows name
-      none: a client reads no taken task's conversation as missing there. */
-  conversationTakenTask: Schema.optionalKey(Schema.Boolean),
+  /** Server names on each conversation's row the Board tasks taken into it
+      (`ConversationRow.takenTasks`), a Take landing in a conversation under way.
+      Absent on older servers, whose rows name none: a client reads no taken
+      task's conversation as missing there. */
+  conversationTakenTasks: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

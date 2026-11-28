@@ -1027,11 +1027,11 @@ export const ConversationRow = Schema.Struct({
    */
   workingOn: Schema.optionalKey(ConversationWorkingOn),
   /**
-   * The Board task a person took that this conversation was opened for (its brief's `taskId`), from
-   * its first message on. Absent: it carries none, and on a server from before it
-   * (`ExecutionEnvironmentCapabilities.conversationTakenTask`).
+   * The Board tasks a person took into this conversation (each brief's `taskId`), in the order of
+   * their latest Take: the last is the task in hand, which a change it opens is linked to. Absent:
+   * none, and on a server from before it (`ExecutionEnvironmentCapabilities.conversationTakenTasks`).
    */
-  takenTask: Schema.optionalKey(Schema.String),
+  takenTasks: Schema.optionalKey(Schema.Array(Schema.String)),
   /** How freely its agent works, once a person set it; absent: the workspace's mode. */
   runtimeMode: Schema.optionalKey(forwardCompatibleLiterals(RuntimeMode.literals)),
   /** The pool container its agent leased, which it works in; absent: none. */

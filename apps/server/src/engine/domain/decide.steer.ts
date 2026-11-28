@@ -13,7 +13,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { Command } from "./command.ts";
-import type { ConversationState, RunRecord } from "./state.ts";
+import type { ConversationState, PersonBody, RunRecord } from "./state.ts";
 import { steeredWith, toldWith } from "./told.ts";
 import { Rejected, type StepBuilder } from "./decide.step.ts";
 import { actsForSomeone } from "./decide.runs.ts";
@@ -61,6 +61,8 @@ const mateSenderOf = (state: ConversationState, run: RunRecord): string | undefi
 /**
  * The person's message into the run's turn: its item, steered, and the effect that sends it. The
  * item keeps `text`, what the person typed; the agent is sent `told`, the context in front of it.
+ * A taken task's brief keeps its task (`taken`): its card, and the task it takes into the
+ * conversation.
  */
 export const steerInto = (
   b: StepBuilder,
@@ -70,6 +72,7 @@ export const steerInto = (
   attachments: ReadonlyArray<PersonAttachment>,
   told: string = text,
   about?: MessageAbout,
+  taken?: Pick<PersonBody, "task" | "taskAsk" | "taskId">,
 ): EffectId => {
   const item = deriveItemId(run.id, run.nextItemOrdinal);
   b.emit({
@@ -84,6 +87,7 @@ export const steerInto = (
       attachments: [...attachments],
       sendId: b.envelope.commandId,
       ...(about === undefined ? {} : { about }),
+      ...taken,
       delivery: { state: "steered", at: b.now },
     },
   });

@@ -112,7 +112,7 @@ const play = (conversation: ConversationId, steps: ReadonlyArray<Command>) => {
     effects.push(...decided.step.effects);
     state = fold(state, stampEvents(state.headSeq, envelope, decided.step.events, T0 + index));
   });
-  return { effects, refused };
+  return { state, effects, refused };
 };
 
 const TAKEN = {
@@ -126,8 +126,23 @@ const TAKEN = {
   },
 } as const;
 
-/** A conversation whose first message is `first`, at work, opening change kiln#4 and then a second message. */
-const opening = (conversation: ConversationId, first: Command) => {
+/** A change kiln#`number` the agent opened on session s1. */
+const changeOpened = (number: number): Command => ({
+  _tag: "ProviderSignals",
+  sessionId: s1,
+  signals: [{ kind: "change-opened", repo: "kiln", number }],
+});
+
+/** A brief of the person's Take of `taskId` from the Board. */
+const take = (taskId: string): Command => ({
+  _tag: "Send",
+  text: "Also the footer.",
+  ...TAKEN,
+  taskId,
+});
+
+/** A conversation whose first message is `first`, at work, opening change kiln#4, then `rest`. */
+const opening = (conversation: ConversationId, first: Command, rest: ReadonlyArray<Command>) => {
   const r1 = runId(conversation, 1);
   return play(conversation, [
     first,
@@ -140,40 +155,45 @@ const opening = (conversation: ConversationId, first: Command) => {
       capabilities: { steer: false },
     }),
     settled(r1, "provider.send", { providerTurnId: "t1" }),
-    {
-      _tag: "ProviderSignals",
-      sessionId: s1,
-      signals: [{ kind: "change-opened", repo: "kiln", number: 4 }],
-    },
-    { _tag: "Send", text: "Also the footer.", taskId: "task-8", task: TAKEN.task },
+    changeOpened(4),
+    ...rest,
   ]);
 };
 
 const links = (effects: ReadonlyArray<EffectDraft>) =>
   effects.filter((effect) => effect.kind === "task.change").map((effect) => effect.payload);
 
-// witness: apps/server/src/engine/domain/decide.send.ts | (b.state.lastPersonSeq > 0 || b.state.takenTask !== undefined) → b.state.takenTask !== undefined
-it("ED147: A conversation opened with a task the person took from the Board links each change it opens to that task, and a conversation no task was taken for links none; a taken task's brief into a conversation under way is refused; breaks: a person's taken task never ends when its change merges, or another conversation's change is attached to it", () => {
-  const taken = opening(ConversationId.make("ana-take"), {
-    _tag: "Send",
-    text: "The menu reads every visit; cache it.",
-    ...TAKEN,
-  });
-  const plain = opening(ConversationId.make("ana-chat"), {
-    _tag: "Send",
-    text: "Cache the menu.",
-  });
-  // the trailing send names another task: refused in both, the conversation is already under way
-  expect({
-    taken: links(taken.effects),
-    takenRefused: taken.refused,
-    plain: links(plain.effects),
-    plainRefused: plain.refused,
-  }).toEqual({
-    taken: [{ taskId: "task-7", repo: "kiln", number: 4 }],
-    takenRefused: [5],
+// witness: apps/server/src/engine/domain/decide.taskChange.ts | const taskId = taskInHand(b.state); → const taskId = b.state.takenTasks[0];
+it("ED147: A change a conversation opens is linked to the task in hand, the task the person took from the Board into it last, and a conversation no task was taken into links none; breaks: a person's taken task never ends when its change merges, or another task's change is attached to it", () => {
+  const taken = opening(
+    ConversationId.make("ana-chat"),
+    { _tag: "Send", text: "The menu reads every visit; cache it.", ...TAKEN },
+    [take("task-8"), changeOpened(5)],
+  );
+  const plain = opening(
+    ConversationId.make("ben-chat"),
+    { _tag: "Send", text: "Cache the menu." },
+    [changeOpened(5)],
+  );
+  expect({ taken: links(taken.effects), plain: links(plain.effects) }).toEqual({
+    taken: [
+      { taskId: "task-7", repo: "kiln", number: 4 },
+      { taskId: "task-8", repo: "kiln", number: 5 },
+    ],
     plain: [],
-    plainRefused: [5],
+  });
+});
+
+// witness: apps/server/src/engine/domain/evolve.ts | return { ...state, takenTasks: [...state.takenTasks.filter((id) => id !== taskId), taskId] }; → return { ...state, takenTasks: [...state.takenTasks, taskId] };
+it("ED+1: A task taken into a conversation under way joins the tasks taken into it as the task in hand, and a task taken into it again comes back in hand, listed once; breaks: a Take into the Mate's main conversation is refused, or a task taken twice stands twice on its conversation's row", () => {
+  const chat = opening(ConversationId.make("ana-chat"), { _tag: "Send", text: "Cache the menu." }, [
+    take("task-7"),
+    take("task-8"),
+    take("task-7"),
+  ]);
+  expect({ takenTasks: chat.state.takenTasks, refused: chat.refused }).toEqual({
+    takenTasks: ["task-8", "task-7"],
+    refused: [],
   });
 });
 

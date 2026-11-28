@@ -1,7 +1,7 @@
 /**
  * Whether a task a person took from the Board for their Mate has its conversation: HQ says what they
- * took (the Mate's `taken`), the Mate's conversation rows say which task each was opened for
- * (`ConversationRow.takenTask`). A taken task none of them carries is stranded — the Take's
+ * took (the Mate's `taken`), the Mate's conversation rows say which tasks were taken into each
+ * (`ConversationRow.takenTasks`). A taken task none of them carries is stranded — the Take's
  * conversation did not open, or its brief did not go — and offers **Open its conversation**, on
  * every surface and device, from what HQ and the Mate hold rather than from the tab that pressed.
  *
@@ -19,9 +19,9 @@ export const OPENING_TAKEN_WORDS = "Opening its conversation…";
 export interface TakenConversations {
   /** The list naming its conversations has answered whole here (`threadsListedAtom`). */
   readonly listed: boolean;
-  /** Its server names each row's taken task (`conversationTakenTask`); an older one names none. */
+  /** Its server names each row's taken tasks (`conversationTakenTasks`); an older one names none. */
   readonly namesTaken: boolean;
-  /** The tasks its conversations were opened for, one per conversation that carries one. */
+  /** The tasks taken into its conversations. */
   readonly carried: ReadonlyArray<string>;
 }
 

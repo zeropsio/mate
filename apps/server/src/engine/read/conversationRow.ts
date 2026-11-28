@@ -307,7 +307,7 @@ export const conversationRowOf = (
           })),
         }),
     ...(view.workingOn === undefined ? {} : { workingOn: view.workingOn }),
-    ...(view.takenTask === undefined ? {} : { takenTask: view.takenTask }),
+    ...(view.takenTasks === undefined ? {} : { takenTasks: [...view.takenTasks] }),
     ...(view.runtimeMode == null ? {} : { runtimeMode: view.runtimeMode }),
     ...(view.lease == null ? {} : { lease: view.lease }),
     ...(view.archived ? { archived: true as const } : {}),
