@@ -370,7 +370,6 @@ function Question({
     requestAnimationFrame(() => answerField.focus());
   }, [verbs, row.id, row.question]);
   if (row.question === null) return null;
-  const whom = row.asks === null || row.asks === "you" ? "" : ` ${row.asks}`;
   return (
     <BoardTaskQuestion
       answer={
@@ -383,7 +382,8 @@ function Question({
               },
             }
       }
-      asker={`${asker} asks${whom}`}
+      asker={asker}
+      asks={row.asks === null || row.asks === "you" ? undefined : row.asks}
       fieldRef={field}
       question={row.question}
       wash

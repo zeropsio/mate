@@ -5,7 +5,7 @@
  * task stands is the card's done line (`boardTaskStateWords`). Props only: the card reads its
  * sources.
  */
-import { ArrowUpRightIcon } from "lucide-react";
+import { ArrowUpIcon, ArrowUpRightIcon } from "lucide-react";
 import { useState, type ReactNode, type Ref } from "react";
 
 import type { BoardFace } from "~/zerops/useBoardTasks";
@@ -13,6 +13,7 @@ import type { BoardFace } from "~/zerops/useBoardTasks";
 import type { BoardRow } from "../projectAutomation/taskBoard.logic";
 import { Button, InlineButton } from "../../ui/button";
 import { Card } from "../../ui/card";
+import { ComposerFrame } from "../../ui/composer-frame";
 import { Text } from "../../ui/text";
 import { Textarea } from "../../ui/textarea";
 import { MateFace, PersonAvatar } from "../primitives";
@@ -87,11 +88,7 @@ export function BoardTaskRowView({
         </Text>
       </div>
       {question === null ? null : (
-        <BoardTaskQuestion
-          answer={answer}
-          asker={`${who ?? "Its Mate"} asks`}
-          question={question}
-        />
+        <BoardTaskQuestion answer={answer} asker={who ?? "Its Mate"} question={question} />
       )}
     </div>
   );
@@ -103,14 +100,17 @@ export function BoardTaskRowView({
  */
 export function BoardTaskQuestion({
   asker,
+  asks,
   question,
   answer,
   fieldRef,
   wash = false,
   children,
 }: {
-  /** Who asks, as its words lead: "Sol asks", "Sol asks Rhea". */
+  /** Who asks: "Sol". */
   readonly asker: string;
+  /** Whom it asks where that is not the reader: "Rhea". */
+  readonly asks?: string | undefined;
   readonly question: string;
   readonly answer: Parameters<typeof BoardTaskRowView>[0]["answer"];
   /** The answer field, for a press that brings the person to it. */
@@ -122,44 +122,55 @@ export function BoardTaskQuestion({
 }) {
   const [text, setText] = useState("");
   const sending = answer?.state.kind === "sending";
+  const ready = answer !== undefined && !sending && text.trim() !== "";
   const send = () => {
-    if (answer === undefined || text.trim() === "") return;
+    if (!ready) return;
     answer.onSend(text.trim());
     setText("");
   };
   return (
     <Card size="sm" tone={wash ? "attention" : undefined} variant={wash ? "wash" : "inset"}>
       <Text render={<p />} variant="description">
-        <span className="font-medium text-foreground">{asker}:</span> {question}
+        <span className="font-medium text-foreground">
+          {asker} asks{asks === undefined ? "" : ` ${asks}`}:
+        </span>{" "}
+        {question}
       </Text>
       {children}
       {answer === undefined ? null : (
         <div className="grid min-w-0 gap-1.5">
-          <div className="flex min-w-0 items-end gap-2">
+          {/* The message box a conversation's words are written in: the answer reaches its Mate
+              as a message, so it is written like one. Text only: HQ carries it as words. */}
+          <ComposerFrame size="card">
             <Textarea
               aria-label="Your answer"
+              className="flex-1"
               disabled={sending}
               ref={fieldRef}
               onChange={(event) => setText(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                // As in a conversation: Enter sends, Shift+Enter starts a new line.
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   send();
                 }
               }}
-              placeholder="Answer it here"
-              size="sm"
+              placeholder={`Answer ${asker}…`}
+              rows={1}
+              size="line"
               value={text}
             />
             <Button
-              disabled={sending || text.trim() === ""}
+              aria-label="Send the answer"
+              disabled={!ready}
               onClick={send}
-              size="sm"
-              variant="secondary"
+              shape="round"
+              size="icon-sm"
+              variant="send"
             >
-              Send
+              <ArrowUpIcon aria-hidden="true" strokeWidth={2.2} />
             </Button>
-          </div>
+          </ComposerFrame>
           {answer.state.kind === "sent" ? (
             <Text render={<p />} variant="note">
               Sent. It goes on from your answer.
