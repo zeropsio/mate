@@ -1218,8 +1218,8 @@ export function changeLineWords(
 /**
  * An automated Mate's line where it says nothing of its own: at work, the task it is on; at rest
  * on a task it asked a person about, that it waits for them — in ink, the question is theirs to
- * answer where the task came from; at rest on a task whose change is open (HQ's row reads it until
- * the change is merged or closed, while the Mate takes other tasks), that task waiting for review —
+ * answer where the task came from; at rest on its newest task whose change is open (HQ's row names
+ * the task it is on, else its newest, whatever became of older ones), that task waiting for review —
  * or, where several of its changes wait, how many; free, that it waits for the organization's API
  * key where it holds none, else its last task and how it ended (`lastTaskLine`), else that it never
  * had one. A task whose change is a pull request on
