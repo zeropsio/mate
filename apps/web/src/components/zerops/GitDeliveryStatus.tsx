@@ -105,7 +105,7 @@ export function GitDeliveryStatus({
               <TooltipTrigger render={<span tabIndex={0} />}>
                 {gitWhereLine(environment.tier, environment.target, repo.remote!.url)}
               </TooltipTrigger>
-              <TooltipPopup>
+              <TooltipPopup variant="rich">
                 Mate pushes here. What that repository does with a push is up to how it is set up.
               </TooltipPopup>
             </Tooltip>

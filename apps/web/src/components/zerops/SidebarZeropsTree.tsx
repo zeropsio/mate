@@ -2809,7 +2809,7 @@ export function SidebarHqStatus({
           {kind === "slow" ? spinner : <CloudOffIcon aria-hidden="true" className="size-4" />}
           <span className="sr-only">{onAgain === undefined ? line : `${line} Try again.`}</span>
         </TooltipTrigger>
-        <TooltipPopup side="bottom">
+        <TooltipPopup variant="rich" side="bottom">
           {onAgain === undefined ? line : `${line} Press to try again.`}
         </TooltipPopup>
       </Tooltip>
@@ -2860,7 +2860,7 @@ export function SidebarHqStatus({
             <span className={cn("inline-flex items-center gap-1.5", fit)}>{words}</span>
           </TooltipTrigger>
         )}
-        <TooltipPopup side="bottom">
+        <TooltipPopup variant="rich" side="bottom">
           {onAgain === undefined ? line : `${line} Press to try again.`}
         </TooltipPopup>
       </Tooltip>

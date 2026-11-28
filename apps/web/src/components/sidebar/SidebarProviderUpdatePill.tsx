@@ -194,7 +194,9 @@ export function SidebarProviderUpdatePill() {
             </Button>
           }
         />
-        <TooltipPopup side="top">{displayedView.description}</TooltipPopup>
+        <TooltipPopup variant="rich" side="top">
+          {displayedView.description}
+        </TooltipPopup>
       </Tooltip>
       {displayedView.dismissible && (
         <Tooltip>

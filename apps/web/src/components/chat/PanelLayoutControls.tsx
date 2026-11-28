@@ -54,10 +54,11 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
               <PanelBottomIcon className="size-4" />
             </Toggle>
           </TooltipTrigger>
-          <TooltipPopup side="bottom">
-            {terminalAvailable
-              ? `Toggle terminal drawer${terminalShortcutLabel ? ` (${terminalShortcutLabel})` : ""}`
-              : "Terminal drawer is unavailable"}
+          <TooltipPopup
+            shortcut={terminalAvailable ? terminalShortcutLabel : undefined}
+            side="bottom"
+          >
+            {terminalAvailable ? "Toggle terminal drawer" : "Terminal drawer is unavailable"}
           </TooltipPopup>
         </Tooltip>
       ) : null}
@@ -84,9 +85,12 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
             ) : null}
           </Toggle>
         </TooltipTrigger>
-        <TooltipPopup side="bottom">
+        <TooltipPopup
+          shortcut={rightPanelAvailable ? rightPanelShortcutLabel : undefined}
+          side="bottom"
+        >
           {rightPanelAvailable
-            ? `Toggle right panel${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}${
+            ? `Toggle right panel${
                 liveAgentCount > 0
                   ? ` · ${liveAgentCount} ${liveAgentCount === 1 ? "agent" : "agents"} working`
                   : ""

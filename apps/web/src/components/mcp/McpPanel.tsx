@@ -827,7 +827,7 @@ function ToolNames({ tools }: { readonly tools: ReadonlyArray<McpServerRow["tool
         ) : (
           <Tooltip key={tool.name}>
             <TooltipTrigger render={<span />}>{chip}</TooltipTrigger>
-            <TooltipPopup>{tool.description}</TooltipPopup>
+            <TooltipPopup variant="rich">{tool.description}</TooltipPopup>
           </Tooltip>
         );
       })}

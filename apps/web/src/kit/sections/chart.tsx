@@ -45,7 +45,7 @@ function WeekPlot() {
         {({ payload }) => {
           const row = payload === undefined ? undefined : DAYS[payload];
           return row === undefined ? null : (
-            <TooltipPopup>
+            <TooltipPopup variant="rich">
               <ChartReadout title={row.day}>
                 <ChartReadoutRow color={CPU} label="CPU average" value={`${String(row.cpu)}%`} />
                 <ChartReadoutRow color={READ} label="Reads" value={`${String(row.read)} MB`} />
@@ -135,7 +135,7 @@ function ChartSpecimens() {
               >
                 Hover for 3 Oct
               </TooltipTrigger>
-              <TooltipPopup>
+              <TooltipPopup variant="rich">
                 <ChartReadout title="3 Oct · UTC day">
                   <ChartReadoutRow color="var(--color-agent-codex)" label="Codex" value="$4.20" />
                   <ChartReadoutRow

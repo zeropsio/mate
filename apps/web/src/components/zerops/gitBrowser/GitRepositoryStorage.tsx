@@ -21,7 +21,7 @@ export function GitRepositoryStorage({
         <Text variant="note">
           <Tooltip>
             <TooltipTrigger render={<span tabIndex={0} />}>{said.line}</TooltipTrigger>
-            <TooltipPopup>{said.hint}</TooltipPopup>
+            <TooltipPopup variant="rich">{said.hint}</TooltipPopup>
           </Tooltip>
         </Text>
         {control}

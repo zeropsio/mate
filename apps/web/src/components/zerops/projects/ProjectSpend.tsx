@@ -136,7 +136,7 @@ export function SpendBars({
         {({ payload }) => {
           const row = payload === undefined ? undefined : series.days[payload];
           return row === undefined ? null : (
-            <TooltipPopup side="top">
+            <TooltipPopup variant="rich" side="top">
               <ChartReadout title={tooltipDay(row.day, today ?? "")}>
                 <ChartReadoutRow
                   color="var(--color-spend-compute)"

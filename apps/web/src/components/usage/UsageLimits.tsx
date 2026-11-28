@@ -145,7 +145,7 @@ function WindowBar({
           value={remaining / 100}
         />
       </TooltipTrigger>
-      <TooltipPopup side="top">
+      <TooltipPopup variant="rich" side="top">
         <div className="flex flex-col gap-0.5">
           <span className="text-foreground">
             {remaining}% left{timeLeft !== null ? ` · ${timeLeft}% of the window left` : ""}

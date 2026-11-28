@@ -519,7 +519,7 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
           >
             <ChangeRequestStatusIcon className="size-3" />
           </TooltipTrigger>
-          <TooltipPopup side="top">
+          <TooltipPopup variant="rich" side="top">
             <PrStatusTooltipContent status={prStatus} />
           </TooltipPopup>
         </Tooltip>

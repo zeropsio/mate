@@ -69,7 +69,7 @@ export function MateStatusMarker({
           {words}
         </TooltipTrigger>
       )}
-      <TooltipPopup>{cause}</TooltipPopup>
+      <TooltipPopup variant="rich">{cause}</TooltipPopup>
     </Tooltip>
   );
 }

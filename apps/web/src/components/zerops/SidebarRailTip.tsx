@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { Kbd } from "../ui/kbd";
+
 /**
  * A tooltip beside the closed menu's rail, and the menu's other bare counts: what the control is,
  * its key, and its line.
@@ -18,7 +20,9 @@ export function RailTip({
       <span className="flex items-center gap-1.5 font-medium">
         {name}
         {shortcut === undefined ? null : (
-          <span className="truncate text-muted-foreground">{shortcut}</span>
+          <Kbd size="sm" tone="ink">
+            {shortcut}
+          </Kbd>
         )}
       </span>
       {line === undefined || line === null || line === "" ? null : (

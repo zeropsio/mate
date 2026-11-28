@@ -170,7 +170,7 @@ export function UsageProviderChart({
         {({ payload }) => {
           const period = payload === undefined ? undefined : periods[payload];
           return period === undefined || payload === undefined ? null : (
-            <TooltipPopup side="top">
+            <TooltipPopup variant="rich" side="top">
               <ChartReadout title={formatTooltipPeriod(period)}>
                 {providers.map((provider) => {
                   const { label, mark: Mark } = PROVIDER_PRESENTATION[provider];

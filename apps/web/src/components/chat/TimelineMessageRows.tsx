@@ -141,11 +141,15 @@ export function QueuedMessageTimelineRow({
                   <ArrowUpIcon className="size-3.5" aria-hidden />
                 )}
               </TooltipTrigger>
-              <TooltipPopup side="bottom">
+              <TooltipPopup
+                shortcut={
+                  row.isNext && !state.send.disabled
+                    ? ctx.steerQueuedMessageShortcutLabel
+                    : undefined
+                }
+                side="bottom"
+              >
                 {state.send.label}
-                {row.isNext && !state.send.disabled && ctx.steerQueuedMessageShortcutLabel
-                  ? ` (${ctx.steerQueuedMessageShortcutLabel})`
-                  : null}
               </TooltipPopup>
             </Tooltip>
             <Tooltip>

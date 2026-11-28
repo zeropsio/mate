@@ -43,17 +43,11 @@ export function SidebarJumpButton({
       >
         <SearchIcon aria-hidden="true" className="size-5" />
       </TooltipTrigger>
-      <TooltipPopup side="bottom">
+      <TooltipPopup
+        shortcut={shortcut === undefined ? undefined : <KeyLabel label={shortcut} />}
+        side="bottom"
+      >
         Search
-        {shortcut === undefined ? null : (
-          <kbd
-            aria-hidden="true"
-            className="ms-2 inline-flex items-center gap-px tabular-nums opacity-70"
-            data-zerops-surface="sidebar-jump-key"
-          >
-            <KeyLabel label={shortcut} />
-          </kbd>
-        )}
       </TooltipPopup>
     </Tooltip>
   );

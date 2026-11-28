@@ -181,7 +181,7 @@ export function CrewTellComposer({
           value={text}
         />
         {lead === null ? (
-          <CrewTip tip={CREW_TO_PICK_LINE}>
+          <CrewTip tip={CREW_TO_PICK_LINE} variant="rich">
             <span className={CHIP_CLASS} data-crew-composer-to="">
               {CREW_TO_WORD}
               <span className="flex items-center gap-0.5">
@@ -211,7 +211,7 @@ export function CrewTellComposer({
             </span>
           </CrewTip>
         ) : (
-          <CrewTip tip={CREW_TO_LEAD_LINE}>
+          <CrewTip tip={CREW_TO_LEAD_LINE} variant="rich">
             <span className={CHIP_CLASS} data-crew-composer-to="lead">
               <MateFace size={16} state={lead.face} tint={lead.tint} />
               {crewToWord(lead.name)}

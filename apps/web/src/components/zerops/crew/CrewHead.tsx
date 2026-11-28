@@ -75,7 +75,7 @@ export function CrewHead({
     <div className="flex flex-col gap-0.5 px-4 pt-4 @max-md:pt-3" data-crew-head>
       <div className="flex h-7 items-center gap-2">
         <span className="flex min-w-0 text-emphasis">
-          <CrewTip side="bottom" tip={goal.hover}>
+          <CrewTip side="bottom" tip={goal.hover} variant="rich">
             {onGoal === null ? (
               <span
                 className={cn(

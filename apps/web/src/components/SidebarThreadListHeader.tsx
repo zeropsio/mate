@@ -135,22 +135,14 @@ export function SidebarNewThreadButton({
             aria-hidden="true"
           />
         </TooltipTrigger>
-        <TooltipPopup side="right">
+        <TooltipPopup shortcut={newThreadShortcutLabel} side="right">
+          New thread
           {projectGroups.length > 1 ? (
-            <span className="flex flex-col gap-0.5">
-              <span>
-                {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
-              </span>
-              <span className="text-muted-foreground">
-                New thread in current project: Shift+click
-                {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
-              </span>
+            <span className="block text-muted-foreground">
+              Shift-click for this project
+              {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
             </span>
-          ) : newThreadShortcutLabel ? (
-            `New thread (${newThreadShortcutLabel})`
-          ) : (
-            "New thread"
-          )}
+          ) : null}
         </TooltipPopup>
       </Tooltip>
     </div>

@@ -33,8 +33,8 @@ export function ComposerFullScreenToggle({
             </Button>
           }
         />
-        <TooltipPopup side="top">
-          {fullComposer === "on" ? "Back to the conversation (Esc)" : "Write in full screen"}
+        <TooltipPopup shortcut={fullComposer === "on" ? "Esc" : undefined} side="top">
+          {fullComposer === "on" ? "Back to the conversation" : "Write in full screen"}
         </TooltipPopup>
       </Tooltip>
     </span>

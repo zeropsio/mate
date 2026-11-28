@@ -79,8 +79,8 @@ function LegendItem({
 
 /**
  * What a chart's tooltip says about the mark under the pointer: the period or the thing it is,
- * then one `ChartReadoutRow` per series. Put it in a `TooltipPopup` (one tooltip for many marks
- * through `TooltipCreateHandle`), so every chart's hover reads alike.
+ * then one `ChartReadoutRow` per series. Put it in a `rich` `TooltipPopup` (one tooltip for many
+ * marks through `TooltipCreateHandle`), so every chart's hover reads alike.
  */
 function ChartReadout({ title, children }: { readonly title?: ReactNode; children: ReactNode }) {
   return (

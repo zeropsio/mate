@@ -274,7 +274,7 @@ export function ProviderModelsSection({
                       >
                         <InfoIcon className="size-3" />
                       </TooltipTrigger>
-                      <TooltipPopup side="top">
+                      <TooltipPopup variant="rich" side="top">
                         <div className="space-y-1">
                           <code className="block text-2xs text-foreground">{model.slug}</code>
                           {capLabels.length > 0 ? (

@@ -154,8 +154,8 @@ function SidebarControl({ rail }: { readonly rail: boolean }) {
               </Button>
             }
           />
-          <TooltipPopup side="right">
-            Open main sidebar{shortcutLabel ? ` (${shortcutLabel})` : ""}
+          <TooltipPopup shortcut={shortcutLabel} side="right">
+            Open main sidebar
           </TooltipPopup>
         </Tooltip>
       </div>

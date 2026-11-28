@@ -466,7 +466,7 @@ function ResourceHistoryChart({
                     </div>
                   }
                 />
-                <TooltipPopup side="top">
+                <TooltipPopup variant="rich" side="top">
                   <ChartReadout>
                     <ChartReadoutRow
                       color={HISTORY_SERIES.cpu}

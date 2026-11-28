@@ -294,7 +294,7 @@ function AccessChip({ person, busy, linked, onChoose }: AccessPersonProps) {
             <AccessBadge busy={busy} level={person.level} />
           </span>
         </TooltipTrigger>
-        <TooltipPopup side="bottom">
+        <TooltipPopup variant="rich" side="bottom">
           <HoverCard person={person} />
         </TooltipPopup>
       </Tooltip>
@@ -358,7 +358,7 @@ function AccessRow({ person, busy, linked, onChoose }: AccessPersonProps) {
               {person.creator ? "You" : person.short}
             </span>
           </TooltipTrigger>
-          <TooltipPopup side="bottom">
+          <TooltipPopup variant="rich" side="bottom">
             <HoverCard person={person} />
           </TooltipPopup>
         </Tooltip>

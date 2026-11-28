@@ -12,14 +12,19 @@ import { Row } from "../../ui/row";
 import { SectionHeader } from "../../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 
-/** A tooltip saying what a press does; nothing around it while there is nothing to say. */
+/**
+ * A tooltip naming a press, or (`rich`) a sentence on what it does; nothing around it while there
+ * is nothing to say.
+ */
 export function CrewTip({
   tip,
   side = "top",
+  variant = "default",
   children,
 }: {
   readonly tip: string | null;
   readonly side?: "top" | "bottom" | "left" | "right";
+  readonly variant?: "default" | "rich";
   /** The element the tip is about, rendered as it is. */
   readonly children: ReactElement;
 }) {
@@ -27,7 +32,9 @@ export function CrewTip({
   return (
     <Tooltip>
       <TooltipTrigger render={children} />
-      <TooltipPopup side={side}>{tip}</TooltipPopup>
+      <TooltipPopup side={side} variant={variant}>
+        {tip}
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -56,7 +63,7 @@ export function CrewPress({
   readonly type?: "button" | "submit";
 }) {
   return (
-    <CrewTip tip={line ?? null}>
+    <CrewTip tip={line ?? null} variant="rich">
       <Button
         className="relative z-1"
         disabled={disabled}
@@ -84,7 +91,7 @@ export function CrewTextButton({
   readonly onPress: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <CrewTip tip={line ?? null}>
+    <CrewTip tip={line ?? null} variant="rich">
       <InlineButton className="relative z-1" disabled={disabled} onClick={onPress}>
         {label}
       </InlineButton>

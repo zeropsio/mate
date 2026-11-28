@@ -259,7 +259,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           >
             {props.item.description}
           </TooltipTrigger>
-          <TooltipPopup>{props.item.description}</TooltipPopup>
+          <TooltipPopup variant="rich">{props.item.description}</TooltipPopup>
         </Tooltip>
         {skillSourceKind ? (
           <SkillSourceBadge

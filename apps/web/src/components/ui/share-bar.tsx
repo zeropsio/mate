@@ -53,7 +53,7 @@ function ShareBar({
               />
             }
           />
-          <TooltipPopup>
+          <TooltipPopup variant="rich">
             <ChartReadout>
               <ChartReadoutRow
                 color={part.color}

@@ -264,7 +264,7 @@ function UnknownWhenVariableWarning({
           </span>
         }
       />
-      <TooltipPopup side="top">
+      <TooltipPopup variant="rich" side="top">
         Zerops Mate does not recognize this condition yet. It can still be saved, but it may not
         match unless the runtime provides it.
       </TooltipPopup>
@@ -292,7 +292,7 @@ function KeybindingConflictWarning({ labels }: { labels: ReadonlyArray<string> }
           </span>
         }
       />
-      <TooltipPopup side="top">
+      <TooltipPopup variant="rich" side="top">
         {description} The most recent matching binding wins when both conditions can apply.
       </TooltipPopup>
     </Tooltip>

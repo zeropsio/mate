@@ -512,7 +512,9 @@ function ComposerSkillDecorator(props: {
   return (
     <Tooltip>
       <TooltipTrigger render={chip} />
-      <TooltipPopup side="top">{props.skillDescription}</TooltipPopup>
+      <TooltipPopup variant="rich" side="top">
+        {props.skillDescription}
+      </TooltipPopup>
     </Tooltip>
   );
 }

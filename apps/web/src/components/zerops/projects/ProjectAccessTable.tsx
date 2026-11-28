@@ -405,7 +405,7 @@ function Who({ row, linked }: { readonly row: AccessRow; readonly linked: boolea
       >
         {inner}
       </TooltipTrigger>
-      <TooltipPopup side="bottom">
+      <TooltipPopup variant="rich" side="bottom">
         <span className="grid min-w-45 gap-0.5 px-0.5 py-1 text-left">
           <span className="text-body leading-4.5 font-semibold">{row.name}</span>
           {row.email === null || row.email === row.name ? null : (
@@ -537,7 +537,9 @@ function Cell({
         >
           <Level busy={busy} cell={cell} />
         </TooltipTrigger>
-        <TooltipPopup side="top">{tip}</TooltipPopup>
+        <TooltipPopup variant="rich" side="top">
+          {tip}
+        </TooltipPopup>
       </Tooltip>
     );
   const held = cell.choices.find(({ checked }) => checked)?.choice ?? "";
@@ -559,7 +561,9 @@ function Cell({
             className="size-3.5 text-muted-foreground opacity-0 transition-opacity duration-150 ease-out-strong group-hover/cell:opacity-100 group-focus-visible/cell:opacity-100 group-data-popup-open/cell:opacity-100"
           />
         </MenuTrigger>
-        <TooltipPopup side="top">{tip}</TooltipPopup>
+        <TooltipPopup variant="rich" side="top">
+          {tip}
+        </TooltipPopup>
       </Tooltip>
       <MenuPopup align="start">
         <MenuGroup>
@@ -750,7 +754,9 @@ export function PlaceAccessSummary({
                   ) : null}
                 </span>
               </TooltipTrigger>
-              <TooltipPopup side="top">{summaryTip(person, summary.label)}</TooltipPopup>
+              <TooltipPopup variant="rich" side="top">
+                {summaryTip(person, summary.label)}
+              </TooltipPopup>
             </Tooltip>
           ))}
         </ul>

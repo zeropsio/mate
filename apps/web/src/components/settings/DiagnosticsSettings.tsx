@@ -119,7 +119,9 @@ function StatBlock({
                 </InlineButton>
               }
             />
-            <TooltipPopup side="top">{tooltip}</TooltipPopup>
+            <TooltipPopup variant="rich" side="top">
+              {tooltip}
+            </TooltipPopup>
           </Tooltip>
         ) : null}
       </div>
@@ -576,7 +578,7 @@ function ProcessResourceHistoryChart({
                     </div>
                   }
                 />
-                <TooltipPopup side="top">
+                <TooltipPopup variant="rich" side="top">
                   <ChartReadout>
                     <ChartReadoutRow
                       color={CPU_AVERAGE}
