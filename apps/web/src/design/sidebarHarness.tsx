@@ -89,6 +89,7 @@ import { SidebarChiefRow, SidebarChiefTile } from "~/components/zerops/chief/Sid
 import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 import { SidebarWaitingCount } from "~/components/zerops/SidebarWaiting";
 import { SidebarRail, useRailTiles } from "~/components/zerops/SidebarRail";
+import type { BoardWait } from "@t3tools/client-runtime/data";
 import type {
   WaitingCrew,
   WaitingItem,
@@ -1547,6 +1548,9 @@ function harnessWaits(input: {
   readonly mates: ReadonlyArray<WaitingMate>;
   readonly crews?: ReadonlyArray<WaitingCrew>;
   readonly tasks?: ReadonlyArray<WaitingTask>;
+  /** Board tasks of the viewer's no listed Mate says: asking (HQ's `asksYou`), and held broken. */
+  readonly asked?: ReadonlyArray<BoardWait>;
+  readonly broken?: ReadonlyArray<BoardWait>;
   readonly releases: ReadonlyArray<WaitingRelease>;
 }): ReadonlyArray<WaitingItem> {
   return [
@@ -1565,6 +1569,16 @@ function harnessWaits(input: {
       key: `t:${task.projectId}:${task.taskId}`,
       task,
     })),
+    ...(input.asked ?? []).map((board): WaitingItem => ({
+      kind: "asked",
+      key: `a:${board.appId}:${board.taskId}`,
+      board,
+    })),
+    ...(input.broken ?? []).map((board): WaitingItem => ({
+      kind: "held",
+      key: `b:${board.appId}:${board.taskId}`,
+      board,
+    })),
     ...input.releases.map((release): WaitingItem => ({
       kind: "release",
       key: `r:${release.groupId}`,
@@ -1576,7 +1590,8 @@ function harnessWaits(input: {
 /**
  * `?wait=all`: one of each thing that waits on the viewer, as the board drew them — a Mate of
  * theirs stopped on an error, a plan, a question, a change, a crewmate's finished work and its
- * question, an automated Mate's task, a release. None has a conversation
+ * question, an automated Mate's task, a task the viewer put whose Mate is in none of their lists
+ * asking them, a held task of theirs whose need broke, a release. None has a conversation
  * here, so a question offers its conversation and a plan waits for its read.
  */
 const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
@@ -1665,6 +1680,24 @@ const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
             taskId: "k-12",
             title: "Fix the invoice total on refunds",
             url: null,
+          },
+        ],
+        asked: [
+          {
+            appId: "tea",
+            appName: "Tea Shop",
+            taskId: "k-20",
+            title: "Add a gift note to the checkout",
+            at: "2026-11-27T09:00:00Z",
+          },
+        ],
+        broken: [
+          {
+            appId: "links",
+            appName: "Links",
+            taskId: "k-21",
+            title: "Show the export's progress",
+            at: "2026-11-27T10:00:00Z",
           },
         ],
         releases: [{ groupId: "tea", name: "Tea Shop", ahead: 3 }],
