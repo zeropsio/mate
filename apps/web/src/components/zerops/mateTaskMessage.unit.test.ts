@@ -24,7 +24,7 @@ const ISSUE: MateTaskSource = {
 const said = (from: MateTaskMessage["from"], author: string | null) => ({ from, author });
 
 // witness: apps/web/src/components/zerops/mateTaskMessage.logic.ts | return { by, act: "answered", where: "board", to: { kind: "board" } }; → return { by, act: "answered", where: "board", to: { kind: "none" } };
-it("MN+2: A follow-up says whether the reader wrote it, and leads to where it was said: an answer to a Board, conversation, webhook or schedule task to its panel on the Board, a thread reply to the thread, an issue comment or edit to the issue, a review comment nowhere; breaks: the reader's own answer reads as a stranger's 'replied in the thread', linked nowhere", () => {
+it("MN157: A follow-up says whether the reader wrote it, and leads to where it was said: an answer to a Board, conversation, webhook or schedule task to its panel on the Board, a thread reply to the thread, an issue comment or edit to the issue, a review comment nowhere; breaks: the reader's own answer reads as a stranger's 'replied in the thread', linked nowhere", () => {
   const viewer = ["Ales Rechtorik"];
   const rows = [
     [said("reply", "Ales Rechtorik"), BOARD, "you", "board", { kind: "board" }],

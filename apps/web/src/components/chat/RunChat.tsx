@@ -112,7 +112,7 @@ import { type ChatLine, type RecordRow, type RunMotion } from "./runChatLine";
  * approval, or paused before it did anything: the now line alone.
  */
 export function RunLine({ status }: { readonly status: RunStatus }) {
-  return <NowLine answering={false} now={null} outcome={null} status={status} />;
+  return <NowLine alone answering={false} now={null} outcome={null} status={status} />;
 }
 
 const NO_KEYS: ReadonlyArray<string> = [];

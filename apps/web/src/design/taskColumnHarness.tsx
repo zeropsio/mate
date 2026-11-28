@@ -21,6 +21,7 @@ import {
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
 import { MateTaskCardView } from "~/components/zerops/MateTaskCard";
+import { BoardPlanCardView } from "~/components/zerops/board/BoardPlanCard";
 import { InventoryContext } from "~/zerops/inventoryContext";
 import { stepOf } from "~/zerops/runSteps/steps";
 import { ZeropsDataContext } from "~/zerops/zeropsDataContext";
@@ -114,6 +115,97 @@ const ROWS: ReadonlyArray<MessagesTimelineRow> = [
   },
 ];
 
+const settled = {
+  live: false,
+  face: "idle",
+  waitedMs: 0,
+  waitingSince: null,
+} as const;
+
+/**
+ * A Mate's ordinary conversation, as the owner saw Mira's: a run that worked (its card holds its
+ * line alone), its answer; a run that only wrote (nothing to show), its answer; the plan it puts
+ * on the Board.
+ */
+const NORMAL_ROWS: ReadonlyArray<MessagesTimelineRow> = [
+  {
+    ...ROWS[0]!,
+    id: "record:normal",
+    turnKey: "normal",
+  } as MessagesTimelineRow,
+  { kind: "card-end", id: "card-end:normal", createdAt: ago(60), card: "bottom", cardWhole: true },
+  {
+    kind: "message",
+    id: "message:normal-1",
+    createdAt: ago(60),
+    message: {
+      id: MessageId.make("message-normal-1"),
+      role: "assistant",
+      text: "The banner reads its number from the copy file now.",
+      turnId: TurnId.make("turn-normal-1"),
+      streaming: false,
+      createdAt: ago(60),
+      updatedAt: ago(60),
+    },
+    receipt: null,
+    aside: false,
+    imageOnly: false,
+    showAssistantMeta: true,
+    gap: "part-words",
+  },
+  {
+    kind: "work-line",
+    id: "work-line:normal-2",
+    createdAt: ago(30),
+    stretchKey: "normal-2",
+    turnId: TurnId.make("turn-normal-2"),
+    ...settled,
+    startedAt: ago(30),
+    endedAt: ago(26),
+    worked: false,
+    wrote: true,
+    gap: "turn",
+  },
+  {
+    kind: "message",
+    id: "message:normal-2",
+    createdAt: ago(26),
+    message: {
+      id: MessageId.make("message-normal-2"),
+      role: "assistant",
+      text: "Here is the plan: two tasks, the second after the first.",
+      turnId: TurnId.make("turn-normal-2"),
+      streaming: false,
+      createdAt: ago(26),
+      updatedAt: ago(26),
+    },
+    receipt: null,
+    aside: false,
+    imageOnly: false,
+    showAssistantMeta: true,
+    gap: "part-words",
+  },
+];
+
+const PLAN = [
+  {
+    key: "a",
+    title: "Write the banner's copy",
+    brief: "Two lines, the number first.",
+    after: null,
+    task: null,
+  },
+  {
+    key: "b",
+    title: "Show the banner on the home page",
+    brief: "Above the fold.",
+    after: "after 1",
+    task: null,
+  },
+];
+
+const nothing = () => undefined;
+
 const SHARED: TimelineRowSharedState = {
   timestampFormat: "24-hour",
   routeThreadKey: "harness",
@@ -187,7 +279,32 @@ export function TaskColumn() {
     <Standins>
       <div className="flex min-h-screen bg-background text-foreground">
         <div className="w-[435px] shrink-0 border-e border-border bg-sidebar" />
-        <div className="min-w-0 flex-1 px-8 py-10">
+        <div className="grid min-w-0 flex-1 content-start gap-16 px-8 py-10">
+          <div className="mx-auto w-full max-w-3xl" data-harness="normal-column">
+            {NORMAL_ROWS.map((row) => (
+              <TimelineRowContent key={row.id} row={row} />
+            ))}
+            {/* The plan's card stands as `rowInset` and `BoardRequestTimelineRow` frame it (no
+                inset): its container reads the conversation, which the harness has not. */}
+            <div className="pt-5" data-col-row="board-request">
+              <div className="min-w-0 py-0.5">
+                <BoardPlanCardView
+                  appName="Nebius Demo"
+                  editable
+                  mateName="Mira"
+                  onBrief={nothing}
+                  onNotNow={nothing}
+                  onPut={nothing}
+                  onTitle={nothing}
+                  put={false}
+                  ready
+                  requestId="plan-normal"
+                  state={{ kind: "waiting" }}
+                  tasks={PLAN}
+                />
+              </div>
+            </div>
+          </div>
           <div className="mx-auto w-full max-w-3xl" data-harness="task-column">
             {/* The task's card stands in the timeline's frame as `rowInset` draws a task-ask row
                 (no inset): its card needs its Mate, which the harness has not, so it is the view. */}

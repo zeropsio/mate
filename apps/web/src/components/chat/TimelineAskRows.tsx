@@ -19,7 +19,7 @@ export function ProposedPlanTimelineRow({
   const ctx = use(TimelineRowCtx);
 
   return (
-    <div className="min-w-0 px-1 py-0.5">
+    <div className="min-w-0 py-0.5">
       <ProposedPlanCard
         planMarkdown={row.proposedPlan.planMarkdown}
         environmentId={ctx.activeThreadEnvironmentId}
@@ -74,7 +74,7 @@ export const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
   const ctx = use(TimelineRowCtx);
   // Without the engine's record (older history) the run's own line is all it shows: no frame here.
   return (
-    <div className="min-w-0 px-1 py-0.5 empty:hidden">
+    <div className="min-w-0 py-0.5 empty:hidden">
       <VaultRequestCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
         fallback={null}
@@ -93,7 +93,7 @@ export const OriginRequestTimelineRow = memo(function OriginRequestTimelineRow({
 }) {
   const ctx = use(TimelineRowCtx);
   return (
-    <div className="min-w-0 px-1 py-0.5">
+    <div className="min-w-0 py-0.5">
       <OriginAskCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
         requestIds={row.requestIds}
@@ -111,7 +111,7 @@ export const MirrorRequestTimelineRow = memo(function MirrorRequestTimelineRow({
 }) {
   const ctx = use(TimelineRowCtx);
   return (
-    <div className="min-w-0 px-1 py-0.5">
+    <div className="min-w-0 py-0.5">
       <MirrorAskCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
         requestId={row.requestId}
@@ -129,7 +129,7 @@ export const BoardRequestTimelineRow = memo(function BoardRequestTimelineRow({
 }) {
   const ctx = use(TimelineRowCtx);
   return (
-    <div className="min-w-0 px-1 py-0.5">
+    <div className="min-w-0 py-0.5">
       <BoardAskCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
         requestId={row.requestId}
@@ -147,7 +147,7 @@ export const ProposalTimelineRow = memo(function ProposalTimelineRow({
 }) {
   const ctx = use(TimelineRowCtx);
   return (
-    <div className="min-w-0 px-1 py-0.5">
+    <div className="min-w-0 py-0.5">
       <ProposalCardContainer
         driver={ctx.driver ?? null}
         environmentId={ctx.activeThreadEnvironmentId}

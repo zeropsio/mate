@@ -108,8 +108,9 @@ function AskCardFace(
   }
 
   return (
-    <Card {...marks} ref={props.cardRef} size="sm" variant="flat">
-      <div className="grid min-w-0 gap-3">
+    <Card {...marks} ref={props.cardRef} variant="flat">
+      {/* Its words 16 px inside its edge, on the run card's inset in the conversation's column. */}
+      <div className="grid min-w-0 gap-3 px-3.75 py-3 max-sm:px-2.75">
         <div className="grid min-w-0 justify-items-start gap-1.5">
           <WhereChip where={props.where} />
           <p className="text-emphasis font-medium text-foreground">{title}</p>

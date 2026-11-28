@@ -78,7 +78,7 @@ export function CrewTaskCard({ id, card }: { readonly id: string; readonly card:
         />
       )}
       <Card data-crew-task-card>
-        <div className="flex flex-col gap-1 px-4 py-2.5">
+        <div className="flex flex-col gap-1 px-3.75 py-2.5 max-sm:px-2.75">
           <p className="min-w-0 truncate text-prose font-medium text-foreground">{model.heading}</p>
           {model.text.length === 0 ? null : (
             <Text className="whitespace-pre-wrap" render={<p />} variant="remark">

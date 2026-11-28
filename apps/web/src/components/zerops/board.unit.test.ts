@@ -441,7 +441,7 @@ it("MN155: A change's review names the Board task it does: the task whose own ch
 });
 
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | if (laneOf(liveStatus(task, live.get(task.id))) === "waiting") count += 1; → if (laneOf(liveStatus(task, live.get(task.id))) !== "done") count += 1;
-it("MN+1: The Board's door counts only the tasks Waiting for the reader, never one queued, held for others or at work; breaks: the project page says Board 5 for five queued tasks nobody needs to act on", () => {
+it("MN156: The Board's door counts only the tasks Waiting for the reader, never one queued, held for others or at work; breaks: the project page says Board 5 for five queued tasks nobody needs to act on", () => {
   const tasks = [
     task({ id: "q1", state: "queued" }),
     task({ id: "q2", state: "queued" }),

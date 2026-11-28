@@ -35,12 +35,12 @@ export const RUN_TRAY_SLICE_WHOLE = {
   bottom: "h-4 border-x border-b border-transparent",
 } as const;
 
-/** A tray on its own, not sliced: the Mate at work once its turn is over, a helper's run. */
+/**
+ * A tray on its own, not sliced: the Mate at work once its turn is over, a helper's run, a run's
+ * line with nothing under it (the box, height and inset of a card holding its line alone).
+ */
 export const RUN_TRAY_WHOLE =
   "rounded-sheet border border-foreground/7 bg-run-tray p-3.75 max-sm:px-2.75";
-
-/** A run's line with nothing under it keeps the tray's geometry in a frame nobody sees. */
-export const RUN_TRAY_GHOST = "border border-b-0 border-transparent px-3.75 pt-3.75 max-sm:px-2.75";
 
 /**
  * The now line, the card's foot or head: the face in the card's 28 px column, what the Mate is

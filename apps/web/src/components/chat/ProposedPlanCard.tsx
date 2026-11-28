@@ -149,7 +149,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
 
   return (
     <Card>
-      <div className="p-4 sm:p-5">
+      <div className="px-2.75 py-4 sm:px-3.75 sm:py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <Badge tone="neutral">Plan</Badge>

@@ -1,4 +1,4 @@
-next: MN156
+next: MN158
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -144,5 +144,5 @@ next: MN156
 - MN153 — The Board's keyboard stands on the row it was moved to last, else the task open in its panel, else the first row, and moves one row at a time, held at the list's ends; breaks: Enter reopens a task the reader moved away from, or the keys do nothing until a row is clicked
 - MN154 — A task's history also says when its needs were met, each question its Mate asked with the question, and each time its putter answered, by who and never what, in order with the rest; breaks: the panel shows an answer without the question it answered, or hides that a held task went in line
 - MN155 — A change's review names the Board task it does: the task whose own change it is or whose taker's Mate linked it, by repository and number, the latest put where several do, and none where no task links it; breaks: a change reads as another repository's task, or as none it was made for
-- MN+1 — The Board's door counts only the tasks Waiting for the reader, never one queued, held for others or at work; breaks: the project page says Board 5 for five queued tasks nobody needs to act on
-- MN+2 — A follow-up says whether the reader wrote it, and leads to where it was said: an answer to a Board, conversation, webhook or schedule task to its panel on the Board, a thread reply to the thread, an issue comment or edit to the issue, a review comment nowhere; breaks: the reader's own answer reads as a stranger's 'replied in the thread', linked nowhere
+- MN156 — The Board's door counts only the tasks Waiting for the reader, never one queued, held for others or at work; breaks: the project page says Board 5 for five queued tasks nobody needs to act on
+- MN157 — A follow-up says whether the reader wrote it, and leads to where it was said: an answer to a Board, conversation, webhook or schedule task to its panel on the Board, a thread reply to the thread, an issue comment or edit to the issue, a review comment nowhere; breaks: the reader's own answer reads as a stranger's 'replied in the thread', linked nowhere

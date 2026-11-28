@@ -1,4 +1,4 @@
-import { RUN_TRAY_GHOST, RUN_TRAY_SLICE, RUN_TRAY_SLICE_WHOLE, TEXT_EDGE } from "./runTray";
+import { RUN_TRAY_SLICE, RUN_TRAY_SLICE_WHOLE, TEXT_EDGE } from "./runTray";
 import { NO_MATE_LIMIT } from "@t3tools/client-runtime/data";
 import { memo, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { wordsJustStood } from "./wordsLanding";
@@ -79,18 +79,25 @@ function rowInset(row: TimelineRow): string {
     row.kind === "seam" ||
     (row.kind === "crew-seam" && !isRestartRow(row)) ||
     row.kind === "after-work" ||
-    // Another Mate's message and the wait for its answer are cards, edge to edge with the run's,
-    // as a task's card and what is said of it after are.
+    // Every card the conversation draws stands edge to edge with the run's, its words on the run
+    // card's inset: another Mate's message and the wait for its answer, a task's card and what is
+    // said of it after, what the Mate asks of the person, a crewmate's task, a plan.
     row.kind === "mate-message" ||
     row.kind === "mate-wait" ||
     row.kind === "task-ask" ||
-    row.kind === "task-message"
+    row.kind === "task-message" ||
+    row.kind === "vault-request" ||
+    row.kind === "origin-request" ||
+    row.kind === "mirror-request" ||
+    row.kind === "board-request" ||
+    row.kind === "proposal" ||
+    row.kind === "crew-card" ||
+    row.kind === "proposed-plan" ||
+    // A run's line with nothing under it draws its card whole (`WorkLineTimelineRow`).
+    row.kind === "work-line"
   ) {
     return "";
   }
-  // A line with no card keeps the card's geometry in a frame nobody sees, so
-  // opening it draws the card around the line without moving it.
-  if (row.kind === "work-line") return RUN_TRAY_GHOST;
   return TEXT_EDGE;
 }
 

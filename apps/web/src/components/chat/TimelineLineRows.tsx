@@ -3,6 +3,7 @@ import { use } from "react";
 import { PublishedPage } from "./PublishedPage";
 import { ConversationAfterWork } from "./ConversationWorking";
 import { RunChat, RunLine } from "./RunChat";
+import { RUN_TRAY_WHOLE } from "./runTray";
 import { BackgroundLine } from "./RunBackgroundLine";
 import { backgroundLineOf, backgroundRowItems } from "./backgroundLine.logic";
 import {
@@ -60,8 +61,20 @@ export function ErrorTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "e
   );
 }
 
+/**
+ * A run's line with nothing under it: its card whole, the frame, height, face and words of a card
+ * holding its line alone (the owner, 2026-09-30: "why the collapsed state has no bg"); what comes
+ * under it later opens the card below the line, which stays where it stood.
+ */
 export function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
-  return <RunLine status={row} />;
+  // Heading a card of rows under it, the card's slice is its frame.
+  return row.card === undefined ? (
+    <div className={RUN_TRAY_WHOLE}>
+      <RunLine status={row} />
+    </div>
+  ) : (
+    <RunLine status={row} />
+  );
 }
 
 /** Work that outlived the turn: the Mate at work, smaller, until it ends. */

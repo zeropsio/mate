@@ -262,6 +262,7 @@ export function NowLine({
   end = null,
   settledHere = false,
   head,
+  alone = false,
 }: {
   readonly status: RunStatus;
   readonly now: TurnHeaderActivity | null;
@@ -292,6 +293,8 @@ export function NowLine({
    * swap in one frame (run 11).
    */
   readonly settledHere?: boolean;
+  /** Nothing stands under the line, ever (a run with no chat): its face heads the line. */
+  readonly alone?: boolean;
 }) {
   const now = useEngineLiveNow(recordedNow);
   const ctx = use(TimelineRowCtx);
@@ -424,8 +427,9 @@ export function NowLine({
         <HelperFace />
       ) : (
         <MateFace
-          // In the middle of the column, over the chat's glyphs and the result's marks.
-          className={toggle === null ? "justify-self-center" : undefined}
+          // In the middle of the column, over the chat's glyphs and the result's marks; heading
+          // the line, as a card holding its line alone has it, where nothing stands under it.
+          className={toggle === null && !alone ? "justify-self-center" : undefined}
           gaze={face.gaze}
           greets
           known={ctx.arrivedAfter !== null && !ctx.syncing}
