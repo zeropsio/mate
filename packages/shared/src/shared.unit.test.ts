@@ -4,6 +4,7 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 
@@ -17,7 +18,7 @@ import {
   withBuildersPlaced,
 } from "./crewHome.ts";
 import { crewFromAsk } from "./crewTemplates.ts";
-import { boardPutRequestId, boardTaskOf, type HqAppTask } from "./hqIntake.ts";
+import { boardPutRequestId, boardTaskOf, HqAppTasksView, type HqAppTask } from "./hqIntake.ts";
 import { hqOffer } from "./hqOffers.ts";
 import { leaseMayBeOf } from "./hqChanges.ts";
 import { KeyLinkDown, readLinkUp } from "./mateLink.ts";
@@ -894,4 +895,25 @@ it("SH23: A held task's need is dropped by the person who put it or by an owner 
       ["colleague", "not_need_dropper"],
     ],
   });
+});
+
+// witness: packages/shared/src/hqIntake.ts |   history: Schema.optionalKey(Schema.Array(KnownTaskEvent)), →   history: Schema.optionalKey(Schema.Array(HqTaskEvent)),
+it("SH24: A Board read whose task history holds a moment of a kind this client does not know reads, that moment skipped and every other kept; breaks: a newer HQ's history kind blanks every Board", () => {
+  const read = Schema.decodeUnknownOption(HqAppTasksView)({
+    tasks: [
+      {
+        ...boardRecord({}),
+        history: [
+          { kind: "asked", at: "2026-11-27T10:00:00.000Z", question: "Weekly or all-time?" },
+          { kind: "reopened", at: "2026-11-27T10:05:00.000Z" },
+          { kind: "answered", at: "2026-11-27T10:10:00.000Z" },
+        ],
+      },
+    ],
+  });
+  expect(Option.getOrUndefined(read)?.tasks[0]?.history?.map((event) => event?.kind)).toEqual([
+    "asked",
+    undefined,
+    "answered",
+  ]);
 });

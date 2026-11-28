@@ -13,6 +13,7 @@
  *
  * @module hqIntake
  */
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { MateTaskSource, mateBoardProtocolOf, TrimmedNonEmptyString } from "@t3tools/contracts";
@@ -276,6 +277,24 @@ export const HqTaskNeed = Schema.Struct({
 });
 export type HqTaskNeed = typeof HqTaskNeed.Type;
 
+/**
+ * One moment of a task's history, as HQ keeps it: `asked`, a question its automated Mate asked, at
+ * when it asked it; `answered`, a word its putter said on it from the Board, at when HQ kept it,
+ * never its text (every member reads the Board, the word was said to the Mate); `ready`, when a
+ * held task's needs were met and it went in line.
+ */
+export const HqTaskEvent = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("asked"), at: Schema.String, question: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("answered"), at: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("ready"), at: Schema.String }),
+]);
+export type HqTaskEvent = typeof HqTaskEvent.Type;
+
+/** An event of a kind this client does not know reads `undefined`, so a newer HQ's kind is skipped. */
+const KnownTaskEvent = Schema.Union([HqTaskEvent, Schema.Undefined]).pipe(
+  Schema.catchDecoding(() => Effect.succeedSome(undefined)),
+);
+
 /** One task of an application, as its Board lists it. */
 export const HqAppTask = Schema.Struct({
   id: Schema.String,
@@ -353,6 +372,11 @@ export const HqAppTask = Schema.Struct({
    * Absent: it needs none.
    */
   needs: Schema.optionalKey(Schema.Array(HqTaskNeed)),
+  /**
+   * Its history, oldest first, its newest 20 moments; answered only to a read that opts in to
+   * history too (`HQ_BOARD_READ`). An event of a kind this client does not know is `undefined`.
+   */
+  history: Schema.optionalKey(Schema.Array(KnownTaskEvent)),
 });
 export type HqAppTask = typeof HqAppTask.Type;
 

@@ -329,6 +329,36 @@ it("MN150: A task's history says where it came from, who took it or which Mate i
   });
 });
 
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   for (const event of task.history ?? []) { →   for (const event of []) {
+it("MN154: A task's history also says when its needs were met, each question its Mate asked with the question, and each time its putter answered, by who and never what, in order with the rest; breaks: the panel shows an answer without the question it answered, or hides that a held task went in line", () => {
+  const { lanes } = boardOf(
+    [
+      task({
+        id: "1",
+        state: "working",
+        mate: sol,
+        source: put,
+        createdAt: "2026-11-27T09:00:00Z",
+        startedAt: "2026-11-27T09:20:00Z",
+        history: [
+          { kind: "ready", at: "2026-11-27T09:10:00.000Z" },
+          { kind: "asked", at: "2026-11-27T09:30:00.000Z", question: "Weekly or all-time?" },
+          { kind: "answered", at: "2026-11-27T09:40:00.000Z" },
+        ],
+      }),
+    ],
+    NOW,
+    { appId: "shop", viewerId: "u-rhea" },
+  );
+  expect(lanes.progress[0]?.history.map((event) => event.words)).toEqual([
+    "Put on board by you",
+    "Its needs were met",
+    "Handed to Sol",
+    "Sol asked: Weekly or all-time?",
+    "You answered",
+  ]);
+});
+
 // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |     (count, lane) => (lane.id === "done" ? count : count + board.lanes[lane.id].length), →     (count, lane) => count + board.lanes[lane.id].length,
 it("MN151: The Board's page counts its open tasks beside its title, every lane's but Done's, and none where none is open; breaks: a Board of finished work reads as work outstanding", () => {
   const ended = (id: string) =>

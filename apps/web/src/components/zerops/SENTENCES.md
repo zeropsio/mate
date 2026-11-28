@@ -1,4 +1,4 @@
-next: MN154
+next: MN155
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -142,3 +142,4 @@ next: MN154
 - MN151 — The Board's page counts its open tasks beside its title, every lane's but Done's, and none where none is open; breaks: a Board of finished work reads as work outstanding
 - MN152 — The project page's Board always ends in the way to the Board's page: with no task it says the Board is empty and carries no totals, with tasks none of which waits on the reader it says nothing waits and carries the rest's totals, and with rows it says neither; breaks: an empty Board ends in a blank band, or a count of nothing
 - MN153 — The Board's keyboard stands on the row it was moved to last, else the task open in its panel, else the first row, and moves one row at a time, held at the list's ends; breaks: Enter reopens a task the reader moved away from, or the keys do nothing until a row is clicked
+- MN154 — A task's history also says when its needs were met, each question its Mate asked with the question, and each time its putter answered, by who and never what, in order with the rest; breaks: the panel shows an answer without the question it answered, or hides that a held task went in line

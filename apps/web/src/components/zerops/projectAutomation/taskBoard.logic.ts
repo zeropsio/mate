@@ -131,7 +131,7 @@ export interface BoardTaskRef {
 
 /** One moment of a task, as its history says it: what happened, and how long ago. */
 export interface BoardEvent {
-  readonly kind: "put" | "taken" | "handed" | "ended";
+  readonly kind: "put" | "taken" | "handed" | "asked" | "answered" | "ready" | "ended";
   readonly words: string;
   /** "4m ago", "2d ago". */
   readonly at: string;
@@ -888,8 +888,8 @@ function waitersOf(
 
 /**
  * What happened to a task so far, from what the Board's read carries, oldest first: where it came
- * from, a person taking it or HQ handing it to a pool Mate, and how it ended. When its Mate asked
- * is not carried, so a question is said where the task stands, never as a moment of its history.
+ * from, its needs met, a person taking it or HQ handing it to a pool Mate, each question its Mate
+ * asked and each answer its putter gave (who, never what), and how it ended.
  */
 export function historyOf(
   task: HqAppTask,
@@ -921,6 +921,18 @@ export function historyOf(
     );
   else if (task.startedAt !== null)
     add("handed", `Handed to ${holderName ?? "a Mate"}`, task.startedAt);
+  const putter =
+    source?.kind === "conversation" || source?.kind === "board"
+      ? personWords(source.putBy, context)
+      : "someone";
+  for (const event of task.history ?? []) {
+    if (event === undefined) continue;
+    if (event.kind === "asked")
+      add("asked", `${task.mate?.name ?? "Its Mate"} asked: ${event.question}`, event.at);
+    else if (event.kind === "answered")
+      add("answered", `${putter.charAt(0).toUpperCase()}${putter.slice(1)} answered`, event.at);
+    else add("ready", "Its needs were met", event.at);
+  }
   add(
     "ended",
     status === "review" ? "Done, up for review" : TASK_STATUS_WORDS[status],

@@ -118,6 +118,15 @@ const ASKING = task({
   taker: POOL,
   startedAt: ago(20),
   detail: "Should gift wrapping be offered on orders that ship to a pickup point too?",
+  history: [
+    { kind: "asked", at: ago(16), question: "One wrapping style, or a choice of three?" },
+    { kind: "answered", at: ago(14) },
+    {
+      kind: "asked",
+      at: ago(6),
+      question: "Should gift wrapping be offered on orders that ship to a pickup point too?",
+    },
+  ],
 });
 const TAKEN = task({
   state: "taken",
