@@ -1,12 +1,12 @@
 /**
- * A task opened on the Board's page: its head (who has it, wearing its state, and that state in its
- * tone), its title whole, what it waits on the reader for — its Mate's question, answered here
+ * A task opened on the Board's page: its head (who has it, wearing its state, and its lane's word
+ * in that lane's tone, `laneState`), its title whole, what it waits on the reader for — its Mate's question, answered here
  * where the Board answers it, or a need that broke — then where it came from, who has it, what it
  * needs and what waits on it, its change, its brief in full and its history, and at its foot every
  * press the reader may make, their next act in the primary ink. It reads the Board's row and nothing
  * more: nothing here is fetched or kept.
  */
-import { taskStatusTone, type TaskTone } from "~/zerops/taskStatus";
+import type { TaskTone } from "~/zerops/taskStatus";
 import { ArrowUpRightIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, type ReactNode, type Ref } from "react";
 
@@ -28,7 +28,7 @@ import {
   brokenWords,
   refLead,
   rowLead,
-  taskStateWords,
+  laneState,
   taskVerbs,
   type BoardNeed,
   type BoardRow,
@@ -68,7 +68,7 @@ export function TaskPanel({
   const press = verbs?.pressOf(row.id) ?? RESTS;
   const offer = verbs?.offerOf(row.id);
   const can = taskVerbs({ row, offer, press, stranded: verbs?.strandedOf(row.id) === true });
-  const tone = row.broken.length > 0 ? "needs" : taskStatusTone(row.status);
+  const state = laneState(row.lane, row.status);
   const asker = holderName(row, face) ?? "Its Mate";
   const answersHere =
     verbs !== undefined && row.answeredHere && row.question !== null && offer?.answer === true;
@@ -83,8 +83,8 @@ export function TaskPanel({
         <span className="grid size-5 place-items-center">
           <TaskLead face={face} lead={rowLead(row)} size={20} />
         </span>
-        <span className={cn("min-w-0 flex-1 truncate text-body font-medium", TONE_INK[tone])}>
-          {taskStateWords(row)}
+        <span className={cn("min-w-0 flex-1 truncate text-body font-medium", TONE_INK[state.tone])}>
+          {state.words}
         </span>
         <Button aria-label="Close" onClick={onClose} size="icon-sm" variant="ghost">
           <XIcon aria-hidden="true" />

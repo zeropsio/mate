@@ -32,8 +32,10 @@ import {
   endedWords,
   recordStatus,
   TASK_STATUS_WORDS,
+  taskStatusTone,
   workedWords,
   type TaskStatus,
+  type TaskTone,
 } from "~/zerops/taskStatus";
 
 import type { RowPress } from "./projectAutomation.logic";
@@ -55,6 +57,10 @@ export const LANES: ReadonlyArray<{ readonly id: Lane; readonly name: string }> 
   { id: "queued", name: "Queued" },
   { id: "done", name: "Done" },
 ];
+
+const LANE_NAME = Object.fromEntries(LANES.map((lane) => [lane.id, lane.name])) as Readonly<
+  Record<Lane, string>
+>;
 
 /** The lane a status stands in. */
 export function laneOf(status: TaskStatus): Lane {
@@ -628,9 +634,28 @@ function endedGlyph(status: TaskStatus): TaskGlyph {
   }
 }
 
-/** Where a task stands, as its panel's head says it: its state where the row says one, else its status's word. */
-export function taskStateWords(row: Pick<BoardRow, "state" | "status">): string {
-  return row.state ?? TASK_STATUS_WORDS[row.status];
+/** What each lane's word means, as the surfaces that head a task draw it beside its dot. */
+const LANE_TONE: Readonly<Record<Exclude<Lane, "done">, TaskTone>> = {
+  waiting: "needs",
+  progress: "working",
+  review: "review",
+  queued: "quiet",
+};
+
+/**
+ * Where a task stands, as every surface that heads it says it — its panel on the Board, its card
+ * and bar in its conversation: the name of the lane the Board stands it in, in that lane's tone,
+ * so a task under Up for review says Up for review wherever it is drawn, whoever has it (who does
+ * is a fact of its own). Done holds every ended task, so there it says how it ended; and a stop
+ * under way says Stopping, the one answer the reader's own Stop gets.
+ */
+export function laneState(
+  lane: Lane,
+  status: TaskStatus,
+): { readonly words: string; readonly tone: TaskTone } {
+  if (lane === "done" || status === "stopping")
+    return { words: TASK_STATUS_WORDS[status], tone: taskStatusTone(status) };
+  return { words: LANE_NAME[lane], tone: LANE_TONE[lane] };
 }
 
 /**
