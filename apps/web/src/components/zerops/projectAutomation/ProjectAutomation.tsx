@@ -272,7 +272,7 @@ function useTakenCount(groupId: string): number {
 }
 
 /**
- * How many of the application's tasks wait, Queued or Waiting for you (`boardWaitingCount`), for
+ * How many of the application's tasks wait for the reader (`boardWaitingCount`), for
  * the page's *Board*; `undefined` until HQ answered the Board's read, which the page's Board
  * section holds open, so counting asks nothing more.
  */

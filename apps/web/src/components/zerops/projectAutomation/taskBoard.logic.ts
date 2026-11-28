@@ -502,8 +502,9 @@ export function boardOf(
 }
 
 /**
- * How many of the application's tasks wait, as the page's *Board* counts them: the ones Queued and
- * the ones Waiting for you, each in the lane the Board stands it in (`live` as `boardOf` reads it).
+ * How many of the application's tasks wait for the reader, as every *Board* door counts them: the
+ * ones Waiting for you, in the lane the Board stands each in (`live` as `boardOf` reads it). A
+ * queued task waits for a Mate, not a person: the door never counts it.
  */
 export function boardWaitingCount(
   tasks: ReadonlyArray<HqAppTask>,
@@ -511,8 +512,7 @@ export function boardWaitingCount(
 ): number {
   let count = 0;
   for (const task of tasks) {
-    const lane = laneOf(liveStatus(task, live.get(task.id)));
-    if (lane === "queued" || lane === "waiting") count += 1;
+    if (laneOf(liveStatus(task, live.get(task.id))) === "waiting") count += 1;
   }
   return count;
 }

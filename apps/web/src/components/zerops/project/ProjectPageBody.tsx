@@ -196,7 +196,7 @@ export interface ProjectPageSetup {
    */
   readonly automation: ReactNode;
   /**
-   * How many of its tasks wait, Queued or Waiting for you (`boardWaitingCount`), the header's
+   * How many of its tasks wait for the reader (`boardWaitingCount`), the header's
    * *Board* says; `undefined` until the Board is read.
    */
   readonly boardWaiting: number | undefined;
