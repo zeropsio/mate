@@ -1304,18 +1304,15 @@ if (FIRST_PAGE !== null && params.get("picture") === "full")
 function useHarnessPage(): {
   readonly project: string | null;
   readonly place: string | null;
-  /** The project page opened at its Board (`/group/$groupId/board`). */
-  readonly board: boolean;
 } {
   const pathname = useRouterState({
     select: (state) => state.matches.at(-1)?.pathname ?? "/zerops",
   });
   const [, at, groupId, last] = pathname.split("/");
   if (at !== "group" || groupId === undefined || last === undefined) {
-    return { project: null, place: null, board: false };
+    return { project: null, place: null };
   }
-  const page = last === "flow" || last === "board";
-  return { project: groupId, place: page ? null : last, board: last === "board" };
+  return { project: groupId, place: last === "flow" ? null : last };
 }
 
 /**
@@ -1367,7 +1364,7 @@ function harnessVault(place: PlaceVault) {
 
 function HarnessPage() {
   const placeVault = usePlaceVaultDrawer("harness", harnessVault);
-  const { project: PAGE, place, board } = useHarnessPage();
+  const { project: PAGE, place } = useHarnessPage();
   const busy = FIRST_PAGE === "line-mine" ? byId.get("line-busy")?.entry : undefined;
   if (busy !== undefined)
     return (
@@ -1455,11 +1452,7 @@ function HarnessPage() {
                     ? undefined
                     : {
                         groupId: PAGE,
-                        render: harnessProjectPage(
-                          PAGE,
-                          () => acted.push(`add-mate:${PAGE}`),
-                          board,
-                        ),
+                        render: harnessProjectPage(PAGE, () => acted.push(`add-mate:${PAGE}`)),
                         unread: () => null,
                       }
                 }
@@ -1718,17 +1711,12 @@ function HarnessPage() {
 const rootRoute = createRootRoute({ component: HarnessPage });
 const router = createRouter({
   routeTree: rootRoute.addChildren(
-    ["/zerops", "/group/$groupId/flow", "/group/$groupId/board", "/group/$groupId/$projectId"].map(
-      (path) => createRoute({ getParentRoute: () => rootRoute, path }),
+    ["/zerops", "/group/$groupId/flow", "/group/$groupId/$projectId"].map((path) =>
+      createRoute({ getParentRoute: () => rootRoute, path }),
     ),
   ),
   history: createMemoryHistory({
-    // `&at=board`: the page opens at its Board, as `/group/$groupId/board` does.
-    initialEntries: [
-      FIRST_PAGE === null
-        ? "/zerops"
-        : `/group/${FIRST_PAGE}/${params.get("at") === "board" ? "board" : "flow"}`,
-    ],
+    initialEntries: [FIRST_PAGE === null ? "/zerops" : `/group/${FIRST_PAGE}/flow`],
   }),
   ...pagesViewTransition(),
 }) as unknown as AppRouter;

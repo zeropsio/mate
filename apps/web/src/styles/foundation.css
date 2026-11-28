@@ -385,6 +385,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     backwards;
   --animate-crew-view-back: crew-view-back var(--duration-base) var(--ease-out-strong) backwards;
   --animate-crew-dot-in: crew-dot-in var(--duration-base) var(--ease-out-strong) backwards;
+  /* A Board's task panel opening beside its list (`motion-panels.css`). */
+  --animate-board-panel-in: board-panel-in var(--duration-base) var(--ease-out-strong) backwards;
   --animate-vault-flash: vault-flash 1.5s var(--ease-out-strong);
   --animate-vault-settled: vault-settled 1.4s var(--ease-out-strong) both;
   /* A conversation opening (`ConversationOpeningStage`): the stage's eyes blink open, the stage

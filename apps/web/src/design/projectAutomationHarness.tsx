@@ -1,11 +1,13 @@
 /**
- * A project's automation where the project is: its page's Automation section (the pool of its
- * automated Mates and its sources of tasks) as an Owner or Admin sets it up and as anyone else
- * reads it, a source's form in its compact dialog, and a task's card as its chain in every state
- * it moves through.
+ * A project's Board where the project is: the whole Board (the pool of its automated Mates, every
+ * lane and its sources of tasks) as an Owner or Admin sets it up and as anyone else reads it; the
+ * project page's short Board; the Board's own page with a task's panel open on each kind of task;
+ * a source's form in its compact dialog, and a task's card as its chain in every state it moves
+ * through.
  *
  * Served by the dev server at `/design-project-automation.html` (`?theme=dark`; `?state=<name>`
- * draws one of the section's states alone, `?width=871` at the page's main column instead of 700;
+ * draws one of the states alone — a `page-…` state the Board's page beside a stand-in of the menu,
+ * at its 435 px — `?width=871` at the page's main column instead of 700;
  * `?dialog=github|slack|discord|webhook|schedule` opens that source's form; `?merging=all`, or
  * one state's name, draws who can merge instead: `projectMergingFixtures.tsx`). Open it at the
  * owner's 1786 × 1000. The change's page with its pull request is `/design-change.html?review=page-pr`.
@@ -16,7 +18,7 @@
 import type { AppIntakeRead, TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import { STRANDED_TAKE_WORDS } from "@t3tools/client-runtime/zerops";
 import type { MateTaskSource } from "@t3tools/contracts";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { MateTaskCardView, MateTaskStatusView } from "~/components/zerops/MateTaskCard";
@@ -24,10 +26,12 @@ import {
   ProjectAutomationView,
   SourceDialog,
   type AutomationControls,
-  type BoardVerbs,
-  type BoardView,
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
+import type { BoardVerbs, BoardView } from "~/components/zerops/projectAutomation/boardView";
+import { BoardPageView } from "~/components/zerops/projectAutomation/BoardPage";
+import { Crumbs } from "~/components/zerops/system";
+import { Page } from "~/components/ui/page";
 import { boardOf, type BoardContext } from "~/components/zerops/projectAutomation/taskBoard.logic";
 import { NewBoardTaskView } from "~/components/zerops/projectAutomation/NewBoardTask";
 import { boardTaskOffer, type BoardTaskOffer } from "@t3tools/client-runtime/data";
@@ -75,10 +79,12 @@ function controls(setting: unknown) {
 
 const ADMIN: AutomationControls = {
   onAddMate: nothing,
-  onTakeFrom: nothing,
-  onEdit: nothing,
-  onReadAgain: nothing,
-  onOpenSettings: nothing,
+  sources: {
+    onTakeFrom: nothing,
+    onEdit: nothing,
+    onReadAgain: nothing,
+    onOpenSettings: nothing,
+  },
 };
 
 /** A made-up plant shop and its four automated Mates. */
@@ -150,7 +156,18 @@ const ended = (
   spentUsd: number,
   more: Partial<HqAppTask> = {},
 ): HqAppTask =>
-  task({ id, title, state, mate: by(mate), endedAt: ago(minutes), spentUsd, ...more });
+  task({
+    id,
+    title,
+    state,
+    mate: by(mate),
+    // Put on the Board an hour and a half before it ended, handed to its Mate an hour before.
+    createdAt: ago(minutes + 90),
+    startedAt: ago(minutes + 60),
+    endedAt: ago(minutes),
+    spentUsd,
+    ...more,
+  });
 const pr = (number: number) => ({
   change: { repo: "shop", number },
   pullRequest: { number, url: `https://github.com/${SHOP}/pull/${String(number)}` },
@@ -199,6 +216,8 @@ const FOURTEEN: ReadonlyArray<HqAppTask> = [
 ];
 
 const DATES = task({
+  brief:
+    "Show the delivery date for each item in the cart, from the supplier's lead time.\n\nIt's done when the cart lists a date under every item and the checkout summary shows the latest one.",
   id: "42",
   title: "Show delivery dates in the cart",
   state: "working",
@@ -213,6 +232,7 @@ const ROUNDING = task({
   label: "#shop-requests on Slack",
   url: null,
   state: "waiting",
+  detail: "Should the cart round each line, or only the total?",
   mate: by(PIM),
   startedAt: ago(20),
   spentUsd: 1.08,
@@ -366,6 +386,8 @@ const putFrom = (putBy: string, mateProjectId: string, title: string) => ({
   },
 });
 const GIFT_WRAP = task({
+  brief:
+    "Let a shopper add gift wrapping to any plant at checkout, for a flat fee of $4.\n\nIt's done when the option shows under each plant in the cart, the fee is in the order total, and the packing slip marks wrapped plants.",
   id: "50",
   title: "Offer gift wrapping at checkout",
   state: "queued",
@@ -376,6 +398,7 @@ const GIFT_WRAP = task({
   taker: null,
 });
 const REPOT = task({
+  brief: "Every plant page gets a short repotting guide: when, which pot size up, and which soil.",
   id: "51",
   title: "Add a repotting guide to every plant page",
   state: "taken",
@@ -396,6 +419,8 @@ const STALE = task({
   takenAt: ago(6 * DAY),
 });
 const FERTILISER = task({
+  brief:
+    "Add a line to each plant page saying which fertiliser suits it and how often, from the care sheet.",
   id: "53",
   title: "Explain which fertiliser suits each plant",
   state: "waiting",
@@ -403,6 +428,7 @@ const FERTILISER = task({
   startedAt: ago(30),
   spentUsd: 0.64,
   workedMs: 18 * 60_000,
+  detail: "Should I name brands, or only the kind of fertiliser?",
   ...putFrom(ME, "p-lark", "Explain which fertiliser suits each plant"),
   taker: { kind: "pool", mateProjectId: WREN.projectId },
 });
@@ -435,6 +461,8 @@ const LABELS = task({
   taker: null,
 });
 const PICKUP = task({
+  brief:
+    "Let a shopper choose pick-up at the greenhouse at checkout, with no delivery fee.\n\nIt's done when the choice shows under the delivery options, the order confirmation names the greenhouse's address and opening hours, and the order export marks pick-up orders.",
   id: "61",
   title: "Let people pick their order up at the greenhouse",
   state: "waiting",
@@ -494,6 +522,7 @@ const BOARD_LIVE = new Map([
  * balances it needed were stopped) and one whose need was met (queued since its need merged).
  */
 const CARDS = task({
+  brief: "Store gift cards with a code, an amount and a balance.",
   id: "60",
   title: "Model gift cards in the database",
   state: "working",
@@ -515,6 +544,7 @@ const SELL = task({
   needs: [{ taskId: CARDS.id, state: "waiting" }],
 });
 const EMAIL = task({
+  brief: "Email each gift card to the address the buyer gives, with the card's code and amount.",
   id: "62",
   title: "Email each gift card to its recipient",
   state: "held",
@@ -529,6 +559,7 @@ const EMAIL = task({
 });
 const BALANCES = ended("58", "Store each card's balance", BO, "stopped", 2 * HOUR, 0.27, {});
 const REDEEM = task({
+  brief: "Let a shopper pay with a gift card's code at checkout, down to its balance.",
   id: "63",
   title: "Redeem a gift card at checkout",
   state: "held",
@@ -621,6 +652,52 @@ const STATES: ReadonlyArray<{
   readonly title: string;
   readonly view: ReactNode;
 }> = [
+  {
+    id: "project",
+    title:
+      "The project page's Board: what needs you, then what waits for review, then what is under way, at most six, and the way to the Board",
+    view: (
+      <ProjectBoard
+        admin={{ onAddMate: nothing }}
+        board={board(BOARD_TASKS, "$9.12 of $50", { live: BOARD_LIVE })}
+        onOpenMate={nothing}
+        pool={BUSY_POOL}
+        workingOf={working(SOL)}
+      />
+    ),
+  },
+  {
+    id: "project-calm",
+    title: "The project page's Board with nothing that needs you: only the way to the Board",
+    view: (
+      <ProjectBoard
+        admin={{ onAddMate: nothing }}
+        board={board([...QUEUE, SORT, IMAGES, GUIDES], "$6.44 of $50")}
+        onOpenMate={nothing}
+        pool={[SOL, PIM]}
+        workingOf={working()}
+      />
+    ),
+  },
+  {
+    id: "project-reading",
+    title: "The project page's Board while it reads: the rows navigation says will land",
+    view: (
+      <ProjectBoard
+        admin={{ onAddMate: nothing }}
+        board={{
+          ...board([], "$7.94 of $50"),
+          read: {
+            state: "reading",
+            predicted: { queued: 2, progress: 1, waiting: 1, review: 0, done: 3 },
+          },
+        }}
+        onOpenMate={nothing}
+        pool={BUSY_POOL}
+        workingOf={working(SOL)}
+      />
+    ),
+  },
   ...(["rest", "open", "putting", "refused"] as const).map((state) => ({
     id: state === "rest" ? "new-task" : `new-task-${state}`,
     title: {
@@ -1020,6 +1097,106 @@ const STATES: ReadonlyArray<{
   },
 ];
 
+/**
+ * The Board's page, a task's panel open on each kind of task, by the name `?state=` draws it under:
+ * what the reader answers here or in its conversation, Takes, works, reviews; what waits for others
+ * or on a need that broke; what ended; a Stop asked; and as a member reads it.
+ */
+const PAGE_STATES: ReadonlyArray<{
+  readonly id: string;
+  readonly title: string;
+  readonly view: ReactNode;
+}> = [
+  ...(
+    [
+      ["page", "nothing open", null],
+      ["page-queued", "a queued task: Take", GIFT_WRAP.id],
+      ["page-working", "a pool Mate at work", DATES.id],
+      ["page-taken", "a task you took: Done, Release", REPOT.id],
+      ["page-asks-chat", "a question answered in its conversation", FERTILISER.id],
+      ["page-review", "a change up for review", WISHLIST.id],
+      ["page-merged", "a merged task", SORT.id],
+      ["page-failed", "a failed task", CATALOGUE.id],
+    ] as const
+  ).map(([id, what, open]) => ({
+    id,
+    title: `The Board's page, ${what}`,
+    view: (
+      <BoardPageAt
+        admin={ADMIN}
+        open={open}
+        pool={BUSY_POOL}
+        view={board(BOARD_TASKS, "$9.12 of $50", { live: BOARD_LIVE })}
+        workingOf={working(SOL)}
+      />
+    ),
+  })),
+  {
+    id: "page-asks",
+    title: "The Board's page, a question put on the Board itself: answered in its panel",
+    view: (
+      <BoardPageAt
+        admin={ADMIN}
+        open={PICKUP.id}
+        pool={[on(SOL, PICKUP.title, true), PIM]}
+        view={board(DIRECT_TASKS, "$4.20 of $50", { live: DIRECT_LIVE })}
+        workingOf={working()}
+      />
+    ),
+  },
+  ...(
+    [
+      ["page-held", "a task waiting for two others", EMAIL.id],
+      ["page-broken", "a task whose need broke: Drop the need", REDEEM.id],
+      ["page-needed", "a task two others wait on", CARDS.id],
+    ] as const
+  ).map(([id, what, open]) => ({
+    id,
+    title: `The Board's page, ${what}`,
+    view: (
+      <BoardPageAt
+        admin={ADMIN}
+        open={open}
+        pool={[on(SOL, CARDS.title), PIM, BO]}
+        view={board(NEEDS_TASKS, "$9.12 of $50", { live: new Map() })}
+        workingOf={working(SOL)}
+      />
+    ),
+  })),
+  {
+    id: "page-stop",
+    title: "The Board's page, Stop asked in the panel",
+    view: (
+      <BoardPageAt
+        admin={ADMIN}
+        open={DATES.id}
+        pool={BUSY_POOL}
+        view={board(BOARD_TASKS, "$9.12 of $50", {
+          live: BOARD_LIVE,
+          pressOf: (id) => (id === DATES.id ? { kind: "asking" } : { kind: "idle" }),
+        })}
+        workingOf={working(SOL)}
+      />
+    ),
+  },
+  {
+    id: "page-member",
+    title: "The Board's page as a member reads it, a queued task open: Take into her one Mate",
+    view: (
+      <BoardPageAt
+        open={GIFT_WRAP.id}
+        pool={BUSY_POOL}
+        view={board(BOARD_TASKS, "$9.12 of $50", {
+          live: BOARD_LIVE,
+          role: "BASIC_USER",
+          mates: MATES.filter((mate) => mate.projectId !== "p-quill"),
+        })}
+        workingOf={working(SOL)}
+      />
+    ),
+  },
+];
+
 const ISSUE: MateTaskSource = {
   kind: "github-issue",
   repo: "acme/tea-shop",
@@ -1174,9 +1351,79 @@ function DialogFor({ kind }: { readonly kind: SourceKind }) {
   );
 }
 
-/** The section as the product draws it: New task at rest leads it, unless a state draws its own. */
-function Automation(props: Parameters<typeof ProjectAutomationView>[0]) {
-  return <ProjectAutomationView newTask={<NewTask state="rest" />} {...props} />;
+/**
+ * The whole Board as its page's list draws it: New task at rest leads it, unless a state draws its
+ * own.
+ */
+function Automation(props: Omit<Parameters<typeof ProjectAutomationView>[0], "mode">) {
+  return <ProjectAutomationView mode="page" newTask={<NewTask state="rest" />} {...props} />;
+}
+
+/** The project page's short Board: New task, the pool, what needs the reader, the way to the Board. */
+function ProjectBoard(props: Omit<Parameters<typeof ProjectAutomationView>[0], "mode">) {
+  return (
+    <ProjectAutomationView
+      boardHref="#board"
+      mode="compact"
+      newTask={<NewTask state="rest" />}
+      onOpenBoard={nothing}
+      {...props}
+      board={props.board === undefined ? undefined : { ...props.board, onPick: nothing }}
+    />
+  );
+}
+
+/**
+ * The Board's page as the product draws it beside the menu (a stand-in at its 435 px): its head,
+ * the whole Board, and the task `open` in its panel; a row's press opens another, Esc or ✕ none.
+ */
+function BoardPageAt({
+  view,
+  open,
+  pool,
+  workingOf,
+  admin,
+}: {
+  readonly view: BoardView;
+  readonly open: string | null;
+  readonly pool: ReadonlyArray<PoolMate>;
+  readonly workingOf: (projectId: string) => boolean;
+  readonly admin?: AutomationControls | undefined;
+}) {
+  const [selected, setSelected] = useState(open);
+  const board: BoardView = { ...view, selected, onPick: setSelected };
+  return (
+    <div className="grid min-h-dvh grid-cols-[435px_minmax(0,1fr)] bg-background text-foreground max-md:grid-cols-[minmax(0,1fr)]">
+      <div aria-hidden="true" className="bg-sidebar max-md:hidden" />
+      <Page width="full">
+        <BoardPageView
+          board={board}
+          list={
+            <Automation
+              admin={admin}
+              board={board}
+              onOpenMate={nothing}
+              pool={pool}
+              sources={SOURCES(2)}
+              workingOf={workingOf}
+            />
+          }
+          onClose={() => {
+            setSelected(null);
+          }}
+          trail={
+            <Crumbs
+              trail={[
+                { label: "Overview", onClick: nothing },
+                { label: "Plant shop", onClick: nothing },
+                { label: "Board" },
+              ]}
+            />
+          }
+        />
+      </Page>
+    </div>
+  );
 }
 
 /** New task, the Board's first line, in each state it is looked at in. */
@@ -1220,6 +1467,8 @@ function OnPage({ children }: { readonly children: ReactNode }) {
 }
 
 function Harness() {
+  const page = PAGE_STATES.find((state) => state.id === STATE);
+  if (page !== undefined) return page.view;
   const states = STATE === null ? STATES : STATES.filter((state) => state.id === STATE);
   return (
     <div className={COLUMNS}>

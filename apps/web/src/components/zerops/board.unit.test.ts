@@ -1,7 +1,14 @@
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { expect, it } from "vite-plus/test";
 
-import { boardOf } from "./projectAutomation/taskBoard.logic.ts";
+import {
+  boardOf,
+  compactPredicted,
+  compactRows,
+  LANES,
+  rowLead,
+  rowMeta,
+} from "./projectAutomation/taskBoard.logic.ts";
 
 const NOW = Date.parse("2026-11-27T12:00:00Z");
 
@@ -128,11 +135,188 @@ it("MN136: A task that waits for others stands in Queued after the tasks the que
     queued: ids(lanes.queued),
     waiting: lanes.waiting.map((row) => [row.id, row.state, row.broken.map((need) => need.taskId)]),
     held: lanes.queued.find((row) => row.id === "b")?.needs.map((need) => need.title),
-    waiters: lanes.progress.map((row) => [row.id, row.waiters]),
+    waiters: lanes.progress.map((row) => [row.id, row.waiters.map((waiter) => waiter.taskId)]),
   }).toEqual({
     queued: ["d", "b"],
     waiting: [["c", "Waits on you", ["s"]]],
     held: ["Model cards"],
-    waiters: [["a", 2]],
+    waiters: [["a", ["b", "c"]]],
+  });
+});
+
+const IDLE = { kind: "idle" } as const;
+const sol = { projectId: "p-sol", name: "Sol" };
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   { id: "waiting", name: "Waiting for you" }, →   { id: "queued", name: "Waiting for you" },
+it("MN+1: The Board draws Waiting for you first, then In progress, Up for review, Queued and Done; breaks: what waits for the reader sits under the queue, scrolled past", () => {
+  expect(LANES.map((lane) => lane.id)).toEqual(["waiting", "progress", "review", "queued", "done"]);
+});
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | const COMPACT_LANES: ReadonlyArray<Lane> = ["waiting", "review", "progress"]; → const COMPACT_LANES: ReadonlyArray<Lane> = ["progress", "review", "waiting"];
+it("MN+2: The project page's Board shows what waits for the reader, then what waits for their review, then what is under way, at most six rows and never a queued or ended task, and holds as many rows while the Board reads; breaks: a question to the reader falls off the project page behind work under way, or the page grows by the whole Board", () => {
+  const { lanes, ...board } = boardOf(
+    [
+      ...["1", "2", "3", "4", "5"].map((id) => task({ id, state: "working", mate: sol })),
+      task({ id: "w", state: "waiting", mate: sol, detail: "Paid at checkout?" }),
+      task({ id: "r", state: "done", mate: sol, change: { repo: "shop", number: 4 } }),
+      task({ id: "q", state: "queued", position: 1 }),
+      task({ id: "d", state: "merged", mate: sol, endedAt: "2026-11-27T11:00:00Z" }),
+    ],
+    NOW,
+    { appId: "shop" },
+  );
+  expect({
+    shown: compactRows({ lanes, ...board }).map((row) => row.id),
+    predicted: compactPredicted({ queued: 3, progress: 4, waiting: 2, review: 1, done: 5 }),
+  }).toEqual({ shown: ["w", "r", "1", "2", "3", "4"], predicted: 6 });
+});
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   if (holder?.kind === "pool" && row.lane !== "queued") →   if (holder?.kind === "pool")
+it("MN+3: A row leads with who has the task wearing its state — a pool Mate at work, asking or at rest, a person — and, where nobody has it now, the task's own mark: queued, waiting for others, done, failed, stopped or closed; breaks: an ended task wears its Mate's face and its failure cannot be told from a merge at a glance, or a task back in the queue still shows the Mate that dropped it", () => {
+  const { lanes } = boardOf(
+    [
+      task({ id: "work", state: "working", mate: sol }),
+      task({ id: "ask", state: "waiting", mate: sol }),
+      task({ id: "rev", state: "done", mate: sol, change: { repo: "shop", number: 4 } }),
+      task({
+        id: "took",
+        state: "taken",
+        taker: { kind: "person", userId: "u-ivo", mateProjectId: "p-fern" },
+      }),
+      task({ id: "q", state: "queued", position: 1, mate: sol }),
+      task({ id: "h", state: "held", needs: [{ taskId: "work", state: "waiting" }] }),
+      ...(["merged", "done", "failed", "stopped", "closed"] as const).map((state) =>
+        task({ id: state, state, mate: sol, endedAt: "2026-11-27T11:00:00Z" }),
+      ),
+    ],
+    NOW,
+    { appId: "shop", personName: (userId) => (userId === "u-ivo" ? "Ivo" : undefined) },
+  );
+  const lead = (row: (typeof lanes.done)[number]) => {
+    const said = rowLead(row);
+    return [
+      row.id,
+      said.kind === "mate" ? said.state : said.kind === "glyph" ? said.glyph : said.name,
+    ];
+  };
+  expect(LANES.flatMap((lane) => lanes[lane.id].map(lead))).toEqual([
+    ["ask", "needs"],
+    ["work", "working"],
+    ["took", "Ivo"],
+    ["rev", "idle"],
+    ["q", "queued"],
+    ["h", "held"],
+    ["merged", "done"],
+    ["done", "done"],
+    ["failed", "failed"],
+    ["stopped", "stopped"],
+    ["closed", "closed"],
+  ]);
+});
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   if (row.lane === "waiting") { →   if (row.lane === "waiting" && row.question === null) {
+it("MN+4: The line under a row's title says, in place of the rest, what its Mate asks and of whom, which need broke, what it waits for, why it failed, or that it waits for review with its change; else where it came from, who has it and for how long, and its cost, an ended task saying how it ended and its change first; breaks: a question to the reader is hidden behind where the task came from, or a failure reads like any other ended task", () => {
+  const { lanes } = boardOf(
+    [
+      task({ id: "a", state: "waiting", mate: sol, detail: "Paid at checkout?", source: put }),
+      task({ id: "s", state: "stopped", title: "Store balances" }),
+      task({
+        id: "h",
+        state: "held",
+        needs: [
+          { taskId: "a", state: "waiting" },
+          { taskId: "w", state: "waiting" },
+        ],
+      }),
+      task({ id: "b", state: "held", needs: [{ taskId: "s", state: "broken" }] }),
+      task({ id: "w", state: "working", mate: sol, workedMs: 12 * 60_000 }),
+      task({
+        id: "f",
+        state: "failed",
+        mate: sol,
+        detail: "No catalogue file.",
+        endedAt: "2026-11-27T11:00:00Z",
+      }),
+      task({ id: "r", state: "done", mate: sol, change: { repo: "shop", number: 4 } }),
+      task({
+        id: "m",
+        state: "merged",
+        mate: sol,
+        endedAt: "2026-11-27T11:00:00Z",
+        change: { repo: "shop", number: 5 },
+      }),
+    ],
+    NOW,
+    { appId: "shop", viewerId: "u-mara", personName: (userId) => ({ "u-rhea": "Rhea" })[userId] },
+  );
+  const all = LANES.flatMap((lane) => lanes[lane.id]);
+  const meta = (id: string) => {
+    const row = all.find((each) => each.id === id);
+    if (row === undefined) return null;
+    const said = rowMeta(row, IDLE, "Sol");
+    return {
+      tone: said.tone,
+      kinds: said.parts.map((part) => part.kind),
+      words: said.parts.map((part) => (part.kind === "words" ? part.words : "")).join(" "),
+    };
+  };
+  expect({
+    asks: meta("a")?.tone,
+    asksKinds: meta("a")?.kinds,
+    asksWhomWhat: ["Rhea", "Paid at checkout?"].every((said) => meta("a")?.words.includes(said)),
+    broken: meta("b")?.tone,
+    brokenNames: meta("b")?.words.includes("Store balances"),
+    held: meta("h")?.words.includes("Task a"),
+    failed: meta("f")?.tone,
+    failedWhy: meta("f")?.words.includes("No catalogue file."),
+    review: meta("r")?.kinds,
+    working: meta("w")?.kinds,
+    merged: meta("m")?.kinds,
+  }).toEqual({
+    asks: "attention",
+    asksKinds: ["words"],
+    asksWhomWhat: true,
+    broken: "attention",
+    brokenNames: true,
+    held: true,
+    failed: "failed",
+    failedWhy: true,
+    review: ["words", "change"],
+    working: ["origin", "words", "words"],
+    merged: ["words", "change", "words", "words"],
+  });
+});
+
+// witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts |   return [...events].sort((a, b) => a.ms - b.ms).map(({ event }) => event); →   return events.map(({ event }) => event);
+it("MN+5: A task's history says where it came from, who took it or which Mate it was handed to, and how it ended, oldest first, each by when it happened; breaks: the panel tells a task's story out of order, or says it ended before it was taken", () => {
+  const { lanes } = boardOf(
+    [
+      task({
+        id: "1",
+        state: "merged",
+        mate: sol,
+        createdAt: "2026-11-27T09:00:00Z",
+        startedAt: "2026-11-27T09:10:00Z",
+        endedAt: "2026-11-27T11:00:00Z",
+        change: { repo: "shop", number: 5 },
+      }),
+      task({
+        id: "2",
+        state: "taken",
+        source: put,
+        createdAt: "2026-11-27T11:00:00Z",
+        taker: ivo,
+        takenAt: "2026-11-26T12:00:00Z",
+      }),
+    ],
+    NOW,
+    { appId: "shop" },
+  );
+  expect({
+    merged: lanes.done[0]?.history.map((event) => event.kind),
+    taken: lanes.progress[0]?.history.map((event) => event.kind),
+  }).toEqual({
+    merged: ["put", "handed", "ended"],
+    taken: ["taken", "put"],
   });
 });

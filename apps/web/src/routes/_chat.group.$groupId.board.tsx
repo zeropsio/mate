@@ -1,16 +1,34 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ZeropsGroupDetailPage } from "../components/zerops/ProjectPage";
+import { BoardPage } from "../components/zerops/projectAutomation/BoardPage";
+
+/** `?task=<id>`: the task whose panel stands open; anything else, none. */
+function boardSearch(raw: Record<string, unknown>): { readonly task?: string } {
+  return typeof raw.task === "string" && raw.task !== "" ? { task: raw.task } : {};
+}
+
+function BoardRoute() {
+  const { groupId } = Route.useParams();
+  const { task } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  return (
+    <BoardPage
+      groupId={groupId}
+      onTask={(next) => {
+        // Moving from task to task replaces the address: Back leaves the Board, not each task.
+        void navigate({ search: next === null ? {} : { task: next }, replace: true });
+      }}
+      task={task ?? null}
+    />
+  );
+}
 
 /**
- * A project's own page with its Board in view: the address a link to an application's tasks
- * opens (the page's *Board*, the menu's, a task waiting for its putter's answer). The page is the
- * one at `/group/$groupId/flow`; only where it opens differs, so a reload, Back or Forward lands on
- * the Board again.
+ * An application's Board on its own page: the address a link to its tasks opens (the project
+ * page's Board and its rows, the menu's, a task waiting for its putter's answer), with the task
+ * picked in `?task=`, so a reload, Back or Forward lands on it again.
  */
 export const Route = createFileRoute("/_chat/group/$groupId/board")({
-  component: () => {
-    const { groupId } = Route.useParams();
-    return <ZeropsGroupDetailPage board groupId={groupId} />;
-  },
+  validateSearch: boardSearch,
+  component: BoardRoute,
 });

@@ -91,12 +91,9 @@ import { PAGE, PAGE_COLS, PAGE_MAIN, PAGE_SIDE } from "./project/pageLayout";
  */
 export function ZeropsGroupDetailPage({
   groupId,
-  board = false,
   connectReturned = null,
 }: {
   readonly groupId: string;
-  /** Opened at its Board (`/group/$groupId/board`): the page lands with the Board in view. */
-  readonly board?: boolean;
   /**
    * Back from GitHub's install page, which the connect dialog left for: it opens again, for the
    * code repository it was open for (`repo`; absent: asked first).
@@ -113,7 +110,6 @@ export function ZeropsGroupDetailPage({
       render: ({ entry, props, addMateWhy }) => (
         <ProjectPage
           addMateWhy={addMateWhy}
-          board={board}
           entry={entry}
           groupId={groupId}
           onAddMate={() => {
@@ -124,7 +120,7 @@ export function ZeropsGroupDetailPage({
       ),
       unread: (undrawn: boolean) => <UnreadGroupDetail groupId={groupId} undrawn={undrawn} />,
     }),
-    [addMate, board, groupId],
+    [addMate, groupId],
   );
   return (
     <ZeropsHostedFrame bar={false} width="page">
@@ -149,14 +145,12 @@ const NO_ASKS: ReadonlyArray<HqHiddenEnvironment> = [];
 /** The page once the overview's flow holds the project: its own reads, then its body. */
 function ProjectPage<T>({
   groupId,
-  board,
   entry,
   props,
   addMateWhy,
   onAddMate,
 }: {
   readonly groupId: string;
-  readonly board: boolean;
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly addMateWhy: string | null;
@@ -207,7 +201,7 @@ function ProjectPage<T>({
       </>
     ),
     access: <ProjectPeople groupId={groupId} />,
-    automation: <ProjectAutomation groupId={groupId} name={groupName} repos={repos} />,
+    automation: <ProjectAutomation groupId={groupId} />,
     boardWaiting: useBoardWaitingCount(groupId),
     merging: <ProjectMerging merging={merging} open={openOnGithub} />,
   };
@@ -215,7 +209,6 @@ function ProjectPage<T>({
     <ProjectPageBody
       addMateHidden={addMateDoor(groupId).kind === "none"}
       addMateWhy={addMateWhy}
-      boardInView={board}
       entry={entry}
       facts={facts}
       onAddMate={onAddMate}

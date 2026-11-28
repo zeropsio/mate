@@ -393,12 +393,17 @@ export function useMateFaces(): ReadonlyMap<string, BoardFace> {
 }
 
 /**
- * The task whose answer field the Board focuses as its row is drawn: asked by a press that opens
- * the Board to answer it, taken by the first row that draws it. The tab's own, never kept.
+ * The task whose answer field the Board focuses as its panel opens: asked by a press that opens
+ * the task to answer it, taken by the first panel that draws it. The tab's own, never kept.
  */
 let answerOnArrival: string | null = null;
 
-/** Whether the Board's row of `taskId` takes the focus an opening press asked for it, once. */
+/** Asks the panel of `taskId`, opened next, to focus its answer field. */
+export function askAnswerOnArrival(taskId: string): void {
+  answerOnArrival = taskId;
+}
+
+/** Whether the Board's panel of `taskId` takes the focus an opening press asked for it, once. */
 export function takeAnswerOnArrival(taskId: string): boolean {
   if (answerOnArrival !== taskId) return false;
   answerOnArrival = null;
@@ -407,9 +412,9 @@ export function takeAnswerOnArrival(taskId: string): boolean {
 
 /**
  * Where the person who put a task on the Board answers its question: their own card in the chat they
- * put it from, where the Board read says which; else the application's Board, on its page, with
- * that task's answer field focused (a task put on the Board itself is answered in its row). The
- * task is named with the Mate that holds it, or with its application where no listed Mate does.
+ * put it from, where the Board read says which; else the application's Board, on its page, that
+ * task's panel open with its answer field focused (a task put on the Board itself is answered there).
+ * The task is named with the Mate that holds it, or with its application where no listed Mate does.
  */
 export function useAnswerPutTask() {
   const store = useAccountStoreForAdapters();
@@ -431,8 +436,12 @@ export function useAnswerPutTask() {
           ? null
           : putChatOf(readsOfState(store.state()), { orgId, appId }, task.taskId);
       if (chat !== null) return openConversation(chat);
-      answerOnArrival = task.taskId;
-      void router.navigate({ to: "/group/$groupId/board", params: { groupId: appId } });
+      askAnswerOnArrival(task.taskId);
+      void router.navigate({
+        to: "/group/$groupId/board",
+        params: { groupId: appId },
+        search: { task: task.taskId },
+      });
     },
     [openConversation, orgId, placements, router, store],
   );

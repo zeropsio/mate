@@ -6,7 +6,7 @@
  * sources.
  */
 import { ArrowUpRightIcon } from "lucide-react";
-import { useState, type Ref } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 
 import type { BoardFace } from "~/zerops/useBoardTasks";
 
@@ -87,7 +87,11 @@ export function BoardTaskRowView({
         </Text>
       </div>
       {question === null ? null : (
-        <BoardTaskQuestion answer={answer} asker={who ?? "Its Mate"} question={question} />
+        <BoardTaskQuestion
+          answer={answer}
+          asker={`${who ?? "Its Mate"} asks`}
+          question={question}
+        />
       )}
     </div>
   );
@@ -95,19 +99,26 @@ export function BoardTaskRowView({
 
 /**
  * What a pool Mate asks its task's putter, and, for them, the field that answers it: on a chat's
- * put card for a task put from that chat, in the Board's row for one put on the Board itself.
+ * put card for a task put from that chat, in the Board's task panel for one put on the Board itself.
  */
 export function BoardTaskQuestion({
   asker,
   question,
   answer,
   fieldRef,
+  wash = false,
+  children,
 }: {
+  /** Who asks, as its words lead: "Sol asks", "Sol asks Rhea". */
   readonly asker: string;
   readonly question: string;
   readonly answer: Parameters<typeof BoardTaskRowView>[0]["answer"];
   /** The answer field, for a press that brings the person to it. */
   readonly fieldRef?: Ref<HTMLTextAreaElement> | undefined;
+  /** In the attention's wash: the one thing a task's panel waits on the reader for. */
+  readonly wash?: boolean;
+  /** Where it is answered instead, for a reader who answers it elsewhere (its conversation). */
+  readonly children?: ReactNode;
 }) {
   const [text, setText] = useState("");
   const sending = answer?.state.kind === "sending";
@@ -117,10 +128,11 @@ export function BoardTaskQuestion({
     setText("");
   };
   return (
-    <Card size="sm" variant="inset">
+    <Card size="sm" tone={wash ? "attention" : undefined} variant={wash ? "wash" : "inset"}>
       <Text render={<p />} variant="description">
-        <span className="font-medium text-foreground">{asker} asks:</span> {question}
+        <span className="font-medium text-foreground">{asker}:</span> {question}
       </Text>
+      {children}
       {answer === undefined ? null : (
         <div className="grid min-w-0 gap-1.5">
           <div className="flex min-w-0 items-end gap-2">

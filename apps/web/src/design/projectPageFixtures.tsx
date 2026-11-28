@@ -28,7 +28,6 @@ import {
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
 import { NewBoardTaskView } from "~/components/zerops/projectAutomation/NewBoardTask";
-import type { SourceRow } from "~/components/zerops/projectAutomation/projectAutomation.logic";
 import { boardOf, boardWaitingCount } from "~/components/zerops/projectAutomation/taskBoard.logic";
 import type { AccessTableView } from "~/components/zerops/projects/accessTable.logic";
 import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
@@ -659,31 +658,7 @@ const POOL: ReadonlyArray<PoolMate> = [
   },
   { projectId: "tess-s", name: "Tess", tint: "rose", shape: undefined, automation: { task: null } },
 ];
-const ADMIN: AutomationControls = {
-  onAddMate: nothing,
-  onTakeFrom: nothing,
-  onEdit: nothing,
-  onReadAgain: nothing,
-  onOpenSettings: nothing,
-};
-const SOURCES: ReadonlyArray<SourceRow> = [
-  {
-    key: "github",
-    kind: "github",
-    title: "GitHub issues labelled",
-    label: "mate",
-    detail: "acme/store",
-    meta: null,
-  },
-  {
-    key: "slack",
-    kind: "slack",
-    title: "#store-asks",
-    detail: "Slack",
-    meta: null,
-    disconnected: false,
-  },
-];
+const ADMIN: AutomationControls = { onAddMate: nothing };
 const TASK: HqAppTask = {
   id: "t42",
   title: "Prices round wrong in the cart",
@@ -926,6 +901,8 @@ function PageAutomation({ groupId }: { readonly groupId: string }) {
   return (
     <ProjectAutomationView
       admin={ADMIN}
+      mode="compact"
+      onOpenBoard={nothing}
       newTask={<PageNewTask />}
       board={
         groupId === "acme-store"
@@ -934,16 +911,12 @@ function PageAutomation({ groupId }: { readonly groupId: string }) {
               spend: "$21.40 of $40 this month",
               onReadAgain: nothing,
               onOpen: nothing,
+              onPick: nothing,
             }
           : undefined
       }
       onOpenMate={nothing}
       pool={groupId === "acme-store" ? POOL : []}
-      sources={{
-        rows: groupId === "acme-store" ? SOURCES : [],
-        reading: false,
-        withheld: false,
-      }}
       workingOf={(projectId) => projectId === "odo-s"}
     />
   );
@@ -1189,7 +1162,6 @@ export function HarnessLineMine<T>({
 export function harnessProjectPage(
   groupId: string,
   onAddMate: () => void,
-  boardInView = false,
 ): ProjectPageSlot["render"] {
   const running = groupId === "acme-store" || groupId === "tea";
   const repos =
@@ -1199,7 +1171,6 @@ export function harnessProjectPage(
     <Standins>
       <ProjectPageBody
         addMateWhy={addMateWhy}
-        boardInView={boardInView}
         // `?held`: the project's reads have not answered; the line keeps its shape.
         entry={PAGE_PARAMS.has("held") ? { ...entry, awaiting: true } : entry}
         facts={harnessFacts(groupId, entry.flow)}

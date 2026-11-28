@@ -1,26 +1,21 @@
 /**
- * A project's Board section, on its page's column: New task first, a title line that opens its
- * brief in place (`NewBoardTask`); then the pool of its automated Mates as one line (their faces,
- * how many and what they are doing, *Add a Mate*, and the organization's spend this month against
- * its budget); its task board — what they are on (at work), what waits by its
- * place (each with Stop for an Owner or Admin), and what ended — read from HQ, and read again by
- * the data layer as HQ's navigation says their tasks moved (`hqTaskBoardRefresh`); then the
- * sources its tasks come from — GitHub issues by label, a Slack or Discord channel, webhooks,
- * schedules — one row each, which opens its form, and *Add* to take tasks from one more.
- * Configured where the project is: Settings keeps only what is the organization's (its key, its
- * GitHub apps, its Slack and Discord, its limits and budget).
+ * An application's Board, on its two pages. The project page holds the short Board
+ * (`ProjectAutomation`): New task first, a title line that opens its brief in place
+ * (`NewBoardTask`); the pool of its automated Mates as one line (their faces, how many and what they
+ * are doing, *Add a Mate*, and the organization's spend this month against its budget); the few
+ * tasks that need the reader; and the way to the Board's own page. That page holds the whole Board
+ * (`BoardAutomation`): every lane, read from HQ and read again by the data layer as HQ's navigation
+ * says their tasks moved (`hqTaskBoardRefresh`), and at its foot the sources its tasks come from —
+ * GitHub issues by label, a Slack or Discord channel, webhooks, schedules — one row each, which
+ * opens its form, and *Add* to take tasks from one more. Configured where the project is: Settings
+ * keeps only what is the organization's (its key, its GitHub apps, its Slack and Discord, its
+ * limits and budget).
  *
- * An Owner or Admin sets it up here; anyone else puts tasks and reads the pool, the board and the
- * GitHub source.
+ * An Owner or Admin sets it up on the Board's page; anyone else puts tasks and reads the pool, the
+ * Board and the GitHub source.
  */
-import { Failure } from "~/components/ui/failure";
 import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
-import {
-  MOTION,
-  type MateMarkState,
-  type MateShapeId,
-  type MateTintId,
-} from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { appName } from "@t3tools/shared/hqGithub";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
@@ -28,25 +23,13 @@ import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import {
   assignCandidateMateTints,
   mateShapeOf,
-  OPEN_TAKEN_LABEL,
   projectNameInApp,
   STRANDED_TAKE_WORDS,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  ArrowUpRightIcon,
-  CalendarClockIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  MoreHorizontalIcon,
-  HashIcon,
-  MessagesSquareIcon,
-  WebhookIcon,
-} from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
-import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { useAppIntake, useAutomatedKey } from "~/zerops/useAutomationSettings";
 import {
   useAppTaskSource,
@@ -56,17 +39,15 @@ import {
   useOrgTaskSource,
 } from "~/zerops/useTaskSourceSettings";
 import {
-  takeAnswerOnArrival,
+  askAnswerOnArrival,
   useBoardOffers,
   useMateFaces,
   strandedTakesAtom,
   useOpenTaskConversation,
   useTakeOpenings,
   useTakeTask,
-  type BoardFace,
 } from "~/zerops/useBoardTasks";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
-import type { BoardTaskOffer } from "@t3tools/client-runtime/data";
 import { useNewMateDialog } from "~/zerops/newMate";
 import { useAddMateOffer } from "~/zerops/useHqOffers";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -77,9 +58,7 @@ import { hqMateVersionsAtom, hqPlacementsAtom } from "~/state/zerops";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
-import { GitHubIcon } from "../../Icons";
-import { Button, InlineButton } from "../../ui/button";
-import { WaitLine } from "../WaitLine";
+import { Button } from "../../ui/button";
 import {
   Dialog,
   DialogDescription,
@@ -88,48 +67,38 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../../ui/dialog";
-import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
-import { Row } from "../../ui/row";
-import { Skeleton } from "../../ui/skeleton";
+import { Separator } from "../../ui/separator";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { appReaching } from "../../settings/automationSettings.logic";
-import { MateFace, PersonAvatar } from "../primitives";
-import { BeadMark, CutText, GrowsInPlace, SectionAction } from "../system";
-import { goClass } from "../system/ChangeRow";
-import { cn } from "~/lib/utils";
+import { MateFace } from "../primitives";
+import { GrowsInPlace } from "../system";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
+import { boardAnswerState } from "../board/boardAsk.logic";
+import { BoardLanes, CompactBoard } from "./BoardList";
+import { BoardSources } from "./BoardSources";
+import type { BoardView, Predicted, SourceControls } from "./boardView";
 import {
   connectionMissing,
   poolMateLine,
-  SOURCE_KINDS,
   sourceRows,
-  type RowPress,
   type SourceKind,
   type SourceRow,
 } from "./projectAutomation.logic";
 import { AppChannelView, AppIntakeView, AppSchedulesView, AppWebhooksView } from "./sourceForms";
 import { NewBoardTask } from "./NewBoardTask";
-import { BoardTaskQuestion, type BoardAnswerState } from "../board/BoardTaskRow";
-import { boardAnswerState } from "../board/boardAsk.logic";
 import {
   boardOf,
+  boardTotals,
   boardWaitingCount,
+  compactPredicted,
+  compactRows,
   heldOnItsChange,
-  LANES,
   poolSummary,
   predictedBoard,
   RECENT_SHOWN,
   spendLine,
   taskRowPress,
-  type Board,
-  type BoardRow,
-  type PredictedBoard,
 } from "./taskBoard.logic";
-import { RealName } from "~/components/ui/real-name";
-import { Text } from "~/components/ui/text";
-import { List } from "~/components/ui/list";
-import { Separator } from "~/components/ui/separator";
-import { SectionHeader } from "~/components/ui/section";
 
 /** Where the organization's connections are set: Settings › Automation. */
 const AUTOMATION_SETTINGS = "/settings/automation" as const;
@@ -150,32 +119,109 @@ function poolMateFace(mate: Pick<PoolMate, "automation">, working: boolean): Mat
   return mate.automation.task?.waiting === true ? "needs" : "idle";
 }
 
-export function ProjectAutomation({
-  groupId,
-  name,
-  repos,
-}: {
-  readonly groupId: string;
-  /** The project's name; undefined while the listing has not named it. */
-  readonly name: string | undefined;
-  /** Its repositories, where GitHub issues come from once one mirrors there; undefined unread. */
-  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
-}) {
-  const { activeOrganization } = useZeropsSession();
-  const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
+/**
+ * The project page's Board: New task, the pool's line, the few tasks that need the reader
+ * (`compactRows`), and the way to the Board's own page with its totals. A row opens the Board's
+ * page with its task picked.
+ */
+export function ProjectAutomation({ groupId }: { readonly groupId: string }) {
+  const navigate = useNavigate();
+  const { board, pool, onOpenMate, addMate } = useAppBoard(groupId);
+  const toBoard = (task?: string) => {
+    void navigate({
+      to: "/group/$groupId/board",
+      params: { groupId },
+      search: task === undefined ? {} : { task },
+    });
+  };
+  return (
+    <ProjectAutomationView
+      admin={addMate === undefined ? undefined : { onAddMate: addMate }}
+      board={{
+        ...board,
+        onPick: (taskId, answer) => {
+          if (answer === true) askAnswerOnArrival(taskId);
+          toBoard(taskId);
+        },
+        pickHref: (taskId) => boardHref(groupId, taskId),
+      }}
+      boardHref={boardHref(groupId)}
+      mode="compact"
+      // Keyed by the application: no draft follows the person to another one.
+      newTask={<NewBoardTask appId={groupId} key={groupId} />}
+      onOpenBoard={() => {
+        toBoard();
+      }}
+      onOpenMate={onOpenMate}
+      pool={pool}
+    />
+  );
+}
+
+/** The Board's page of application `appId`, at its task `taskId` where given. */
+function boardHref(appId: string, taskId?: string): string {
+  const path = `/group/${encodeURIComponent(appId)}/board`;
+  return taskId === undefined ? path : `${path}?task=${encodeURIComponent(taskId)}`;
+}
+
+/**
+ * An application's Board and its pool, as both its pages read them: HQ's tasks of it, the pool of
+ * its automated Mates and what each is on, the way into a pool Mate, and *Add a Mate* where the
+ * reader may add one.
+ */
+export function useAppBoard(groupId: string): {
+  readonly board: BoardView;
+  readonly pool: ReadonlyArray<PoolMate>;
+  readonly onOpenMate: (projectId: string) => void;
+  readonly addMate: (() => void) | undefined;
+} {
   const { pool, live, tasks } = usePool(groupId);
   const intake = useAppIntake(groupId);
   const addMate = useAddAutomatedMate(groupId);
   const openMate = useOpenMate();
-  const onOpenMate = (projectId: string) => {
-    openMate({ projectId });
-  };
   const board = useTaskBoard(
     groupId,
     live,
     predictedBoard(tasks, intake.read.intake?.waiting ?? 0, useTakenCount(groupId)),
     pool,
   );
+  return {
+    board,
+    pool,
+    onOpenMate: (projectId) => {
+      openMate({ projectId });
+    },
+    addMate,
+  };
+}
+
+/**
+ * The Board's page's list: New task, the pool's line, every lane, and at its foot where the
+ * project takes tasks from — which an Owner or Admin sets up here, each source's form a dialog over
+ * the page; anyone else reads the GitHub source.
+ */
+export function BoardAutomation({
+  groupId,
+  name,
+  repos,
+  board,
+  pool,
+  onOpenMate,
+  addMate,
+}: {
+  readonly groupId: string;
+  /** The project's name; undefined while the listing has not named it. */
+  readonly name: string | undefined;
+  /** Its repositories, where GitHub issues come from once one mirrors there; undefined unread. */
+  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+  readonly board: BoardView;
+  readonly pool: ReadonlyArray<PoolMate>;
+  readonly onOpenMate: (projectId: string) => void;
+  readonly addMate: (() => void) | undefined;
+}) {
+  const { activeOrganization } = useZeropsSession();
+  const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
+  const intake = useAppIntake(groupId);
   // The Board's first line, whoever reads it.
   // Keyed by the application: no draft follows the person to another one.
   const newTask = <NewBoardTask appId={groupId} key={groupId} />;
@@ -192,6 +238,7 @@ export function ProjectAutomation({
     return (
       <ProjectAutomationView
         board={board}
+        mode="page"
         newTask={newTask}
         onOpenMate={onOpenMate}
         pool={pool}
@@ -303,12 +350,6 @@ function usePool(groupId: string): {
   return { pool, live, tasks, complete: held.complete };
 }
 
-/** How many rows each lane will hold while the Board reads (`predictedBoard`); none, no lane. */
-interface Predicted extends PredictedBoard {
-  /** The line that opens the ones that ended earlier. */
-  readonly doneMore?: boolean | undefined;
-}
-
 /**
  * How Done and the held tasks last landed, per application, while this page lives: navigation
  * names only each Mate's latest task and counts no held one, so the next read's placeholders take
@@ -346,7 +387,7 @@ function predictedFor(groupId: string, predicted: Predicted): Predicted {
  * data layer as its Board revision or its pool's tasks move), live rows moving with navigation; the
  * organization's spend this month; who and which Mate each task names; and what the reader may do
  * with each task (`boardOffers`) — Take into one of their own Mates, Release, Done, Stop (asked in
- * its row first) — each task's writes its own record (`appTaskWrites`), the one its conversation
+ * its panel first) — each task's writes its own record (`appTaskWrites`), the one its conversation
  * reads too.
  */
 function useTaskBoard(
@@ -559,20 +600,23 @@ function AdminAutomation({
   return (
     <>
       <ProjectAutomationView
+        mode="page"
         newTask={newTask}
         admin={{
           onAddMate: addMate,
-          onTakeFrom: setOpen,
-          onEdit: (row) => {
-            setOpen(row.kind === "failed" ? row.source : row.kind);
+          sources: {
+            onTakeFrom: setOpen,
+            onEdit: (row) => {
+              setOpen(row.kind === "failed" ? row.source : row.kind);
+            },
+            onReadAgain: (source) => {
+              if (source === "slack") slack.again();
+              else if (source === "discord") discord.again();
+              else if (source === "webhook") webhooks.again();
+              else if (source === "schedule") schedules.again();
+            },
+            onOpenSettings: openSettings,
           },
-          onReadAgain: (source) => {
-            if (source === "slack") slack.again();
-            else if (source === "discord") discord.again();
-            else if (source === "webhook") webhooks.again();
-            else if (source === "schedule") schedules.again();
-          },
-          onOpenSettings: openSettings,
         }}
         board={board}
         onOpenMate={onOpenMate}
@@ -735,139 +779,70 @@ function PoolFaceView({
   );
 }
 
-/** What an Owner or Admin may do in the section; absent for anyone else, who reads it. */
+/**
+ * What the reader may set up: *Add a Mate* wherever they may add one; on the Board's page, for an
+ * Owner or Admin, the sources. Absent: they read it.
+ */
 export interface AutomationControls {
   readonly onAddMate: (() => void) | undefined;
-  /** A kind of source chosen from *Add*: its form. */
-  readonly onTakeFrom: (kind: SourceKind) => void;
-  /** A source's row, pressed: its form, where its Stop and its Delete are. */
-  readonly onEdit: (row: SourceRow) => void;
-  readonly onReadAgain: (source: Exclude<SourceKind, "github">) => void;
-  readonly onOpenSettings: () => void;
-}
-
-/** What the reader may do with each task on the Board, and the presses; absent: a reader only. */
-export interface BoardVerbs {
-  /** The task's verbs as the rules offer them (`boardOffers`); `undefined`: none known. */
-  readonly offerOf: (taskId: string) => BoardTaskOffer | undefined;
-  /** A Mate of the reader's a Take may open in, by its project: its name. */
-  readonly mateName: (projectId: string) => string;
-  /** Where the row's press stands: its Stop asking, a write under way or refused (`taskRowPress`). */
-  readonly pressOf: (taskId: string) => RowPress;
-  /** HQ took it for the reader, but none of their Mate's conversations carries it (`strandedTakes`). */
-  readonly strandedOf: (taskId: string) => boolean;
-  /** Opens a stranded Take's conversation again, under the same task. */
-  readonly onOpenTaken: (taskId: string) => void;
-  readonly onAsk: (taskId: string) => void;
-  readonly onKeep: () => void;
-  readonly onStop: (taskId: string) => void;
-  readonly onTake: (taskId: string, mateProjectId: string) => void;
-  readonly onRelease: (taskId: string) => void;
-  readonly onDone: (taskId: string) => void;
-  /** Where its putter's answer stands (`boardAnswerState`), for a task answered in its row. */
-  readonly answerOf: (taskId: string) => BoardAnswerState;
-  /** Its putter's answer, for a task answered in its row (`BoardRow.answeredHere`). */
-  readonly onAnswer: (taskId: string, text: string) => void;
-  /** Drops one of a held task's needs that broke (`dropNeed`). */
-  readonly onDropNeed: (taskId: string, neededId: string) => void;
+  /** The sources' controls, on the Board's page; absent on the project page, which lists none. */
+  readonly sources?: SourceControls | undefined;
 }
 
 /**
- * The Board as the section draws it: what HQ answered, or how its read stands (`reading`, with how
- * many rows navigation says each lane will hold, so the Board keeps its height when they land;
- * `none` where the reader may not read it).
- */
-export interface BoardView {
-  readonly read:
-    | {
-        readonly state: "reading";
-        readonly predicted: Predicted;
-      }
-    | { readonly state: "known"; readonly board: Board }
-    | { readonly state: "failed"; readonly words: string }
-    | { readonly state: "none" };
-  /** The organization's spend this month against its budget (`spendLine`); `null` unknown. */
-  readonly spend: string | null;
-  readonly onReadAgain: () => void;
-  /** Opens a task's conversation or its change, by its in-app path. */
-  readonly onOpen: (route: string) => void;
-  /** Opens the conversation a task was put from. */
-  readonly onOpenConversation?:
-    | ((conversation: NonNullable<BoardRow["origin"]["conversation"]>) => void)
-    | undefined;
-  /** A Mate's face by its project: a pool Mate's, or a person's own; `undefined` unknown. */
-  readonly faceOf?: ((projectId: string) => BoardFace | undefined) | undefined;
-  readonly verbs?: BoardVerbs | undefined;
-}
-
-/**
- * The section drawn — every read already done and handed in — so a test and the harness can look
- * at it with no account behind it. `workingOf` says which pool Mates work (a harness hands it).
+ * The Board drawn — every read already done and handed in — so a test and the harness can look at
+ * it with no account behind it. `workingOf` says which pool Mates work (a harness hands it).
  *
- * The Changes card's anatomy, for tasks: a one-line masthead for the pool, then one ledger whose
- * marks, titles and facts stand in the same columns down every group — At work, Queued, Finished —
- * and the sources its tasks come from as rows of the same list. A group stands while it has a row.
+ * New task first, then a one-line masthead for the pool, then the Board: on the project page
+ * (`compact`) the few tasks that need the reader and the way to the Board's page; on that page
+ * (`page`) every lane, and the sources its tasks come from at its foot.
  */
 export function ProjectAutomationView({
+  mode,
   newTask,
   pool,
   sources,
   admin,
   board,
   onOpenMate,
+  onOpenBoard,
+  boardHref,
   workingOf,
 }: {
+  readonly mode: "compact" | "page";
   /** The Board's first line, New task (`NewBoardTask`); absent, none. */
   readonly newTask?: ReactNode;
   /** The task board; absent, none is drawn. */
   readonly board?: BoardView | undefined;
   readonly pool: ReadonlyArray<PoolMate>;
-  readonly sources: {
-    readonly rows: ReadonlyArray<SourceRow>;
-    readonly reading: boolean;
-    /** Some sources are refused to the reader: what is shown is not every source. */
-    readonly withheld: boolean;
-  };
+  /** Where its tasks come from, on the Board's page; the project page lists none. */
+  readonly sources?:
+    | {
+        readonly rows: ReadonlyArray<SourceRow>;
+        readonly reading: boolean;
+        /** Some sources are refused to the reader: what is shown is not every source. */
+        readonly withheld: boolean;
+      }
+    | undefined;
   readonly admin?: AutomationControls | undefined;
   readonly onOpenMate: (projectId: string) => void;
+  /** The project page's way to the Board's own page, and its address. */
+  readonly onOpenBoard?: (() => void) | undefined;
+  readonly boardHref?: string | undefined;
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
 }) {
-  return (
-    <section
-      aria-label="Automation"
-      className="grid min-w-0 grid-cols-[minmax(0,1fr)] [--ln-ground:transparent] [--ln-track:color-mix(in_oklab,var(--foreground)_30%,transparent)] @container/automation"
-      data-zerops-surface="project-automation"
-    >
-      {newTask}
-      <AutomationBody
-        admin={admin}
-        board={board}
-        onOpenMate={onOpenMate}
-        pool={pool}
-        sources={sources}
-        workingOf={workingOf}
-      />
-    </section>
-  );
-}
-
-function AutomationBody({
-  pool,
-  sources,
-  admin,
-  board,
-  onOpenMate,
-  workingOf,
-}: Parameters<typeof ProjectAutomationView>[0]) {
   // The Mates HQ holds on a change that waits for review: the masthead says so, never that they are free.
   const held = new Set(
     board?.read.state === "known" ? board.read.board.blocked.map((line) => line.projectId) : [],
   );
-  // Finished shows its first few; *+ N more* opens the rest in place. Held here, so what grows
-  // eases open (`GrowsInPlace`) and the sources go down with it.
-  const [all, setAll] = useState(false);
+  const waitsFor = pool.length > 0 ? pool.map((mate) => mate.name) : undefined;
   return (
-    <>
+    <section
+      aria-label="Board"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)] @container/automation"
+      data-zerops-surface="project-automation"
+    >
+      {newTask}
       {/* The masthead: the pool in one line, the month's money at its end; too narrow, the money
           takes a line of its own. Flush in a dialog, it starts on the title's edge. */}
       <div
@@ -914,1082 +889,33 @@ function AutomationBody({
       </div>
       <Separator />
       <GrowsInPlace>
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] px-2 pt-1.5 pb-2 [[data-flush]_&]:px-3.5">
-          {board === undefined ? null : (
-            <TaskBoardView
-              all={all}
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] px-2 pt-2 pb-2 [[data-flush]_&]:px-3.5">
+          {board === undefined ? null : mode === "compact" ? (
+            <CompactBoard
               board={board}
-              onAll={setAll}
-              pool={pool}
-              waitsFor={pool.length > 0 ? pool.map((mate) => mate.name) : undefined}
+              boardHref={boardHref}
+              onOpenBoard={onOpenBoard}
+              rows={
+                board.read.state === "known"
+                  ? compactRows(board.read.board)
+                  : board.read.state === "reading"
+                    ? compactPredicted(board.read.predicted)
+                    : []
+              }
+              totals={board.read.state === "known" ? boardTotals(board.read.board) : null}
+              waitsFor={waitsFor}
             />
+          ) : (
+            <BoardLanes board={board} waitsFor={waitsFor} />
           )}
-          <SourcesView admin={admin} sources={sources} />
+          {mode === "page" && sources !== undefined ? (
+            <BoardSources admin={admin?.sources} sources={sources} />
+          ) : null}
         </div>
       </GrowsInPlace>
-    </>
+    </section>
   );
 }
 
-/** A group of the ledger: the page's label over its rows, in the ledger's own columns. */
-function LedgerGroup({
-  name,
-  count,
-  action,
-  children,
-}: {
-  readonly name: string;
-  readonly count?: number | undefined;
-  readonly action?: ReactNode;
-  readonly children: ReactNode;
-}) {
-  return (
-    // The page's label 15 px over its first row's words, 32 px under the last group's.
-    <div
-      className="col-span-full grid min-w-0 grid-cols-subgrid pt-1.5 *:col-span-full [&+&]:mt-3 [&>[data-slot=section-header]]:px-2.5"
-      data-zerops-board={name}
-    >
-      <SectionHeader action={action} count={count} level={3} size="panel" title={name} />
-      {children}
-    </div>
-  );
-}
-
-function Placeholders({ count }: { readonly count: number }) {
-  return (
-    <List aria-hidden="true" className={ROWS} render={<ul />}>
-      {Array.from({ length: count }, (_, at) => (
-        <li className={ROW} key={at}>
-          <Row className={PRESS} columns>
-            <Skeleton className="col-span-full h-3.5" surface="card" />
-          </Row>
-        </li>
-      ))}
-    </List>
-  );
-}
-
-/**
- * What a row opens across its columns: a task's conversation, by its in-app path. A row with
- * nowhere to lead stays still under the pointer.
- */
-function RowPress({
-  route,
-  onOpen,
-  children,
-}: {
-  readonly route: string | null;
-  readonly onOpen: (route: string) => void;
-  readonly children: ReactNode;
-}) {
-  if (route === null)
-    return (
-      <Row className={PRESS} columns>
-        {children}
-      </Row>
-    );
-  return (
-    <Row
-      className={PRESS}
-      columns
-      data-press=""
-      onClick={(event) => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-        event.preventDefault();
-        onOpen(route);
-      }}
-      pressable
-      render={<a href={route} />}
-    >
-      {children}
-    </Row>
-  );
-}
-
-const RESTS: RowPress = { kind: "idle" };
-
-/**
- * A task's Stop, asked in its row over its facts, so no column moves: *Keep* or *Stop*. The press
- * moves with it: to *Keep* as it asks, back to the row once kept.
- */
-function StopAsk({
-  verbs,
-  taskId,
-  question,
-}: {
-  readonly verbs: BoardVerbs;
-  readonly taskId: string;
-  readonly question: string;
-}) {
-  const keep = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    keep.current?.focus();
-  }, []);
-  return (
-    <span className="absolute inset-y-0 start-4 end-2.5 z-2 col-start-3 -col-end-1 flex min-w-0 items-center justify-end gap-1.5 motion-safe:animate-zerops-appear @max-[520px]/automation:start-0 @max-[520px]/automation:col-start-2 @max-[520px]/automation:bg-card">
-      <span className="me-1 min-w-0 truncate text-caption leading-4.5 text-muted-foreground">
-        {question}
-      </span>
-      <Button onClick={verbs.onKeep} ref={keep} size="sm" variant="ghost">
-        Keep
-      </Button>
-      <Button
-        onClick={() => {
-          verbs.onStop(taskId);
-        }}
-        size="sm"
-        variant="destructive"
-      >
-        Stop
-      </Button>
-    </span>
-  );
-}
-
-/**
- * A live task's Stop alone, where it is the row's one verb: in its row's seat while the row is
- * pointed at or focused (always where nothing hovers), in the chevron's place.
- */
-function HoverStop({ verbs, taskId }: { readonly verbs: BoardVerbs; readonly taskId: string }) {
-  return (
-    <span
-      className={cn(
-        SEAT,
-        "pointer-events-none flex opacity-0 transition-opacity duration-150 ease-out-strong group-hover/pa:pointer-events-auto group-hover/pa:opacity-100 group-focus-within/pa:pointer-events-auto group-focus-within/pa:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
-      )}
-    >
-      <Button
-        onClick={() => {
-          verbs.onAsk(taskId);
-        }}
-        size="sm"
-        variant="ghost"
-      >
-        Stop
-      </Button>
-    </span>
-  );
-}
-
-/**
- * **Take**: into the reader's one Mate in the application at once; where they have several, a
- * choice of which, each by its name.
- */
-function TakePress({
-  verbs,
-  into,
-  taskId,
-  title,
-}: {
-  readonly verbs: BoardVerbs;
-  /** The reader's own Mates its Take may open in (`BoardTaskOffer.takeInto`): a choice where several. */
-  readonly into: ReadonlyArray<string>;
-  readonly taskId: string;
-  readonly title: string;
-}) {
-  const mates = into.map((projectId) => ({ projectId, name: verbs.mateName(projectId) }));
-  const [only] = mates;
-  if (mates.length === 1 && only !== undefined)
-    return (
-      <Button
-        aria-label={`Take “${title}” into ${only.name}`}
-        onClick={() => {
-          verbs.onTake(taskId, only.projectId);
-        }}
-        size="xs"
-        variant="secondary"
-      >
-        Take
-      </Button>
-    );
-  return (
-    <Menu>
-      <MenuTrigger
-        render={<Button aria-label={`Take “${title}” into…`} size="xs" variant="secondary" />}
-      >
-        Take
-        <ChevronDownIcon aria-hidden="true" />
-      </MenuTrigger>
-      <MenuPopup align="end" width="sm">
-        <MenuGroup>
-          <MenuGroupLabel>Take it into</MenuGroupLabel>
-          {mates.map((mate) => (
-            <MenuItem
-              key={mate.projectId}
-              onClick={() => {
-                verbs.onTake(taskId, mate.projectId);
-              }}
-            >
-              {mate.name}
-            </MenuItem>
-          ))}
-        </MenuGroup>
-      </MenuPopup>
-    </Menu>
-  );
-}
-
-/**
- * **Drop the need**: a held task's one need that broke, dropped at once; where several broke, a
- * choice of which, each by the task it names.
- */
-function DropNeedPress({
-  verbs,
-  taskId,
-  title,
-  broken,
-}: {
-  readonly verbs: BoardVerbs;
-  readonly taskId: string;
-  readonly title: string;
-  readonly broken: BoardRow["broken"];
-}) {
-  const [only] = broken;
-  if (broken.length === 1 && only !== undefined)
-    return (
-      <Button
-        aria-label={`Drop what “${title}” waits for`}
-        onClick={() => {
-          verbs.onDropNeed(taskId, only.taskId);
-        }}
-        size="xs"
-        variant="secondary"
-      >
-        Drop the need
-      </Button>
-    );
-  return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <Button aria-label={`Drop what “${title}” waits for…`} size="xs" variant="secondary" />
-        }
-      >
-        Drop the need
-        <ChevronDownIcon aria-hidden="true" />
-      </MenuTrigger>
-      <MenuPopup align="end" width="sm">
-        <MenuGroup>
-          <MenuGroupLabel>Stop waiting for</MenuGroupLabel>
-          {broken.map((need) => (
-            <MenuItem
-              key={need.taskId}
-              onClick={() => {
-                verbs.onDropNeed(taskId, need.taskId);
-              }}
-            >
-              {need.title ?? "A task that ended"}
-            </MenuItem>
-          ))}
-        </MenuGroup>
-      </MenuPopup>
-    </Menu>
-  );
-}
-
-/**
- * A task's verbs beyond the seat's one press — Done where Review takes the seat, Release, and Stop
- * asked in the row — in a menu that stands while the row is pointed at or focused (always where
- * nothing hovers, and while it is open).
- */
-function MoreVerbs({
-  verbs,
-  taskId,
-  title,
-  done,
-  release,
-  stop,
-}: {
-  readonly verbs: BoardVerbs;
-  readonly taskId: string;
-  readonly title: string;
-  readonly done: boolean;
-  readonly release: boolean;
-  readonly stop: boolean;
-}) {
-  return (
-    <span className="flex opacity-0 transition-opacity duration-150 ease-out-strong group-focus-within/pa:opacity-100 group-hover/pa:opacity-100 has-data-popup-open:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
-      <Menu>
-        <MenuTrigger
-          render={<Button aria-label={`More for “${title}”`} size="icon-xs" variant="ghost" />}
-        >
-          <MoreHorizontalIcon aria-hidden="true" />
-        </MenuTrigger>
-        <MenuPopup align="end" width="sm">
-          {done ? (
-            <MenuItem
-              onClick={() => {
-                verbs.onDone(taskId);
-              }}
-            >
-              Mark it done
-            </MenuItem>
-          ) : null}
-          {release ? (
-            <MenuItem
-              onClick={() => {
-                verbs.onRelease(taskId);
-              }}
-            >
-              Release to the queue
-            </MenuItem>
-          ) : null}
-          {stop ? (
-            <MenuItem
-              onClick={() => {
-                verbs.onAsk(taskId);
-              }}
-              variant="destructive"
-            >
-              Stop…
-            </MenuItem>
-          ) : null}
-        </MenuPopup>
-      </Menu>
-    </span>
-  );
-}
-
-/**
- * A row's title and, under it, its one line: why it failed, who stopped it, HQ's refusal, what it
- * waits for and what waits for it.
- */
-function RowText({
-  title,
-  why,
-  failed = false,
-}: {
-  readonly title: string;
-  readonly why?: string | null | undefined;
-  readonly failed?: boolean;
-}) {
-  return (
-    <span className={TEXT}>
-      <CutText className={TITLE} text={title} />
-      {why == null ? null : (
-        // What it waits for can run past the column: cut, it is said whole under the pointer.
-        <span className="grid min-w-0" role={failed ? "alert" : undefined}>
-          <CutText
-            className={cn(
-              "truncate text-caption leading-4",
-              failed ? "text-status-failed-text" : "text-muted-foreground",
-            )}
-            text={why}
-          />
-        </span>
-      )}
-    </span>
-  );
-}
-
-/**
- * A task slides to its new place when it changes lane: each row's place in the ledger is read
- * after every render, and one that stood elsewhere eases from there. A row that arrives is placed.
- * Reduced motion cuts.
- */
-function useSlidingRows() {
-  const ledger = useRef<HTMLDivElement | null>(null);
-  const stood = useRef<ReadonlyMap<string, number>>(new Map());
-  useLayoutEffect(() => {
-    const node = ledger.current;
-    if (node === null) return;
-    const still = prefersReducedMotion();
-    const now = new Map<string, number>();
-    for (const row of node.querySelectorAll<HTMLElement>("[data-zerops-task]")) {
-      const id = row.dataset.zeropsTask ?? "";
-      const before = stood.current.get(id);
-      now.set(id, row.offsetTop);
-      if (still || before === undefined || Math.abs(before - row.offsetTop) < 1) continue;
-      row.animate(
-        [{ transform: `translateY(${String(before - row.offsetTop)}px)` }, { transform: "none" }],
-        { duration: MOTION.duration.base, easing: MOTION.easing.out },
-      );
-    }
-    stood.current = now;
-  });
-  return ledger;
-}
-
-/** The question a row's Stop asks: who stops, and what of it is lost. */
-function stopQuestion(row: BoardRow, holder: string | null): string {
-  if (row.lane === "queued" || row.status === "held")
-    return "Stop this task? Nobody has taken it yet.";
-  if (row.holder?.kind === "person") return "Stop this task? It leaves the Board.";
-  return `Stop this task? ${holder ?? "Its Mate"} stops where it got to.`;
-}
-
-/** Where a task came from, in its column: linked out, or back to its conversation, where it can be. */
-function OriginWords({
-  origin,
-  onOpenConversation,
-}: {
-  readonly origin: BoardRow["origin"];
-  readonly onOpenConversation: BoardView["onOpenConversation"];
-}) {
-  if (origin.url !== null)
-    return (
-      <InlineButton
-        className="pointer-events-auto max-w-full"
-        render={<a href={origin.url} rel="noreferrer" target="_blank" />}
-        tone="muted"
-      >
-        <RealName>{origin.words}</RealName>
-        <ArrowUpRightIcon aria-hidden="true" className={OUT} />
-      </InlineButton>
-    );
-  const { conversation } = origin;
-  if (conversation !== null && onOpenConversation !== undefined)
-    return (
-      <InlineButton
-        aria-label={origin.full}
-        className="pointer-events-auto max-w-full"
-        onClick={() => {
-          onOpenConversation(conversation);
-        }}
-        tone="muted"
-      >
-        <span className="truncate">{origin.words}</span>
-      </InlineButton>
-    );
-  return <span className="truncate">{origin.words}</span>;
-}
-
-/** One task of the Board, in the ledger's columns, its verbs as the rules offer them. */
-function BoardRowView({
-  row,
-  board,
-  face,
-}: {
-  readonly row: BoardRow;
-  readonly board: BoardView;
-  readonly face: BoardFace | undefined;
-}) {
-  const { verbs } = board;
-  const offer = verbs?.offerOf(row.id);
-  const press = verbs?.pressOf(row.id) ?? RESTS;
-  const asking = press.kind === "asking";
-  const busy = press.kind === "working";
-  const stopping = row.status === "stopping";
-  const asks = row.lane === "waiting" && !busy;
-  const takeInto = offer?.takeInto ?? [];
-  const take = verbs !== undefined && takeInto.length > 0;
-  const done = offer?.done === true;
-  const release = offer?.release === true;
-  const stop = offer?.stop === true && !stopping;
-  const review = row.lane === "review" ? row.change : null;
-  const stranded = verbs?.strandedOf(row.id) === true;
-  // A need that broke: the reader drops it here (or stops the task), where the rule offers it.
-  const drop = verbs !== undefined && offer?.dropNeed === true && row.broken.length > 0;
-  const holderName =
-    row.holder?.kind === "pool" ? (face?.name ?? row.holder.name) : (row.holder?.mate ?? null);
-  // A task put on the Board itself that asks its putter, the reader: answered here, in its row.
-  const answersHere =
-    verbs !== undefined && row.answeredHere && row.question !== null && offer?.answer === true;
-  const answerField = useRef<HTMLTextAreaElement | null>(null);
-  useEffect(() => {
-    if (answersHere && takeAnswerOnArrival(row.id)) answerField.current?.focus();
-  }, [answersHere, row.id]);
-  // The seat's one press; a taken task's other verbs in a menu beside it; a Stop alone on hover.
-  const primary = busy
-    ? null
-    : stranded
-      ? "open"
-      : drop
-        ? "drop"
-        : take
-          ? "take"
-          : review !== null
-            ? "review"
-            : done
-              ? "done"
-              : answersHere || (asks && row.route !== null)
-                ? "answer"
-                : null;
-  // Done stands in the menu where Review or a stranded Take's Open takes the seat; a task that asks
-  // keeps its Stop in its chat.
-  const doneInMenu = done && (primary === "review" || primary === "open");
-  const more =
-    !busy && (release || doneInMenu || (stop && primary !== null && primary !== "answer"));
-  const hoverStop = !busy && stop && !more && primary === null;
-  // A write under way says so in the state's column, so the row keeps its height.
-  const why = press.kind === "refused" ? press.words : row.detail;
-  const state = press.kind === "working" ? (press.words ?? row.state) : row.state;
-  return (
-    <li className={ROW} data-zerops-task={row.id}>
-      <RowPress
-        onOpen={board.onOpen}
-        route={primary === "review" || primary === "answer" ? null : row.route}
-      >
-        <span className={cn(LEAD, row.lane === "queued" && "text-caption leading-5 tabular-nums")}>
-          {row.lane === "queued" ? (
-            row.position
-          ) : row.holder?.kind === "person" ? (
-            <PersonAvatar name={row.holder.called ?? row.holder.name} size={20} />
-          ) : row.lane === "done" || row.lane === "review" ? (
-            <BeadMark
-              className="pointer-events-none cursor-default"
-              mark={undefined}
-              tint={face?.tint}
-            />
-          ) : face === undefined ? null : (
-            <MateFace
-              shape={face.shape}
-              size={20}
-              state={asks ? "needs" : stopping ? "idle" : "working"}
-              tint={face.tint}
-            />
-          )}
-        </span>
-        <RowText
-          failed={press.kind === "refused" || row.tone === "failed"}
-          title={row.title}
-          why={why}
-        />
-        <span className={facts(asking)}>
-          {/* Too narrow for columns: where it came from and its state lead the line under it. */}
-          <span className={NARROW}>{row.origin.words}</span>
-          {state === null ? null : <span className={NARROW}>{state}</span>}
-          <span className={WHO}>{row.who}</span>
-          <span className={COST}>{row.cost}</span>
-        </span>
-        <span className={act(asking)}>
-          {primary !== null || more || row.route === null ? null : (
-            <ChevronRightIcon aria-hidden="true" className={go(hoverStop)} />
-          )}
-        </span>
-      </RowPress>
-      {/* Where it came from and its state stand beside the row's press: their links are their own. */}
-      <span className={cn(ORIGIN, asking && "opacity-0")}>
-        <OriginWords onOpenConversation={board.onOpenConversation} origin={row.origin} />
-      </span>
-      <span
-        className={cn(
-          STATE,
-          !busy && row.tone === "attention" && "text-status-attention-text",
-          !busy && row.tone === "failed" && "text-status-failed-text",
-          asking && "opacity-0",
-        )}
-      >
-        {state}
-        {row.change?.external === true && row.lane === "done" ? (
-          <>
-            {state === null ? null : <span aria-hidden="true"> · </span>}
-            <InlineButton
-              className="pointer-events-auto"
-              render={<a href={row.change.href} rel="noreferrer" target="_blank" />}
-              tone="muted"
-            >
-              {row.change.label}
-              <ArrowUpRightIcon aria-hidden="true" className={OUT} />
-            </InlineButton>
-          </>
-        ) : null}
-      </span>
-      {verbs === undefined || asking || primary === null ? null : (
-        <span className={cn(VERB, "flex items-center gap-1")}>
-          {/* Its other verbs before it, so every row's one press ends on the seat's edge. */}
-          {more ? (
-            <MoreVerbs
-              done={doneInMenu}
-              release={release}
-              stop={stop}
-              taskId={row.id}
-              title={row.title}
-              verbs={verbs}
-            />
-          ) : null}
-          {primary === "open" ? (
-            <Button
-              onClick={() => {
-                verbs.onOpenTaken(row.id);
-              }}
-              size="xs"
-              variant="secondary"
-            >
-              {OPEN_TAKEN_LABEL}
-            </Button>
-          ) : primary === "drop" ? (
-            <DropNeedPress broken={row.broken} taskId={row.id} title={row.title} verbs={verbs} />
-          ) : primary === "take" ? (
-            <TakePress into={takeInto} taskId={row.id} title={row.title} verbs={verbs} />
-          ) : primary === "done" ? (
-            <Button
-              onClick={() => {
-                verbs.onDone(row.id);
-              }}
-              size="xs"
-              variant="secondary"
-            >
-              Done
-            </Button>
-          ) : primary === "answer" && answersHere ? (
-            <Button
-              onClick={() => {
-                answerField.current?.focus();
-              }}
-              size="xs"
-              variant="secondary"
-            >
-              Answer
-            </Button>
-          ) : primary === "answer" && row.route !== null ? (
-            <OpenPress href={row.route} label="Answer" onOpen={board.onOpen} />
-          ) : review !== null ? (
-            review.external ? (
-              <Button
-                render={<a href={review.href} rel="noreferrer" target="_blank" />}
-                size="xs"
-                variant="secondary"
-              >
-                Review
-              </Button>
-            ) : (
-              <OpenPress href={review.href} label="Review" onOpen={board.onOpen} />
-            )
-          ) : null}
-        </span>
-      )}
-      {verbs === undefined || primary !== null || !more || asking ? null : (
-        <span className={VERB}>
-          <MoreVerbs
-            done={doneInMenu}
-            release={release}
-            stop={stop}
-            taskId={row.id}
-            title={row.title}
-            verbs={verbs}
-          />
-        </span>
-      )}
-      {verbs !== undefined && hoverStop && !asking ? (
-        <HoverStop taskId={row.id} verbs={verbs} />
-      ) : null}
-      {verbs !== undefined && asking ? (
-        <StopAsk question={stopQuestion(row, holderName)} taskId={row.id} verbs={verbs} />
-      ) : null}
-      {answersHere && row.question !== null ? (
-        <div className={ASKS}>
-          <BoardTaskQuestion
-            answer={{
-              state: verbs.answerOf(row.id),
-              onSend: (text) => {
-                verbs.onAnswer(row.id, text);
-              },
-            }}
-            asker={holderName ?? "Its Mate"}
-            fieldRef={answerField}
-            question={row.question}
-          />
-        </div>
-      ) : null}
-    </li>
-  );
-}
-
-/** A press in the row's seat that opens a page in Mate: Answer, Review. */
-function OpenPress({
-  href,
-  label,
-  onOpen,
-}: {
-  readonly href: string;
-  readonly label: string;
-  readonly onOpen: (route: string) => void;
-}) {
-  return (
-    <Button
-      onClick={(event) => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-        event.preventDefault();
-        onOpen(href);
-      }}
-      render={<a href={href} />}
-      size="xs"
-      variant="secondary"
-    >
-      {label}
-    </Button>
-  );
-}
-
-function TaskBoardView({
-  board,
-  pool,
-  waitsFor,
-  all,
-  onAll,
-}: {
-  readonly board: BoardView;
-  readonly pool: ReadonlyArray<PoolMate>;
-  /** Whether Done shows every task that ended, or its first few; and the press that says. */
-  readonly all: boolean;
-  readonly onAll: (all: boolean) => void;
-  /**
-   * The pool's Mates by name, where it has any: a Board with no task says the New task above it
-   * is theirs to take.
-   */
-  readonly waitsFor?: ReadonlyArray<string> | undefined;
-}) {
-  const { read } = board;
-  const ledger = useSlidingRows();
-  if (read.state === "none") return null;
-  if (read.state === "failed")
-    return (
-      // The Board's read failed: HQ's words, and the way to read again.
-      <div className={LINE}>
-        <Failure cause={read.words} className="min-w-0 flex-1" role="alert" size="line" />
-        <Button onClick={board.onReadAgain} size="sm" variant="ghost">
-          Try again
-        </Button>
-      </div>
-    );
-  if (read.state === "reading") {
-    const { predicted } = read;
-    if (LANES.every((lane) => predicted[lane.id] === 0)) return null;
-    return (
-      <div className={LEDGER} data-zerops-surface="project-automation-board">
-        {LANES.map((lane) =>
-          predicted[lane.id] === 0 ? null : (
-            <LedgerGroup key={lane.id} name={lane.name}>
-              <Placeholders count={predicted[lane.id]} />
-              {lane.id === "done" && predicted.doneMore === true ? (
-                <div aria-hidden="true" className={MORE} />
-              ) : null}
-            </LedgerGroup>
-          ),
-        )}
-      </div>
-    );
-  }
-  const { lanes } = read.board;
-  if (LANES.every((lane) => lanes[lane.id].length === 0))
-    return waitsFor === undefined ? null : (
-      <Text className="m-0 px-2.5 pt-2 pb-1.5" render={<p />} variant="description">
-        No tasks yet. Put one on the Board above, and{" "}
-        {waitsFor.length === 1
-          ? `${waitsFor[0] ?? "its automated Mate"} takes it.`
-          : "an automated Mate takes it."}
-      </Text>
-    );
-  const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
-  const faceOf = (row: BoardRow): BoardFace | undefined => {
-    const projectId = row.holder?.projectId;
-    return projectId === undefined
-      ? undefined
-      : (faces.get(projectId) ?? board.faceOf?.(projectId));
-  };
-  return (
-    <div className={LEDGER} data-zerops-surface="project-automation-board" ref={ledger}>
-      {LANES.map((lane) => {
-        const rows = lanes[lane.id];
-        if (rows.length === 0) return null;
-        const shown = lane.id === "done" && !all ? rows.slice(0, RECENT_SHOWN) : rows;
-        return (
-          <LedgerGroup count={rows.length} key={lane.id} name={lane.name}>
-            <List className={ROWS} render={<ul />}>
-              {shown.map((row) => (
-                <BoardRowView board={board} face={faceOf(row)} key={row.id} row={row} />
-              ))}
-            </List>
-            {lane.id === "done" && rows.length > RECENT_SHOWN ? (
-              // Done past its first few: opened in place, on the titles' edge.
-              <div className={MORE}>
-                <SectionAction
-                  onClick={() => {
-                    onAll(!all);
-                  }}
-                >
-                  {all ? "Show fewer" : `+ ${String(rows.length - RECENT_SHOWN)} more`}
-                </SectionAction>
-              </div>
-            ) : null}
-          </LedgerGroup>
-        );
-      })}
-    </div>
-  );
-}
-
-/** A source's mark: GitHub's, a channel's, a webhook, a schedule, as a task's card has them. */
-function SourceMark({ kind }: { readonly kind: SourceKind }) {
-  const Icon =
-    kind === "github"
-      ? GitHubIcon
-      : kind === "slack"
-        ? HashIcon
-        : kind === "discord"
-          ? MessagesSquareIcon
-          : kind === "webhook"
-            ? WebhookIcon
-            : CalendarClockIcon;
-  return <Icon aria-hidden="true" className="size-4" />;
-}
-
-/**
- * Where the project takes tasks from, as rows of the ledger: each source its mark, what it is,
- * where or when, and how many of its tasks wait. For an Owner or Admin a row opens its form —
- * its Stop and its Delete live there — and *Add* offers every kind; with none set yet, the kinds
- * stand in the group that will hold them.
- */
-function SourcesView({
-  sources,
-  admin,
-}: {
-  readonly sources: Parameters<typeof ProjectAutomationView>[0]["sources"];
-  readonly admin: AutomationControls | undefined;
-}) {
-  const { rows } = sources;
-  const none = rows.length === 0;
-  // Nothing to read and nothing the reader could add: the group is not drawn.
-  if (none && !sources.reading && !sources.withheld && admin === undefined) return null;
-  const count = rows.filter((row) => row.kind !== "failed").length;
-  return (
-    // The sources: their own facts, on the same left edge.
-    <div
-      className={cn(LEDGER, "mt-3 grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]")}
-      data-zerops-surface="project-automation-sources"
-    >
-      <LedgerGroup
-        action={
-          admin === undefined || none ? undefined : (
-            <Menu>
-              <MenuTrigger render={<Button size="sm" variant="link" />}>+ Add</MenuTrigger>
-              <MenuPopup align="end">
-                {SOURCE_KINDS.map((entry) => (
-                  <MenuItem
-                    key={entry.kind}
-                    onClick={() => {
-                      admin.onTakeFrom(entry.kind);
-                    }}
-                  >
-                    {entry.label}
-                  </MenuItem>
-                ))}
-              </MenuPopup>
-            </Menu>
-          )
-        }
-        count={count === 0 ? undefined : count}
-        name="Takes tasks from"
-      >
-        {!none ? (
-          <List className={ROWS} render={<ul />}>
-            {rows.map((row) => (
-              <SourceRowView admin={admin} key={row.key} row={row} />
-            ))}
-          </List>
-        ) : sources.reading ? (
-          <div className={LINE}>
-            <WaitLine text="Reading…" />
-          </div>
-        ) : admin === undefined ? null : (
-          // No source yet: the kinds stand in the group that will hold them.
-          <div className="flex flex-wrap gap-2 px-2.5 pt-1 pb-2">
-            {SOURCE_KINDS.map((entry) => (
-              <Button
-                key={entry.kind}
-                onClick={() => {
-                  admin.onTakeFrom(entry.kind);
-                }}
-                size="sm"
-                variant="secondary"
-              >
-                {entry.label}
-              </Button>
-            ))}
-          </div>
-        )}
-        {sources.withheld ? (
-          <p className="m-0 px-2.5 pt-1.5 pb-0.5 text-caption leading-4.5 text-muted-foreground">
-            Owners and admins see every source.
-          </p>
-        ) : null}
-      </LedgerGroup>
-    </div>
-  );
-}
-
-function SourceRowView({
-  row,
-  admin,
-}: {
-  readonly row: SourceRow;
-  readonly admin: AutomationControls | undefined;
-}) {
-  const failed = row.kind === "failed";
-  const disconnected = (row.kind === "slack" || row.kind === "discord") && row.disconnected;
-  const cells = (
-    <>
-      <span className={LEAD}>
-        <SourceMark kind={failed ? row.source : row.kind} />
-      </span>
-      <span className={TEXT}>
-        <span
-          className={cn(TITLE, failed && "text-status-failed-text")}
-          role={failed ? "alert" : undefined}
-        >
-          {row.title}
-          {row.kind === "github" ? (
-            <>
-              {" "}
-              <RealName>{row.label}</RealName>
-            </>
-          ) : null}
-        </span>
-      </span>
-      <span className={facts(false)}>
-        {disconnected ? (
-          <span className={cn(STATE, "text-status-attention-text")}>Not connected</span>
-        ) : null}
-        {row.detail === null && row.meta === null ? null : (
-          <span className={cn(WHO, "col-start-4")}>
-            {row.kind === "github" ? <RealName>{row.detail}</RealName> : row.detail}
-            {row.detail === null || row.meta === null ? null : " · "}
-            {row.meta}
-          </span>
-        )}
-      </span>
-      <span className={cn(act(false), "col-start-5")}>
-        {admin === undefined || failed || disconnected ? null : (
-          <ChevronRightIcon aria-hidden="true" className={go(false)} />
-        )}
-      </span>
-    </>
-  );
-  return (
-    <li className={ROW} data-zerops-source={row.kind}>
-      {admin === undefined ? (
-        <Row className={PRESS} columns>
-          {cells}
-        </Row>
-      ) : (
-        <Row
-          className={PRESS}
-          columns
-          data-press=""
-          onClick={() => {
-            admin.onEdit(row);
-          }}
-          pressable
-          render={<button type="button" />}
-        >
-          {cells}
-        </Row>
-      )}
-      {admin === undefined ? null : failed ? (
-        <span className={cn(VERB, "col-start-5")}>
-          <Button
-            onClick={() => {
-              admin.onReadAgain(row.source);
-            }}
-            size="sm"
-            variant="ghost"
-          >
-            Try again
-          </Button>
-        </span>
-      ) : disconnected ? (
-        <span className={cn(VERB, "col-start-5")}>
-          <Button onClick={admin.onOpenSettings} size="xs" variant="secondary">
-            Connect
-          </Button>
-        </span>
-      ) : null}
-    </li>
-  );
-}
-
-/** Words only a wide ledger has room for. */
+/** Words only a wide masthead has room for. */
 const WIDE = "@max-[760px]/automation:hidden";
-
-/**
- * One grid for the tasks, its facts in columns that run down every group: a mark, the title, the
- * state, the pull request, whose and when, the cost, the seat of the row's one press. Too narrow
- * for columns (a phone), a row's facts are one line under its title, its seat beside both.
- */
-const LEDGER =
-  "relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto_auto_auto_auto] @max-[520px]/automation:grid-cols-[auto_minmax(0,1fr)_auto]";
-const ROWS = "grid min-w-0 grid-cols-subgrid";
-
-/**
- * A row: the Changes ledger's own, 40 px, a hairline over each but the first. It holds its ground
- * while any of it is pointed at: its Stop and its Review stand over it.
- */
-const ROW =
-  "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] [&:hover>[data-press]]:bg-item-hover";
-const PRESS = "row-start-1 min-h-10 items-center";
-/** A row's question and its answer field, on a line of its own under the row, past its mark. */
-const ASKS = "col-span-full row-start-3 min-w-0 ps-8 pe-2.5 pb-2";
-
-/** A row's mark: a Mate's face, a queued task's place, a finished one's bead, a source's icon. */
-const LEAD = "col-start-1 row-start-1 me-3 grid size-5 place-items-center text-muted-foreground";
-
-/** The title and, under it, its one line: why it failed, who stopped it. */
-const TEXT = "col-start-2 row-start-1 grid min-w-0";
-const TITLE = "truncate text-body leading-5 max-sm:line-clamp-2 max-sm:whitespace-normal";
-
-/** A row's facts, each in the ledger's column: muted figures on one line. */
-const FACT =
-  "ms-4 text-caption leading-4.5 whitespace-nowrap text-muted-foreground tabular-nums @max-[520px]/automation:ms-0 @max-[520px]/automation:min-w-0";
-
-/**
- * Where a task came from, in its column beside the row's press (its link is its own); too narrow
- * for columns, it leads the line under the title instead (`NARROW`).
- */
-const ORIGIN = cn(
-  FACT,
-  "pointer-events-none z-1 col-start-3 row-start-1 flex max-w-82.5 min-w-0 items-center transition-opacity duration-150 ease-out-strong motion-reduce:transition-none @max-[760px]/automation:max-w-42.5 @max-[520px]/automation:hidden",
-);
-
-/** A state said in words, only where its lane does not: Taken by Ana, Asks you, Failed, Merged. */
-const STATE = cn(
-  FACT,
-  "pointer-events-none z-1 col-start-4 row-start-1 transition-opacity duration-150 ease-out-strong motion-reduce:transition-none @max-[520px]/automation:hidden",
-);
-
-/** What stands in a column of its own on a wide ledger, said on the line under the title on a narrow one. */
-const NARROW = "hidden truncate @max-[520px]/automation:inline";
-const WHO = cn(FACT, "col-start-5 row-start-1 text-end");
-const COST = cn(FACT, "col-start-6 row-start-1 min-w-9.5 text-end");
-const OUT = "size-2.75 flex-none";
-
-/**
- * The facts stand in the ledger's columns (the wrapper is theirs only where the ledger is too
- * narrow); Stop asks over them, and they keep their columns under it.
- */
-function facts(asking: boolean): string {
-  return cn(
-    "contents *:transition-opacity *:duration-150 *:ease-out-strong motion-reduce:*:transition-none",
-    "@max-[520px]/automation:col-start-2 @max-[520px]/automation:row-start-2 @max-[520px]/automation:flex @max-[520px]/automation:min-w-0 @max-[520px]/automation:overflow-hidden @max-[520px]/automation:[&>*+*]:before:mx-1.5 @max-[520px]/automation:[&>*+*]:before:content-['·']",
-    asking && "*:pointer-events-none *:opacity-0",
-  );
-}
-
-/** The seat of a row's one press, held in every row: a chevron ends where Answer and Review do. */
-function act(asking: boolean): string {
-  return cn(
-    "col-start-7 row-start-1 ms-3 flex min-h-7 min-w-14.5 items-center justify-end transition-opacity duration-150 ease-out-strong motion-reduce:transition-none @max-[520px]/automation:col-start-3 @max-[520px]/automation:row-[1/span_2]",
-    asking && "pointer-events-none opacity-0",
-  );
-}
-
-/** A press of its own in the row's seat, beside the press that opens it: Review, Connect, Stop. */
-const SEAT =
-  "z-1 col-start-7 row-start-1 ms-3 me-2.5 justify-self-end @max-[520px]/automation:col-start-3 @max-[520px]/automation:row-[1/span_2]";
-const VERB = SEAT;
-
-/**
- * Where a row leads, quiet at rest; on a row with a Stop it gives way to the Stop while the row is
- * pointed at or focused, and always where nothing hovers.
- */
-function go(stoppable: boolean): string {
-  return stoppable
-    ? "size-4 flex-none text-muted-foreground opacity-55 transition-opacity duration-150 ease-out-strong group-focus-within/pa:opacity-0 group-hover/pa:opacity-0 motion-reduce:transition-none [@media(hover:none)]:opacity-0"
-    : goClass(true);
-}
-
-/** Finished past its first few, and its stand-in while read. */
-const MORE = "flex min-h-7.5 items-center ps-8 pe-2.5 pt-0.5";
-
-/** A line in the card: the read that failed, the sources being read. */
-const LINE = "flex min-h-10 items-center gap-2 px-2.5 py-1.5";

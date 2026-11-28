@@ -67,4 +67,12 @@
   }
 }
 
+/* A Board's task panel opening beside its list: 16 px in from the right as it fades in. */
+@keyframes board-panel-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+
 /* ==== end of the panels' keyframes ==== */

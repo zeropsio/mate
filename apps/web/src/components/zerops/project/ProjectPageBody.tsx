@@ -9,15 +9,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { ZeropsMateVerb } from "../ZeropsMateCard";
 import { FileIcon, GlobeIcon, SquareKanbanIcon } from "lucide-react";
-import {
-  Fragment,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Card } from "~/components/ui/card";
@@ -217,7 +209,6 @@ export function ProjectPageBody<T>({
   props,
   addMateWhy,
   addMateHidden = false,
-  boardInView = false,
   onAddMate,
   facts,
   setup,
@@ -228,8 +219,6 @@ export function ProjectPageBody<T>({
   readonly addMateWhy: string | null;
   /** The person only reads here: *Add a Mate* is not theirs to want, and is not drawn. */
   readonly addMateHidden?: boolean;
-  /** Opened at its Board (`/group/$groupId/board`): the page paints with the Board in view. */
-  readonly boardInView?: boolean;
   readonly onAddMate: () => void;
   readonly facts: ProjectPageFacts;
   readonly setup: ProjectPageSetup;
@@ -242,18 +231,13 @@ export function ProjectPageBody<T>({
   const [open, setOpen] = useOpenDetails();
   const waits = props.cardWaits?.(entry) ?? NO_WAITS;
   const standingHere = useStandingHere(group.groupId);
-  const board = useBoardInView(boardInView);
   return (
     <div className={PAGE} data-zerops-surface="project-page">
       <PageHeader
         actions={
           // *Add a Mate* is the Mates grid's last card: one door on the page.
           <>
-            <BoardDoor
-              count={setup.boardWaiting}
-              groupId={group.groupId}
-              onHere={boardInView ? board.reveal : undefined}
-            />
+            <BoardDoor count={setup.boardWaiting} groupId={group.groupId} />
             {/* Every address of the project, by where it runs: an address is reached through a
                 Sites door, the project's own here. */}
             <ProjectSitesDoor
@@ -300,11 +284,8 @@ export function ProjectPageBody<T>({
           />
           <section
             aria-labelledby={BOARD_HEADING}
-            className={cn(PAGE_GROUP, "scroll-mt-6 outline-none")}
+            className={PAGE_GROUP}
             data-zerops-project-automation=""
-            ref={board.ref}
-            // Focused as the page opens at it, its heading said: never a stop of the Tab order.
-            tabIndex={-1}
           >
             <SectionHeader id={BOARD_HEADING} title="Board" />
             <Card>{setup.automation}</Card>
@@ -350,54 +331,21 @@ export function ProjectPageBody<T>({
 const BOARD_HEADING = "project-board";
 
 /**
- * The Board section in view: where the page opens at it, scrolled there and focused before the
- * page first paints; and `reveal`, the same again (eased) for *Board* pressed while it is open
- * there. What reads in above it afterwards does not move it: the browser's scroll anchoring holds
- * the section where it stands.
- */
-function useBoardInView(inView: boolean) {
-  const ref = useRef<HTMLElement>(null);
-  useLayoutEffect(() => {
-    if (inView) showSection(ref.current, true);
-  }, [inView]);
-  return {
-    ref,
-    reveal: () => {
-      showSection(ref.current, prefersReducedMotion());
-    },
-  };
-}
-
-function showSection(section: HTMLElement | null, still: boolean): void {
-  if (section === null) return;
-  section.scrollIntoView({ block: "start", behavior: still ? "instant" : "smooth" });
-  section.focus({ preventScroll: true });
-}
-
-/**
- * The header's way to the Board, `/group/$groupId/board`, with how many tasks wait there
- * (`boardWaitingCount`) once it is read and some do. Pressed on a page already opened at its
- * Board, it goes there again in place (`onHere`).
+ * The header's way to the Board's own page, `/group/$groupId/board`, with how many tasks wait there
+ * (`boardWaitingCount`) once it is read and some do.
  */
 function BoardDoor({
   groupId,
   count,
-  onHere,
 }: {
   readonly groupId: string;
   readonly count: number | undefined;
-  readonly onHere: (() => void) | undefined;
 }) {
   const waiting = count !== undefined && count > 0;
   return (
     <Button
       aria-label={waiting ? `Board, ${String(count)} waiting` : "Board"}
       data-zerops-surface="project-board-door"
-      onClick={(event) => {
-        if (onHere === undefined) return;
-        event.preventDefault();
-        onHere();
-      }}
       render={<Link params={{ groupId }} to="/group/$groupId/board" />}
       size="sm"
       variant="secondary"
