@@ -1,8 +1,7 @@
 /**
  * The release offer reads HQ's release plan, the flow's releases and HQ's decision record.
- * The release review also reads the planned service descriptions and its creation progress here.
+ * The release review also reads the planned service descriptions here.
  */
-import type { ServiceCreation } from "@t3tools/client-runtime/data";
 import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 import { serviceTypeWords } from "@t3tools/client-runtime/zerops";
 
@@ -37,43 +36,6 @@ function plannedShapeWords(
   if (most === 1) return "one copy";
   if (least === undefined || least < 2) return undefined;
   return most === least ? `${least} copies` : `at least ${least} copies`;
-}
-
-/** A create of the release review, as its operation says it stands. */
-export type ServiceCreateRun =
-  | { readonly kind: "none" }
-  /** Sent, or accepted and its processes not ended: `sinceMs` once Zerops took it. */
-  | { readonly kind: "working"; readonly sinceMs: number | undefined }
-  /** Every process of it finished: they exist, before HQ's plan is read again. */
-  | { readonly kind: "created" }
-  | { readonly kind: "failed"; readonly words: string };
-
-/**
- * A create this tab runs, from its operation's record (`serviceCreation`): the one reading every
- * surface that follows a create says it by. `sending` covers the press before the operation has a
- * record.
- */
-export function serviceCreateRunOf(creation: ServiceCreation, sending: boolean): ServiceCreateRun {
-  const { progress } = creation;
-  if (progress.stage === "unknown")
-    return sending ? { kind: "working", sinceMs: undefined } : { kind: "none" };
-  if (
-    progress.stage === "submitting" ||
-    progress.stage === "accepted" ||
-    progress.stage === "reflected" ||
-    (progress.stage === "uncertain" && progress.next === "asking-owner")
-  )
-    return { kind: "working", sinceMs: creation.acceptedAtMs };
-  if (progress.stage === "done" && progress.outcome === "succeeded") return { kind: "created" };
-  return {
-    kind: "failed",
-    words:
-      serviceCreateTrouble({
-        stage: progress.stage,
-        ...("outcome" in progress ? { outcome: progress.outcome } : {}),
-        ...("reason" in progress ? { reason: progress.reason } : {}),
-      }) ?? "Zerops did not create it.",
-  };
 }
 
 /** "Release v0.1.6 to production". */
@@ -264,22 +226,4 @@ export function releaseOfferView(input: {
       moved: movedOn ? "Main moved on since: this covers what waits now." : undefined,
     },
   );
-}
-
-/** What a create that ended says of itself; `null` once every service it began exists. */
-export function serviceCreateTrouble(end: {
-  readonly stage: string;
-  readonly outcome?: string;
-  readonly reason?: string | null;
-}): string | null {
-  switch (end.stage) {
-    case "done":
-      return end.outcome === "succeeded" ? null : (end.reason ?? "Zerops did not create it.");
-    case "refused":
-      return end.reason ?? "Zerops refused the import.";
-    case "unsent":
-      return end.reason ?? "Zerops did not take the import. Try again.";
-    default:
-      return "The create could not be followed. Check production's services before trying again.";
-  }
 }

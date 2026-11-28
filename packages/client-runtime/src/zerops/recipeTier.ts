@@ -1,5 +1,5 @@
 /**
- * The recipe repository's tiers, turned into what the platform imports — guide 4.3. The
+ * What the client reads from a recipe's tiers — guide 4.3. The
  * repository is `group` in HQ, one per application.
  *
  * ## What the group repo holds
@@ -25,46 +25,8 @@
  *   a pair's stage half.
  * - **dev** — every other runtime: a pair's dev half, the Mate's clone target.
  *
- * The platform **cannot clone a private repository**, and it refuses
- * `zeropsSetup` without `buildFromGit`, so a runtime built from the
- * application's own repositories in HQ is imported without its build; its code
- * arrives afterwards from the party that can deploy it — a Mate's zcp, or HQ's
- * Core with the environment's deploy key. zcp reads which repository a runtime
- * comes from off the tier itself; nothing here carries that along.
- *
- * ## A Mate's tier goes in whole, with its container ({@link mateTier})
- *
- * A Mate's birth is one import into the project it was created with: its container first — the
- * highest `priority`, so its build never queues behind the tier's waves — then the tier's services
- * in their own waves. Who reads whose variables is the project's one value, set before the import
- * (`envIsolation: service service@<container>`, set by HQ's birth): every
- * service, those added after birth too, keeps its own from the others and shares it with the
- * container, so nothing that runs code ever reads the Mate's key while the Mate reads what it
- * works on. No service is stamped here:
- *
- * - a dev half starts empty (`startWithoutCode: true`) — running, the clone target;
- * - a stage half waits at `READY_TO_DEPLOY` for its first deploy: no build and
- *   no `startWithoutCode`; a pooled part's pool and stage are built from `main` by zcp
- *   (`zeropsio/zcp:docs/spec-mate.md` §2.8b);
- * - a utility keeps `buildFromGit` and `zeropsSetup` verbatim, and the platform
- *   builds it;
- * - every service keeps its `priority`, and an `envIsolation` it states itself.
- *
- * The import goes into a project that exists, which takes no `project:` block (`recipeServicesYaml`;
- * zcp's importer refuses one for the same reason). Its project variables are applied to the project
- * before import.
- *
- * ## A stage or a production takes its tier whole ({@link deployTargetTier})
- *
- * An environment with no container has no Mate, so its tier goes in as one import, as it always
- * has: every runtime starts empty for HQ's Core to deploy onto, and a utility is built.
- *
- * ## Keep service text as written
- *
- * The tiers are written for people to read and carry comments that explain the
- * shape; a YAML round trip through a serializer drops every one of them, and
- * each service's own indentation — a person's two spaces or zcp's four — is the
- * one worked against. The separate project block is parsed to read its variables.
+ * HQ reads and converts the tier for imports. The web reads service details for its preview
+ * and carries a Mate birth's project variables.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -95,18 +57,6 @@ export interface RecipeRuntime {
   readonly role: RecipeRuntimeRole;
 }
 
-/** A Mate's tier as its birth's one import carries it ({@link mateTier}). */
-export interface MateTier {
-  /** Services only, runtimes converted, priorities kept, the document's header still first. */
-  readonly yaml: string;
-  /** The managed services' hostnames, in the tier's order. */
-  readonly managed: ReadonlyArray<string>;
-  /** Each runtime it creates, in the tier's order. */
-  readonly runtimes: ReadonlyArray<RecipeRuntime>;
-  /** Values as stated in the recipe, before its random expressions are expanded. */
-  readonly projectVariables?: ReadonlyArray<TierProjectVariable>;
-}
-
 export interface TierProjectVariable {
   readonly key: string;
   readonly value: string;
@@ -122,7 +72,7 @@ function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
 }
 
 /** The project's own vault; service vaults stay in the import for Zerops to process. */
-function tierProjectVariables(yaml: string): ReadonlyArray<TierProjectVariable> {
+export function tierProjectVariables(yaml: string): ReadonlyArray<TierProjectVariable> {
   const lines = yaml.split("\n");
   const block = findProjectBlock(lines);
   if (block === null) return [];
@@ -169,7 +119,6 @@ const NESTED_URL = /^\s*url:(.*)$/u;
 
 /** The keys that say a service runs code of its own: a build, its setup, an empty start. */
 const CODE_KEYS: ReadonlySet<string> = new Set(["buildFromGit", "zeropsSetup", "startWithoutCode"]);
-const START_EMPTY = "startWithoutCode: true";
 
 /** The only hosts whose repositories the platform clones with nobody's credentials. */
 const PUBLIC_GIT_HOSTS: ReadonlySet<string> = new Set(["github.com", "gitlab.com"]);
@@ -182,23 +131,12 @@ interface TierItem {
   readonly hostname: string | undefined;
 }
 
-interface ParsedTier {
-  /** Everything before `services:` — the header, the project block. */
-  readonly head: ReadonlyArray<string>;
-  readonly servicesLine: string;
-  /** What sits between `services:` and its first item: a comment about the list as a whole. */
-  readonly preamble: ReadonlyArray<string>;
-  readonly items: ReadonlyArray<TierItem>;
-  /** Everything after the services block. */
-  readonly tail: ReadonlyArray<string>;
-}
-
 function indentOf(line: string): number {
   return line.length - line.trimStart().length;
 }
 
 /** The tier's services, as written, or `undefined` when it declares none. */
-function parseTier(yaml: string): ParsedTier | undefined {
+function parseTier(yaml: string): ReadonlyArray<TierItem> | undefined {
   const lines = yaml.split("\n");
   const start = lines.findIndex((line) => SERVICES_KEY.test(line));
   if (start === -1) return undefined;
@@ -214,7 +152,6 @@ function parseTier(yaml: string): ParsedTier | undefined {
   }
 
   const items: Array<{ readonly lines: Array<string>; readonly opening: string }> = [];
-  const preamble: Array<string> = [];
   let column: number | undefined;
   for (let index = start + 1; index < end; index += 1) {
     const line = lines[index] ?? "";
@@ -223,31 +160,10 @@ function parseTier(yaml: string): ParsedTier | undefined {
       column = indentOf(line);
       items.push({ lines: [line], opening });
     } else if (items.length > 0) items.at(-1)!.lines.push(line);
-    else preamble.push(line);
   }
   if (items.length === 0) return undefined;
 
-  return {
-    head: lines.slice(0, start),
-    servicesLine: lines[start] ?? "services:",
-    preamble,
-    items: items.map((item) => ({ ...item, hostname: ownScalar(item, "hostname") })),
-    tail: lines.slice(end),
-  };
-}
-
-/** A document of the tier's own shape holding these items; `services: []` when there are none. */
-function documentOf(tier: ParsedTier, items: ReadonlyArray<ReadonlyArray<string>>): string {
-  return [
-    ...tier.head,
-    items.length === 0 ? "services: []" : tier.servicesLine,
-    ...tier.preamble,
-    ...items.flat(),
-    ...tier.tail,
-  ]
-    .join("\n")
-    .replace(/\n+$/u, "")
-    .concat("\n");
+  return items.map((item) => ({ ...item, hostname: ownScalar(item, "hostname") }));
 }
 
 type ItemLines = Pick<TierItem, "lines" | "opening">;
@@ -332,68 +248,11 @@ function roleOf(item: TierItem): RecipeServiceRole {
   return item.hostname !== undefined && isStageHostname(item.hostname) ? "stage" : "dev";
 }
 
-/**
- * The item without the named keys, each with the lines nested under it, and
- * with `insert` where the first of them was — so an empty start lands at the
- * item's own indentation, taking the `- ` of a key that opened the item. A key
- * that opened the item and is simply gone hands its `- ` to the next of the
- * item's own keys; an item that would be left with nothing stays as it was.
- */
-function rewritten(
-  item: TierItem,
-  drop: ReadonlySet<string>,
-  insert?: string,
-): ReadonlyArray<string> {
-  const column = item.opening.length;
-  const kept: Array<string> = [];
-  let skipping = false;
-  let insertAt: number | undefined;
-  let openingDropped = false;
-  item.lines.forEach((line, index) => {
-    if (skipping) {
-      if (line.trim().length === 0 || indentOf(line) > column) return;
-      skipping = false;
-    }
-    const key = ownKey(item, index)?.key;
-    if (key !== undefined && drop.has(key)) {
-      skipping = true;
-      openingDropped ||= index === 0;
-      insertAt ??= kept.length;
-      return;
-    }
-    kept.push(line);
-  });
-  if (insertAt === undefined) return item.lines;
-  if (insert !== undefined) {
-    kept.splice(insertAt, 0, `${openingDropped ? item.opening : " ".repeat(column)}${insert}`);
-    return kept;
-  }
-  if (!openingDropped) return kept;
-  const next = kept.findIndex(
-    (line) => indentOf(line) === column && OWN_KEY.test(line.slice(column)),
-  );
-  if (next === -1) return item.lines;
-  kept[next] = `${item.opening}${kept[next]!.slice(column)}`;
-  return kept;
-}
-
-/** A runtime as a Mate's birth brings it up (the module's header). */
-function asMateRuntime(item: TierItem, role: RecipeRuntimeRole): ReadonlyArray<string> {
-  switch (role) {
-    case "dev":
-      return rewritten(item, CODE_KEYS, START_EMPTY);
-    case "stage":
-      return rewritten(item, CODE_KEYS);
-    case "utility":
-      return item.lines;
-  }
-}
-
 /** Every service of a tier and what it is, in its order; `undefined` when it declares none. */
 export function recipeTierServices(yaml: string): ReadonlyArray<RecipeTierService> | undefined {
   const tier = parseTier(yaml);
   if (tier === undefined) return undefined;
-  return tier.items.flatMap((item) =>
+  return tier.flatMap((item) =>
     item.hostname === undefined ? [] : [{ hostname: item.hostname, role: roleOf(item) }],
   );
 }
@@ -416,7 +275,7 @@ export function recipeTierRunning(yaml: string):
   | undefined {
   const tier = parseTier(yaml);
   if (tier === undefined) return undefined;
-  return tier.items.flatMap((item) => {
+  return tier.flatMap((item) => {
     const type = ownScalar(item, "type") ?? "";
     if (item.hostname === undefined || type.startsWith("object-storage")) return [];
     const copies = Number(ownScalar(item, "minContainers") ?? "1");
@@ -441,67 +300,8 @@ export function recipeTierServiceTypes(
 ): ReadonlyArray<{ readonly hostname: string; readonly type: string | undefined }> | undefined {
   const tier = parseTier(yaml);
   if (tier === undefined) return undefined;
-  return tier.items.flatMap((item) =>
+  return tier.flatMap((item) =>
     item.hostname === undefined ? [] : [{ hostname: item.hostname, type: ownScalar(item, "type") }],
-  );
-}
-
-/**
- * The hostnames of the tier's zcp services, by their own `type`: a Mate's tier declares none, its
- * press bringing the one container a project holds (audit D2).
- */
-export function recipeTierZcpServices(yaml: string): ReadonlyArray<string> {
-  return (parseTier(yaml)?.items ?? []).flatMap((item) =>
-    item.hostname !== undefined && ownScalar(item, "type")?.startsWith("zcp@") === true
-      ? [item.hostname]
-      : [],
-  );
-}
-
-/**
- * A Mate's tier as its birth imports it beside its container (the module's header). `undefined`
- * when the tier declares no services — a group repo whose recipe has not been merged yet.
- */
-export function mateTier(yaml: string): MateTier | undefined {
-  const tier = parseTier(yaml);
-  if (tier === undefined) return undefined;
-  const managed: Array<string> = [];
-  const runtimes: Array<RecipeRuntime> = [];
-  const items = tier.items.map((item) => {
-    const role = roleOf(item);
-    if (role === "managed") {
-      if (item.hostname !== undefined) managed.push(item.hostname);
-      return item.lines;
-    }
-    if (item.hostname !== undefined) runtimes.push({ hostname: item.hostname, role });
-    return asMateRuntime(item, role);
-  });
-  const projectVariables = tierProjectVariables(yaml);
-  return {
-    yaml: recipeServicesYaml(documentOf(tier, items)),
-    managed,
-    runtimes,
-    ...(projectVariables.length === 0 ? {} : { projectVariables }),
-  };
-}
-
-/**
- * A stage's or a production's tier, whole and ready for its one import: every
- * runtime built from the group's own repositories starts empty for HQ's Core
- * to deploy onto, a utility keeps its build, a managed service is carried
- * through byte for byte. `undefined` when the tier declares no services.
- */
-export function deployTargetTier(yaml: string): string | undefined {
-  const tier = parseTier(yaml);
-  if (tier === undefined) return undefined;
-  return documentOf(
-    tier,
-    tier.items.map((item) => {
-      const role = roleOf(item);
-      return role === "dev" || role === "stage"
-        ? rewritten(item, CODE_KEYS, START_EMPTY)
-        : item.lines;
-    }),
   );
 }
 
@@ -511,7 +311,7 @@ export function deployTargetTier(yaml: string): string | undefined {
  */
 export function recipeTierRepositories(yaml: string): ReadonlyMap<string, string> {
   const repositories = new Map<string, string>();
-  for (const item of parseTier(yaml)?.items ?? []) {
+  for (const item of parseTier(yaml) ?? []) {
     const repository = repositoryOf(item);
     if (item.hostname !== undefined && repository !== undefined) {
       repositories.set(item.hostname, repository);
@@ -523,43 +323,11 @@ export function recipeTierRepositories(yaml: string): ReadonlyMap<string, string
 /** The setup each runtime builds with, by hostname: its `zeropsSetup` — a preview's part. */
 export function recipeTierSetups(yaml: string): ReadonlyMap<string, string> {
   const setups = new Map<string, string>();
-  for (const item of parseTier(yaml)?.items ?? []) {
+  for (const item of parseTier(yaml) ?? []) {
     const setup = ownScalar(item, "zeropsSetup");
     if (item.hostname !== undefined && setup !== undefined) setups.set(item.hostname, setup);
   }
   return setups;
-}
-
-/**
- * Strips a leading top-level `project:` block from a recipe.
- *
- * `zeropsio/recipes` publishes each tier as a whole-project import — a
- * `project:` block naming a new project, then `services:`. Importing into a
- * project that already exists takes the services alone, and the platform
- * rejects the rest outright, so this is the one transform between what a
- * recipe is published as and what the import endpoint accepts.
- *
- * Line-based on purpose: it removes a block that is by definition at column 0
- * and needs no YAML parser to find, and it leaves the services text
- * byte-identical rather than re-emitting it through a serializer that would
- * drop the comments the recipes carry for the reader.
- */
-export function recipeServicesYaml(yaml: string): string {
-  const lines = yaml.split("\n");
-  const start = lines.findIndex((line) => /^project:\s*(#.*)?$/.test(line));
-  if (start === -1) return yaml;
-
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    // The block ends at the next line that starts a new top-level key.
-    if (/^[^\s#-]/.test(line)) {
-      end = index;
-      break;
-    }
-  }
-
-  return [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/^\n+/, "");
 }
 
 /** The `project:` block's bounds, or `null` when the document has none. */

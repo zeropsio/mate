@@ -59,7 +59,7 @@ export {
   type ZeropsProjectOrder,
 } from "./groups.ts";
 export {
-  mateTier,
+  tierProjectVariables,
   recipeTierServices,
   recipeTierServiceTypes,
   recipeTierRunning,
@@ -90,12 +90,7 @@ export {
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,
 } from "@t3tools/shared/primaryConversation";
-export {
-  defaultAgentForRole,
-  mateBirthTier,
-  stageRecipe,
-  type EnvironmentRecipeChoice,
-} from "./createEnvironment.ts";
+export { defaultAgentForRole, type EnvironmentRecipeChoice } from "./createEnvironment.ts";
 export {
   activityRanking,
   buildCanonicalGroupTree,

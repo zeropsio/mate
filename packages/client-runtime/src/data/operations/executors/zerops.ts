@@ -34,47 +34,26 @@ import {
   disableSubdomainAccess,
   enableSubdomainAccess,
 } from "../../../zerops/api/routing.ts";
-import {
-  restartService,
-  stopService,
-  deleteService,
-  startService,
-  cancelBuild,
-} from "../../../zerops/api/service.ts";
-import { startProject, importServicesIntoProject } from "../../../zerops/api/project.ts";
-import {
-  makeProjectTagWriter,
-  makeInMemoryProjectTagLocks,
-  type ProjectTagLocks,
-} from "./projectTags.ts";
+import { restartService, deleteService, cancelBuild } from "../../../zerops/api/service.ts";
+import { startProject } from "../../../zerops/api/project.ts";
 import type { DetailDemand } from "../../demand.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import { historyScope } from "../../families/process.ts";
 import { effectProcessOf } from "../../projections/lostAnswer.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor } from "../coordinator.ts";
-import { createServicesExecutor } from "./creationWrites.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
-import { renameProjectExecutor, startProjectExecutor } from "./projectWrites.ts";
-import {
-  deleteServiceExecutor,
-  enableSubdomainAccessExecutor,
-  startServiceExecutor,
-  stopServiceExecutor,
-} from "./serviceWrites.ts";
+import { startProjectExecutor } from "./projectWrites.ts";
+import { deleteServiceExecutor, enableSubdomainAccessExecutor } from "./serviceWrites.ts";
 import { cancelBuildExecutor } from "./pipelineWrites.ts";
 import { addressWritesExecutor, type AddressPlatform } from "./addressWrites.ts";
 import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "./vaultWrites.ts";
-
-type ZeropsOperationsClient = Pick<ZeropsApiClient, "fetchProject" | "writeProject" | "door">;
 
 /** A service's and a project's lifecycle calls as the admitted client takes them. */
 type ServiceLifecycle = {
   readonly restartService: (
     serviceId: string,
   ) => Promise<{ readonly processId: string | undefined }>;
-  readonly stopService: (serviceId: string) => Promise<{ readonly processId: string | undefined }>;
-  readonly startService: (serviceId: string) => Promise<{ readonly processId: string | undefined }>;
   readonly deleteService: (
     serviceId: string,
   ) => Promise<{ readonly processId: string | undefined }>;
@@ -83,7 +62,7 @@ type ServiceLifecycle = {
 };
 
 export function makeZeropsExecutor(input: {
-  readonly client: ZeropsOperationsClient;
+  readonly client: Pick<ZeropsApiClient, "door">;
   readonly viewerOf: (orgId: string) => ZeropsOrganization | undefined;
   readonly active: () => boolean;
   readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
@@ -92,37 +71,20 @@ export function makeZeropsExecutor(input: {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Our successful write invalidates its organization's sampled detail. */
   readonly revalidate: (orgId: string, demand: DetailDemand) => void;
-  readonly nowMs: () => number;
-  /** The page's locks, which serialize a project's record writes across tabs; absent, this page's. */
-  readonly locks?: ProjectTagLocks;
 }): OperationExecutor {
-  const tagLocks = input.locks ?? makeInMemoryProjectTagLocks();
-  type AdmittedClient = Omit<ZeropsOperationsClient, "door"> &
-    VaultPlatform &
+  type AdmittedClient = VaultPlatform &
     AddressPlatform &
     Parameters<typeof enableSubdomainAccessExecutor>[0] &
-    ServiceLifecycle &
-    Pick<Parameters<typeof createServicesExecutor>[0], "importServicesIntoProject">;
+    ServiceLifecycle;
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const restart = mateRestartOwner({
       restartService: (serviceId) => client.restartService(serviceId),
     });
-    const createMissing = createServicesExecutor({
-      importServicesIntoProject: (projectId, yaml) =>
-        client.importServicesIntoProject(projectId, yaml),
-      nowMs: input.nowMs,
-    });
     const publish = enableSubdomainAccessExecutor({
       enableSubdomainAccess: (serviceId) => client.enableSubdomainAccess(serviceId),
     });
-    const startOne = startServiceExecutor({
-      startService: (serviceId) => client.startService(serviceId),
-    });
     const cancel = cancelBuildExecutor({
       cancelBuild: (appVersionId) => client.cancelBuild(appVersionId),
-    });
-    const stopOne = stopServiceExecutor({
-      stopService: (serviceId) => client.stopService(serviceId),
     });
     const deleteOne = deleteServiceExecutor({
       deleteService: (serviceId) => client.deleteService(serviceId),
@@ -130,8 +92,6 @@ export function makeZeropsExecutor(input: {
     const startAll = startProjectExecutor({
       startProject: (projectId) => client.startProject(projectId),
     });
-    const tags = makeProjectTagWriter({ source: client, locks: tagLocks });
-    const rename = renameProjectExecutor(tags);
     const vault = vaultWriteExecutor(client);
     const restartOne = serviceRestartExecutor({
       restartService: (serviceId) => client.restartService(serviceId),
@@ -156,20 +116,12 @@ export function makeZeropsExecutor(input: {
               return restart.submit(requestId, intent);
             case "enable-subdomain-access":
               return publish(requestId, intent);
-            case "start-service":
-              return startOne(requestId, intent);
-            case "stop-service":
-              return stopOne(requestId, intent);
             case "cancel-build":
               return cancel(requestId, intent);
             case "delete-service":
               return deleteOne(requestId, intent);
             case "start-project":
               return startAll(requestId, intent);
-            case "rename-project":
-              return rename(requestId, intent);
-            case "create-services":
-              return createMissing(requestId, intent);
             case "vault-write":
               return vault(requestId, intent);
             case "service-restart":
@@ -248,15 +200,10 @@ export function makeZeropsExecutor(input: {
       const source = input.client;
       const client: AdmittedClient = {
         restartService: (id) => restartService(source.door, id, undefined, check),
-        stopService: (id) => stopService(source.door, id, check),
         cancelBuild: (id) => cancelBuild(source.door, id, check),
-        startService: (id) => startService(source.door, id, check),
         deleteService: (id) => deleteService(source.door, id, check),
         enableSubdomainAccess: (id) => enableSubdomainAccess(source.door, id, check),
         startProject: (id) => startProject(source.door, id, check),
-        writeProject: (project, record) => source.writeProject(project, record, check),
-        importServicesIntoProject: (id, yaml) =>
-          importServicesIntoProject(source.door, id, yaml, undefined, check),
         addProjectVariable: (id, write) => addProjectVariable(source.door, id, write, check),
         updateProjectVariable: (id, write) => updateProjectVariable(source.door, id, write, check),
         removeProjectVariable: (id) => removeProjectVariable(source.door, id, check),
@@ -277,7 +224,6 @@ export function makeZeropsExecutor(input: {
           updatePublicPortRouting(source.door, id, port, undefined, check),
         deletePublicPortRouting: (id) => deletePublicPortRouting(source.door, id, undefined, check),
         requestProjectPublicIp: (id) => requestProjectPublicIp(source.door, id, undefined, check),
-        fetchProject: (...args) => source.fetchProject(...args),
       };
       return admission().pipe(
         Effect.mapError((fault) => ({ ...fault, writeNotSent: true as const })),

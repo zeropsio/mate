@@ -102,12 +102,8 @@ import {
   useReleaseServicePlan,
   type ReleasePlanWait,
 } from "~/zerops/useReleaseServicePlan";
-import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
-import { randomUUID } from "~/lib/utils";
-import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useOpenReview, type ReviewTarget } from "~/zerops/review";
-import { beginServiceCreation, useServiceCreation } from "~/zerops/serviceCreationRuns";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
@@ -131,7 +127,6 @@ import {
   keyRenewedSteps,
   productionBusyWords,
   releaseRunning,
-  planCreations,
   releaseNoteSaid,
   releasePressLabel,
   releaseSheetSteps,
@@ -142,20 +137,14 @@ import {
   valuesLacking,
   wordsNaming,
   type KeyRenewal,
-  type ReleaseCreateOperation,
   type ReleaseProgress,
-  type ReleaseSheetStep,
   type ReleaseValueStep,
   type ReleaseValueWrite,
 } from "./releaseSheet.logic";
-import {
-  serviceCreateRunOf,
-  serviceCreateTrouble,
-  type ServiceCreateRun,
-} from "../proposal/productionAsk.logic";
 import { mainStageOf } from "./mainStage";
 import { useGroupName } from "./reviewReads";
 import { useProductionAddresses } from "~/zerops/useProductionAddresses";
+import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import {
   productionBefore,
   releaseChangeRows,
@@ -618,63 +607,7 @@ function ReleaseData({
         ? { allowed: false as const, reason: planFailure }
         : { allowed: true as const };
 
-  // The early path: what production lacks, created now with the person's own Zerops access — HQ's
-  // release permission says they may write production — and followed to its end. The step says
-  // where it stands; HQ's plan is read again once it is done, and then creates nothing.
-  const operations = useAccountOperationsOptional();
-  const creationKey = `release:${flow.groupId}`;
-  const creation = useServiceCreation(creationKey);
-  const [sending, setSending] = useState(false);
-  const [created, setCreated] = useState<ReadonlyArray<ReleaseCreateOperation>>(NOTHING_CREATED);
-  const [unsent, setUnsent] = useState<string>();
-  const run: ServiceCreateRun =
-    unsent === undefined
-      ? serviceCreateRunOf(creation, sending)
-      : { kind: "failed", words: unsent };
   const productionProjectId = productionProjectOf(flow.environments);
-  const lacking = planCreations(shownPlan).filter(
-    (operation) => !created.some((made) => made.service === operation.service),
-  );
-  const importYaml =
-    shownPlan === undefined || lacking.length === 0
-      ? undefined
-      : servicePlanImportYaml({ ...shownPlan, operations: lacking });
-  const createNow =
-    importYaml === undefined ||
-    operations === null ||
-    orgId === null ||
-    productionProjectId === undefined ||
-    flow.release.permission?.allowed !== true ||
-    outcome.kind === "releasing" ||
-    outcome.kind === "released"
-      ? undefined
-      : async () => {
-          if (sending || run.kind === "working") return;
-          setSending(true);
-          setUnsent(undefined);
-          try {
-            const requestId = randomUUID();
-            beginServiceCreation(creationKey, requestId);
-            await operations.submit(
-              {
-                kind: "create-services",
-                orgId,
-                projectId: productionProjectId,
-                yaml: importYaml,
-              },
-              requestId,
-            );
-            const trouble = serviceCreateTrouble(await operations.untilEnd(requestId, orgId));
-            if (trouble !== null) return;
-            setCreated((made) => [...made, ...lacking]);
-            // HQ's plan is read again: it lists what production still lacks.
-            if (reviewing) plan.again();
-          } catch (cause) {
-            setUnsent(cause instanceof Error ? cause.message : "It could not be carried out.");
-          } finally {
-            setSending(false);
-          }
-        };
 
   // Production's deploy key, renewed from the sheet where it is what stopped the release.
   const renewKey = useDeployKeyRenewal(
@@ -686,6 +619,7 @@ function ReleaseData({
   // What the release reads that production's vault lacks (D9), as HQ's review names it from the
   // vault's keys alone, added from its own step before the press, with the person's own Zerops
   // access: the value never passes through a Mate or HQ, and the deploy starts with it.
+  const operations = useAccountOperationsOptional();
   const valuesAsked =
     reviewing &&
     outcome.kind === "offered" &&
@@ -893,16 +827,6 @@ function ReleaseData({
         planWait.restart();
         plan.again();
       }}
-      creation={{
-        run,
-        created,
-        onCreate:
-          createNow === undefined
-            ? undefined
-            : () => {
-                void createNow();
-              },
-      }}
       progress={progress}
       // The clock the press started keeps counting from the press: HQ tags when it gets to it,
       // and counting from its tag would take time back under the person's eyes. "Took" is the
@@ -1002,7 +926,6 @@ function ReleaseData({
   );
 }
 
-const NOTHING_CREATED: ReadonlyArray<ReleaseCreateOperation> = [];
 interface ValueWriteHeld {
   readonly gap: ReleaseVaultGap;
   readonly write: ReleaseValueWrite;
@@ -1187,17 +1110,6 @@ export interface ReleaseReviewViewProps {
   readonly servicePlanFailure?: string | undefined;
   readonly servicePlanProblems?: ReadonlyArray<HqProblem> | undefined;
   readonly onRetryServicePlan?: () => void;
-  /**
-   * The early path, on a creation's step: where the person's own create stands, what it has made
-   * here, and its press — offered to whoever may release.
-   */
-  readonly creation?:
-    | {
-        readonly run: ServiceCreateRun;
-        readonly created: ReadonlyArray<ReleaseCreateOperation>;
-        readonly onCreate: (() => void) | undefined;
-      }
-    | undefined;
   /** What HQ does in production for the release, as its jobs there stand. */
   readonly progress?: ReleaseProgress | undefined;
   /** When the release on its way was made, and who asked for it: "you", or a person's name. */
@@ -1300,7 +1212,6 @@ export interface ReleaseReviewViewProps {
 }
 
 const PRODUCTION = { words: "Production", production: true } as const;
-const NO_CREATION: ServiceCreateRun = { kind: "none" };
 /** How many changes stand before "Show N more". */
 const ROWS_SHOWN = 6;
 
@@ -1587,8 +1498,6 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         (outcome.kind === "failed" ? outcome.problems : props.problems));
   const fix = problemsFix(problems ?? NO_PROBLEMS) ?? model.verdict.fix;
 
-  const early = props.creation?.run ?? NO_CREATION;
-  const made = props.creation === undefined ? NO_OPERATIONS : props.creation.created;
   const open = putLiveAddress(props.production === undefined ? [] : props.production.addresses);
   const deployed = planDeployServices(plan, services);
   const steps = releaseSheetSteps({
@@ -1596,9 +1505,6 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
     outcome,
     pressing: press.kind === "running",
     plan,
-    created: made,
-    early,
-    canCreate: props.creation?.onCreate !== undefined,
     services,
     untouched: props.where
       .map((entry) => entry.service)
@@ -1666,8 +1572,6 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   const keyStop = steps.find((step) => step.deployKey !== undefined);
   const renewal = props.keyRenewal?.run ?? NOT_RENEWING;
   const onRenew = props.keyRenewal?.onRenew;
-  const failedCreation = steps.find((step) => step.kind === "create" && step.mark === "failed");
-  const onCreate = props.creation?.onCreate;
   const { onReviewNew } = props;
   const wayOut: ReviewPrimaryButton | undefined = !stopped
     ? undefined
@@ -1685,26 +1589,9 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               busy: renewal.kind === "working",
               onPress: onRenew,
             }
-      : early.kind === "working"
-        ? {
-            label: "Creating",
-            enabled: false,
-            safe: false,
-            busy: true,
-            onPress: () => undefined,
-          }
-        : failedCreation?.action !== undefined && onCreate !== undefined
-          ? {
-              label: `Create ${creationNames(steps)} again`,
-              enabled: true,
-              safe: false,
-              onPress: onCreate,
-            }
-          : onReviewNew !== undefined
-            ? { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew }
-            : undefined;
-  // A stop whose one button is its own way out (the key, the creation) keeps the way to the next
-  // release behind ⋯: no stop is a dead end, opened again or not.
+      : onReviewNew === undefined
+        ? undefined
+        : { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew };
   const reviewNext =
     stopped && onReviewNew !== undefined && wayOut?.onPress !== onReviewNew
       ? [{ label: "Review a new release", onPress: onReviewNew }]
@@ -1753,7 +1640,6 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
           !reading &&
           checkedVersion?.error === undefined &&
           props.servicePlanFailure === undefined &&
-          early.kind !== "working" &&
           !vaultReading &&
           lacking.length === 0,
         safe: false,
@@ -1833,7 +1719,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       // What HQ refused with a fix a Mate can make: asked for beside the way out.
       ask={
         // Offered, or stopped on something a Mate can fix: never for the key, which is a person's.
-        (offered || (stopped && keyStop === undefined && early.kind !== "working")) &&
+        (offered || (stopped && keyStop === undefined)) &&
         fix !== undefined &&
         props.fixer !== undefined
           ? {
@@ -1952,7 +1838,6 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               logOf={props.logOf}
               running={platform?.ofStep}
               // Stopped, the way out is the foot's button: the step does not say it twice.
-              onCreate={stopped ? undefined : onCreate}
               onRenew={onRenew}
               renewing={renewal.kind === "working"}
               renewWord={keyRenewPress(renewal)}
@@ -2008,7 +1893,6 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
 
 const NO_PROBLEMS: ReadonlyArray<HqProblem> = [];
 const NO_VALUES: ReadonlyArray<ReleaseValueStep> = [];
-const NO_OPERATIONS: ReadonlyArray<ReleaseCreateOperation> = [];
 const NO_CODE: ReturnType<typeof productionCode> = [];
 
 /** The services the release deploys to: the plan's, else the ones the comparison moves. */
@@ -2023,18 +1907,6 @@ function planDeployServices(
           operation.kind === "deploy" ? [operation.service] : [],
         );
   return planned.length > 0 ? planned : services;
-}
-
-/** The creations Zerops failed, by name: "db", "db and cache". */
-function creationNames(steps: ReadonlyArray<ReleaseSheetStep>): string {
-  const names = steps.flatMap((step) =>
-    step.kind === "create" && step.mark === "failed" && step.service !== undefined
-      ? [step.service]
-      : [],
-  );
-  return names.length <= 1
-    ? (names[0] ?? "it")
-    : `${names.slice(0, -1).join(", ")} and ${names.at(-1)!}`;
 }
 
 /** When the last of the release's deploys ended: when production took it. */

@@ -256,6 +256,13 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   mate_has_change: "That Mate has an open change of its own in this repository.",
   // An application's recipe (`@t3tools/shared/hqRecipe`).
   recipe_too_large: "This project's recipe is too large to read here.",
+  recipe_tier_absent: "This project's recipe no longer declares that tier. Read the recipe again.",
+  recipe_declares_zcp:
+    "The recipe declares a zcp service. Remove it from the recipe before adding a Mate. HQ adds the Mate's own zcp service.",
+  service_not_buildable:
+    "The recipe declares a service that HQ cannot build from this repository. Check the tier's service setups and builds.",
+  repo_unavailable: "HQ could not read the repository. Try again.",
+  mate_service_unknown: "HQ could not identify the Mate's service in this project.",
   // An application's environments and their deploy keys (`mate-hq spec/protocol.md` § Git remotes,
   // environments and delivery).
   environment_with_kind: "Only a stage or a production is an environment.",

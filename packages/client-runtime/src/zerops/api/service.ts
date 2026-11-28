@@ -4,21 +4,6 @@ import type { ZeropsDoor } from "../api.ts";
  * stop, start and delete a service and cancel an app version's build:
  * one resource of `../api.ts`'s client. */
 
-/**
- * `POST /project/{id}/service-stack/import` — the services it created, each
- * with the processes bringing it up. Shape measured against the live API
- * 2026-09-05.
- */
-export interface ZeropsServiceImportResult {
-  readonly projectId: string;
-  readonly projectName: string;
-  readonly serviceStacks: ReadonlyArray<{
-    readonly id: string;
-    readonly name: string;
-    readonly processes?: ReadonlyArray<{ readonly id: string }>;
-  }>;
-}
-
 export interface ZeropsServicePort {
   readonly port: number;
   readonly protocol?: string;
@@ -194,29 +179,6 @@ export async function restartService(
 }
 
 /**
- * `PUT /service-stack/{id}/stop` with the user's own token — the first half
- * of bringing a FAILED service back: the platform refuses to restart one
- * (`serviceStackIsFailed`, "Try to stop the stack and then start it again";
- * three Mates after a platform outage, 2026-10-01). Answers the stop's
- * process id, which the caller waits on before the start.
- */
-export async function stopService(
-  door: ZeropsDoor,
-  serviceId: string,
-  beforeWrite?: () => Promise<void>,
-): Promise<{ readonly processId: string | undefined }> {
-  const process = await door<{ readonly id?: unknown }>(
-    `/service-stack/${serviceId}/stop`,
-    { method: "PUT" },
-    {
-      operationKind: "project-write",
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    },
-  );
-  return { processId: typeof process?.id === "string" ? process.id : undefined };
-}
-
-/**
  * `DELETE /service-stack/{id}` — the service and its data, gone for good: a person's confirmed
  * Delete alone asks it (`delete-service`). Answered with its delete process.
  */
@@ -228,26 +190,6 @@ export async function deleteService(
   const process = await door<{ readonly id?: unknown }>(
     `/service-stack/${serviceId}`,
     { method: "DELETE" },
-    {
-      operationKind: "project-write",
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    },
-  );
-  return { processId: typeof process?.id === "string" ? process.id : undefined };
-}
-
-/**
- * `PUT /service-stack/{id}/start` with the user's own token — starts a
- * STOPPED service (a zcp container included). Answers the start's process id.
- */
-export async function startService(
-  door: ZeropsDoor,
-  serviceId: string,
-  beforeWrite?: () => Promise<void>,
-): Promise<{ readonly processId: string | undefined }> {
-  const process = await door<{ readonly id?: unknown }>(
-    `/service-stack/${serviceId}/start`,
-    { method: "PUT" },
     {
       operationKind: "project-write",
       ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),

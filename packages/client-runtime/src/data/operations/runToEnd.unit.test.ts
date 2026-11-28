@@ -9,11 +9,11 @@ import { makeOperations, type OperationExecutor } from "./coordinator.ts";
 import { runToEnd } from "./runToEnd.ts";
 import { verb } from "./executors/write.ts";
 
-const CREATE = {
-  kind: "create-services",
+const DELETE = {
+  kind: "delete-service",
   orgId: ORG,
   projectId: "p9",
-  yaml: "services: []",
+  serviceId: "db-id",
 } as const;
 
 function setUp(submit: OperationExecutor["submit"]) {
@@ -32,21 +32,15 @@ function setUp(submit: OperationExecutor["submit"]) {
 const accepted = (requestId: string) =>
   Effect.succeed({
     requestId,
-    operationId: "proc-create",
+    operationId: "proc-delete",
     executor: "zerops" as const,
     affected: [],
-    handles: ["proc-create"],
-    acceptance: {
-      kind: "accepted" as const,
-      result: {
-        acceptedAtMs: 0,
-        services: [{ hostname: "db", serviceId: "db-id", processIds: ["proc-create"] }],
-      },
-    },
+    handles: ["proc-delete"],
+    acceptance: { kind: "accepted" as const },
     outcome: { kind: "pending" as const },
   });
 
-const failedCreation = (store: AccountStore) =>
+const failedDeletion = (store: AccountStore) =>
   store.dispatch({
     kind: "rows",
     scope: runningScope(ORG),
@@ -56,13 +50,13 @@ const failedCreation = (store: AccountStore) =>
     rows: [
       {
         family: "process",
-        id: "proc-create",
+        id: "proc-delete",
         value: processValue({
-          id: "proc-create",
+          id: "proc-delete",
           projectId: "p9",
           status: "FAILED",
-          actionName: "stack.create",
-          error: { code: "x", message: "Creation failed after acceptance." },
+          actionName: "stack.delete",
+          error: { code: "x", message: "Deletion failed after acceptance." },
         }),
         revision: zeropsVersion(2),
       },
@@ -81,18 +75,18 @@ const rejection = (run: Promise<unknown>) =>
 it("OP6: Only a synchronous refusal of the target write proves that Zerops refused it", async () => {
   const refused = new ZeropsApiError("No room.", "invalid-input", 400);
   const remote = setUp(() => verb(() => Promise.reject(refused), { targetWrite: true }));
-  expect(await rejection(remote.run(CREATE, { orgId: ORG, unobserved: "" }))).toMatchObject({
+  expect(await rejection(remote.run(DELETE, { orgId: ORG, unobserved: "" }))).toMatchObject({
     message: "No room.",
     synchronousRefusal: true,
   });
   const local = setUp(() =>
     verb(() => Promise.reject(new ZeropsWriteNotSent(refused)), { targetWrite: true }),
   );
-  expect(await rejection(local.run(CREATE, { orgId: ORG, unobserved: "" }))).toMatchObject({
+  expect(await rejection(local.run(DELETE, { orgId: ORG, unobserved: "" }))).toMatchObject({
     synchronousRefusal: false,
   });
   const process = setUp(accepted);
-  const ran = process.run(CREATE, { orgId: ORG, unobserved: "" });
-  failedCreation(process.store);
+  const ran = process.run(DELETE, { orgId: ORG, unobserved: "" });
+  failedDeletion(process.store);
   expect(await rejection(ran)).toMatchObject({ synchronousRefusal: false });
 });

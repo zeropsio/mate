@@ -1,17 +1,20 @@
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
-import { HqError } from "../../zerops/hq/client.ts";
+import { HqError, makeHqApi } from "../../zerops/hq/client.ts";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { gitEnvironment } from "../__fixtures__/hqWire.ts";
 import { seedHqNavigation, type SeededHq } from "../__fixtures__/hqNavigation.ts";
 import { operationProgress } from "../projections/operation.ts";
+import { mateProjectChangeOf } from "../projections/mateProjectChange.ts";
+import { recoveryOutcome } from "../projections/restartEvidence.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { linkKeys } from "../model.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
+import { placementFamily, placementsScope } from "../families/hqNavigation.ts";
 import { personaTemplateWrite } from "../projections/hqPersonaTemplates.ts";
 import { hqBirthDeletionFamily, hqBirthDeletionsScope } from "../families/hqBirthDeletion.ts";
 import {
@@ -47,6 +50,200 @@ const progress = (store: AccountStore, id: string) =>
 type App = NonNullable<SeededHq["structure"]>["apps"][number];
 const shop: App = { id: "app-1", name: "Shop", projects: [], births: [], environments: [] };
 const lost = new HqError({ kind: "uncertain", code: "network", message: "HQ's answer was lost." });
+const expiry = "2099-01-01T00:00:00.000Z";
+
+function hqDoor(answer: NonNullable<Parameters<typeof makeHqApi>[0]["fetch"]>) {
+  return makeHqApi({
+    orgId: ORG,
+    address: "https://hq.example",
+    accessToken: async () => ({ token: "person-token", expiresAt: expiry }),
+    openSocket: () => {
+      throw new Error("No socket in this case");
+    },
+    fetch: async (url, init) =>
+      new URL(url).pathname === "/api/door"
+        ? Response.json({ session: "session-1", expiresAt: expiry })
+        : answer(url, init),
+  });
+}
+
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | intent.kind === "start-mate-stop" ? "stop" : "start" → "start"
+it.effect(
+  "OP71: A Mate's Stop and Start each carry just the request id and person's token with expiry to the matching HQ endpoint, and a lost answer follows only the matching navigation operation",
+  () =>
+    Effect.gen(function* () {
+      const project = { projectId: "mate-1", name: "Shop", mate: { face: "sky" } };
+      for (const [intent, verb, operationKind, phase] of [
+        ["start-mate-stop", "stop", "mate_stop", "stop_requested"],
+        ["start-mate-start", "start", "mate_start", "start_requested"],
+      ] as const) {
+        const store = account();
+        const scope = placementsScope(ORG);
+        const generation = readsOfState(store.state()).stream(scope).generation;
+        let revision = 0;
+        const publish = (id: string) => {
+          const value = placementFamily.hq!.decode(
+            {
+              ...project,
+              appId: null,
+              kind: "mate",
+              operation: {
+                id,
+                kind: operationKind,
+                phase,
+                at: "now",
+                acceptedAt: "now",
+                continueBy: "maker",
+                offers: ["continue", "end"],
+                failure: { step: verb, code: "token_expired", at: "now", origin: "hq" },
+              },
+            },
+            `project:${project.projectId}`,
+          );
+          expect(value).not.toBeNull();
+          store.dispatch({
+            kind: "delivery",
+            via: "hq-stream",
+            scopes: [{ scope, generation }],
+            reset: false,
+            removals: [],
+            rows: [
+              {
+                family: "placement",
+                id: project.projectId,
+                value: value!,
+                revision: { kind: "hq", incarnation: "seed", revision: ++revision },
+              },
+            ],
+          });
+        };
+        const starts: unknown[] = [];
+        const operations = operationsOf(
+          store,
+          hqDoor(async (url, init) => {
+            starts.push({
+              path: new URL(url).pathname,
+              method: init?.method,
+              body: JSON.parse(String(init?.body)),
+            });
+            throw new Error("The answer was lost");
+          }),
+        );
+        yield* operations.submit({
+          kind: intent,
+          orgId: ORG,
+          projectId: project.projectId,
+          id: "ours",
+        });
+        expect(starts).toEqual([
+          {
+            path: `/api/projects/mate-1/${verb}`,
+            method: "POST",
+            body: { id: "ours", accessToken: "person-token", expiresAt: expiry },
+          },
+        ]);
+        publish("theirs");
+        expect(progress(store, "r1")).toMatchObject({ stage: "uncertain" });
+        publish("ours");
+        yield* operations.retry("r1");
+        expect(progress(store, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
+        const placement = readsOfState(store.state()).fact("placement", project.projectId);
+        expect(
+          mateProjectChangeOf(placement.kind === "known" ? placement.value.operation : undefined),
+        ).toMatchObject({
+          kind: operationKind,
+          standing: { kind: "waiting", id: "ours", yours: true, endable: true },
+        });
+        if (verb === "start")
+          expect(
+            recoveryOutcome.derive(readsOfState(store.state()), {
+              requestId: "r1",
+              action: "start",
+            }).text,
+          ).toBe("HQ accepted the start request.");
+      }
+    }),
+);
+
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | api.startMateRename(intent.projectId, { id: intent.id, name: intent.name }) → api.startMateRename(intent.projectId, { id: intent.id, name: intent.projectId })
+it.effect(
+  "OP72: Renaming a Mate sends the full name and the person's token to HQ's project rename once",
+  () =>
+    Effect.gen(function* () {
+      const store = account();
+      const writes: unknown[] = [];
+      const operations = operationsOf(
+        store,
+        hqDoor(async (url, init) => {
+          writes.push([new URL(url).pathname, init?.method, JSON.parse(String(init?.body))]);
+          return Response.json(
+            { operation: { id: "rename-1", kind: "mate_rename" } },
+            { status: 202 },
+          );
+        }),
+      );
+      yield* operations.submit({
+        kind: "start-mate-rename",
+        orgId: ORG,
+        projectId: "mate-1",
+        id: "rename-1",
+        name: "Shop - Echo",
+      });
+      expect(writes).toEqual([
+        [
+          "/api/projects/mate-1/rename",
+          "POST",
+          {
+            id: "rename-1",
+            name: "Shop - Echo",
+            accessToken: "person-token",
+            expiresAt: expiry,
+          },
+        ],
+      ]);
+      expect(progress(store, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+);
+
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | api.startEnvironment(intent.appId, intent.start) → api.startEnvironment(intent.appId, { ...intent.start, tier: "production" })
+it.effect(
+  "OP73: A plain stage asks HQ to create the named stage from its recipe and keeps HQ's refusal when the tier is gone",
+  () =>
+    Effect.gen(function* () {
+      const store = account();
+      const writes: unknown[] = [];
+      const operations = operationsOf(
+        store,
+        hqDoor(async (url, init) => {
+          writes.push([new URL(url).pathname, init?.method, JSON.parse(String(init?.body))]);
+          return Response.json({ code: "conflict", reason: "recipe_tier_absent" }, { status: 409 });
+        }),
+      );
+      yield* operations.submit({
+        kind: "start-environment",
+        orgId: ORG,
+        appId: shop.id,
+        start: { id: "stage-1", tier: "stage", create: { name: "Shop - Stage", access: [] } },
+      });
+      expect(writes).toEqual([
+        [
+          "/api/apps/app-1/environments",
+          "POST",
+          {
+            id: "stage-1",
+            tier: "stage",
+            create: { name: "Shop - Stage", access: [] },
+            accessToken: "person-token",
+            expiresAt: expiry,
+          },
+        ],
+      ]);
+      expect(progress(store, "r1")).toMatchObject({
+        stage: "refused",
+        reason: "This project's recipe no longer declares that tier. Read the recipe again.",
+      });
+    }),
+);
 
 // witness: packages/client-runtime/src/data/operations/hqWrites.ts | return outcome === "done" || outcome === "unconfirmed_setup" ? { kind: "succeeded" } : null; → return outcome === "done" ? { kind: "succeeded" } : null;
 it.effect(

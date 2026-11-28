@@ -12,7 +12,6 @@
 import { type CreationRead } from "@t3tools/client-runtime/data";
 import {
   appProjectName,
-  mateTier,
   recipeTierServices,
   type BirthAgent,
   type BirthPlacement,
@@ -402,8 +401,10 @@ export function recipeManaged(yaml: string): ReadonlyArray<string> | undefined {
 
 /** The runtimes a recipe's tier brings up in its Mate's one import: none where it names none. */
 export function recipeRuntimes(yaml: string): ReadonlyArray<RecipeRuntime> | undefined {
-  const runtimes = mateTier(yaml)?.runtimes;
-  return runtimes === undefined || runtimes.length === 0 ? undefined : runtimes;
+  const runtimes = (recipeTierServices(yaml) ?? []).flatMap(({ hostname, role }) =>
+    role === "managed" ? [] : [{ hostname, role }],
+  );
+  return runtimes.length === 0 ? undefined : runtimes;
 }
 
 /**

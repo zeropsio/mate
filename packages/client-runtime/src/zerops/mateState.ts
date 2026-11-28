@@ -12,8 +12,6 @@ import type { MateVisibility } from "./mateAccess.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 import type { ZeropsCandidate } from "./candidates.ts";
-import { isZcpService } from "./containerAddress.ts";
-import type { ZeropsService } from "./api/service.ts";
 import type { ContainerLevel } from "./environments/containerMachine.ts";
 import { heldOf, type HqMateOfferStates } from "./hq/placement.ts";
 import { hasMate, PROJECT_GOING_STATUSES } from "./mateEnvironments.ts";
@@ -77,7 +75,7 @@ export interface MateVerbs {
   /** Stopping its whole project, its computer and every service beside it, until Start. */
   readonly stop: boolean;
   readonly restart: boolean;
-  /** Renaming its project, whose name is the Mate's: a platform write for its OWNER or ADMIN. */
+  /** Renaming the Mate and its Zerops project through HQ. */
   readonly rename: boolean;
   readonly face: HqVerb;
   /** Handing it over: an organization owner's or admin's. */
@@ -172,30 +170,21 @@ export function mateStopStanding(candidate: {
   }
 }
 
-/**
- * The services of a Mate's project in the order its Stop or Start writes them, one each: every
- * running one to stop, or every stopped one to start, never the platform's own. Zerops answers a
- * whole project's stop `notAvailable` (measured 2026-11-24), so a Mate stops service by service.
- * Its Mate container goes last: a write refused partway leaves the Mate as it was, and its verb
- * offered again.
- */
-export function mateServicesToWrite(
-  verb: "stop" | "start",
-  services: ReadonlyArray<ZeropsService>,
-): ReadonlyArray<string> {
-  const status = verb === "stop" ? "ACTIVE" : "STOPPED";
-  const touched = services.filter(
-    (service) => service.isSystem !== true && service.status === status,
-  );
-  return [
-    ...touched.filter((service) => !isZcpService(service)),
-    ...touched.filter(isZcpService),
-  ].map((service) => service.id);
-}
-
 /** Whether a Mate is on its way off Zerops: HQ's deletion of it runs, or the platform says so. */
 export function mateDeleting(status: string, going: boolean): boolean {
   return going || PROJECT_GOING_STATUSES.has(status);
+}
+
+/** HQ starts its Mates. A stopped, standalone project still has Zerops' own Start. */
+export function mateStartOwner(candidate: ZeropsCandidate): "hq" | "zerops" | null {
+  if (hasMate(candidate)) return "hq";
+  if (
+    candidate.project.hq === undefined &&
+    candidate.service === undefined &&
+    candidate.project.status === "STOPPED"
+  )
+    return "zerops";
+  return null;
 }
 
 export function mateState(facts: MateFacts): MateState {
@@ -239,6 +228,7 @@ export function mateState(facts: MateFacts): MateState {
   return state("verbs", {
     start:
       operates &&
+      mateStartOwner(candidate) !== null &&
       candidate.group === "unavailable" &&
       candidate.creationFailed === undefined &&
       candidate.missingContainer !== true &&
@@ -247,6 +237,7 @@ export function mateState(facts: MateFacts): MateState {
     // From a running project only: never beside Start, nor while the platform is moving it.
     stop:
       operates &&
+      mate &&
       candidate.project.status === "ACTIVE" &&
       candidate.service !== undefined &&
       !isStopped(candidate) &&
@@ -257,7 +248,7 @@ export function mateState(facts: MateFacts): MateState {
       candidate.project.status === "ACTIVE" &&
       candidate.service?.status === "ACTIVE" &&
       (level === undefined || !COMING_UP.has(level.level) || level.overdue),
-    rename: reach === "administer",
+    rename: operates && mate && reach === "administer",
     face: record !== undefined && mate ? hqVerb(record.edit) : "no",
     assign: viewer?.handsOver === true,
     access: viewer !== null,

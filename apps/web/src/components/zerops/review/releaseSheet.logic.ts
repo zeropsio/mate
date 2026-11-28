@@ -1,9 +1,8 @@
 /**
  * What a release's sheet says beside its title: the line under it, the steps HQ runs in
  * production, in its order, and the foot's note. The same steps are the plan before the press and
- * the progress after it: a creation follows HQ's creation of it (or the person's own, run early
- * from its step), a deploy follows its service's job, and the last turns when production runs the
- * release.
+ * the progress after it: each creation follows HQ's receipt, each deploy follows its service's job,
+ * and the last step turns when production runs the release.
  *
  * Pure: no DOM, no clock.
  */
@@ -30,7 +29,7 @@ import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import { NOT_RENEWING, type KeyRenewal } from "~/zerops/renewDeployKey.logic";
 
 import { namesWords } from "../../ask/ask.logic";
-import { plannedServiceWords, type ServiceCreateRun } from "../proposal/productionAsk.logic";
+import { plannedServiceWords } from "../proposal/productionAsk.logic";
 import { sinceWords } from "./ZeropsReview.logic";
 
 /** Words with the names in them — a service, a version — set apart as code. */
@@ -56,9 +55,7 @@ export type ReleaseCreateOperation = Extract<
 type CreateOperation = ReleaseCreateOperation;
 
 /** The services a plan creates, in HQ's order. */
-export function planCreations(
-  plan: ReleaseServicePlan | undefined,
-): ReadonlyArray<CreateOperation> {
+function planCreations(plan: ReleaseServicePlan | undefined): ReadonlyArray<CreateOperation> {
   return plan === undefined
     ? []
     : plan.operations.flatMap((operation) => (operation.kind === "create" ? [operation] : []));
@@ -125,11 +122,8 @@ export interface ReleaseSheetStep {
   readonly aside: string | undefined;
   /** A creation's import, to show on request: what HQ's plan settles, and HQ's words for its cost. */
   readonly creates: CreateOperation | undefined;
-  /**
-   * The step's own press: a creation's early path, its retry after Zerops failed it, or the
-   * renewal of production's deploy key where that is what stopped it.
-   */
-  readonly action: "create-now" | "create-again" | "renew-key" | undefined;
+  /** Renewal of production's deploy key where it stopped the release. */
+  readonly action: "renew-key" | undefined;
   /** What stopped it is production's deploy key, which HQ will not use (`deployKeyTrouble`). */
   readonly deployKey?: DeployKeyTrouble | undefined;
   /** A deploy under way past the release's usual time: said after where its build stands. */
@@ -145,12 +139,6 @@ interface ReleaseSheetStepsInput {
   readonly pressing: boolean;
   /** HQ's plan: reviewed, or held from the press. */
   readonly plan: ReleaseServicePlan | undefined;
-  /** What the early path created here before the plan was read again without it. */
-  readonly created: ReadonlyArray<CreateOperation>;
-  /** The early path's run, as its operation says it stands. */
-  readonly early: ServiceCreateRun;
-  /** Whether the early path may be pressed: the person may release, and production is known. */
-  readonly canCreate: boolean;
   /** The services that redeploy, where no plan lists them. */
   readonly services: ReadonlyArray<string>;
   /** Production's services the release does not deploy to. */
@@ -251,16 +239,11 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
   const running = outcome.kind === "releasing";
   const planned = planCreations(input.plan);
   // HQ's creation names its services where no plan is held: a sheet opened on a release on its way.
-  const creations: ReadonlyArray<{ readonly service: string; readonly op?: CreateOperation }> = [
-    ...input.created.map((op) => ({ service: op.service, op })),
-    ...(planned.length > 0
-      ? planned
-          .filter((op) => !input.created.some((made) => made.service === op.service))
-          .map((op) => ({ service: op.service, op }))
-      : offered || progress?.creation?.services === undefined
-        ? []
-        : progress.creation.services.map((service) => ({ service }))),
-  ];
+  const recorded = offered ? [] : (progress?.creation?.services ?? []);
+  const creations: ReadonlyArray<{ readonly service: string; readonly op?: CreateOperation }> =
+    planned.length > 0
+      ? planned.map((op) => ({ service: op.service, op }))
+      : recorded.map((service) => ({ service }));
   const plannedDeploys = planDeploys(input.plan);
   const deploys = plannedDeploys.length > 0 ? plannedDeploys : input.services;
   const said = (words: string) =>
@@ -330,7 +313,7 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
       ],
       tone: "failed",
       aside: undefined,
-      action: op !== undefined && input.canCreate ? "create-again" : undefined,
+      action: undefined,
     });
     const creating = (aside: string | undefined): ReleaseSheetStep => ({
       ...base,
@@ -342,23 +325,8 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
       creates: undefined,
       action: undefined,
     });
-    if (input.created.some((made) => made.service === service) || released) {
+    if (released) {
       steps.push(done(progress?.creation === undefined ? undefined : took(progress.creation)));
-      continue;
-    }
-    // The person's own create, run from the step: before the press, or again after HQ's failed.
-    if (input.early.kind === "working") {
-      steps.push(
-        creating(
-          input.early.sinceMs === undefined
-            ? undefined
-            : formatRunClock(input.nowMs - input.early.sinceMs),
-        ),
-      );
-      continue;
-    }
-    if (input.early.kind === "failed") {
-      steps.push(failed(earlyFailureWords(input.early.words, service), undefined));
       continue;
     }
     if (offered) {
@@ -369,7 +337,7 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
         line: [[what ?? "A new service", "billed by Zerops"].join(" · ")],
         tone: "quiet",
         aside: undefined,
-        action: input.canCreate ? "create-now" : undefined,
+        action: undefined,
       });
       continue;
     }
@@ -521,14 +489,6 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
   });
   if (offered || released) return steps;
   return settle(steps, input);
-}
-
-/** Zerops' words for a create that failed, without the sentence the step's title already says. */
-function earlyFailureWords(words: string, service: string): string {
-  const said = `Zerops could not create ${service}`;
-  const rest = words.startsWith(said) ? words.slice(said.length).replace(/^[:\s]+/u, "") : words;
-  const trimmed = rest.replace(/\.$/u, "").trim();
-  return trimmed === "" ? "Zerops gave no reason" : trimmed;
 }
 
 /**

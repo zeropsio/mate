@@ -77,6 +77,8 @@ export type HqWrites = Pick<
   | "endOperation"
   | "startMateDeletion"
   | "startMateRestart"
+  | "startMatePower"
+  | "startMateRename"
   | "startProductionRemoval"
   | "startAppDeletion"
   | "startEnvironment"
@@ -583,6 +585,30 @@ export function makeHqExecutor(ports: {
         return Effect.as(
           Effect.tryPromise({
             try: () => api.startMateRestart(intent.projectId, { id: intent.id }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.projectId),
+        );
+      case "start-mate-stop":
+      case "start-mate-start":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () =>
+              api.startMatePower(
+                intent.projectId,
+                intent.kind === "start-mate-stop" ? "stop" : "start",
+                {
+                  id: intent.id,
+                },
+              ),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.projectId),
+        );
+      case "start-mate-rename":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.startMateRename(intent.projectId, { id: intent.id, name: intent.name }),
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.projectId),

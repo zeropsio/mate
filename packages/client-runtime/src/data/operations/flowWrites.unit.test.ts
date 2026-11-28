@@ -126,6 +126,64 @@ it.effect("OP36: A release HQ records as refused ends failed, in HQ's words", ()
     });
   }),
 );
+
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | { planHash: intent.planHash } → { planHash: intent.groupHead }
+it.effect(
+  "OP74: The approved creation of production services travels with the reviewed plan hash in the release to HQ",
+  () =>
+    Effect.gen(function* () {
+      const planHash = "c".repeat(64);
+      const entries = [{ service: "api", sha: SHA }];
+      const made: Release = {
+        tag: "v1.0.1",
+        sha: SHA,
+        entries,
+        by: "ada",
+        at: "2026-10-06T00:00:00Z",
+        state: "approved",
+        reason: null,
+        rollbackOf: null,
+      };
+      const writes: unknown[] = [];
+      const store = makeAccountStore(AtomRegistry.make());
+      const operations = submitThroughHq(store, {
+        release: async (appId, request) => {
+          writes.push([appId, request]);
+          return { made, deploys: undefined };
+        },
+      });
+      const request = releaseRequestOf(
+        {
+          git: undefined,
+          gate: { allowed: true },
+          groupHead: HEAD,
+          suggestion: made.tag,
+          entries: [{ service: "api", commit: SHA }],
+        },
+        made.tag,
+        {
+          hash: planHash,
+          vault: { state: "known", gaps: [] },
+          operations: [{ kind: "create", service: "api", settings: {}, cost: "" }],
+        },
+        "available",
+      );
+      if ("refused" in request) throw new Error(request.refused);
+      yield* operations.submit({ ...request, orgId: ORG, appId: "shop" });
+      expect(writes).toEqual([
+        [
+          "shop",
+          {
+            tag: made.tag,
+            groupHead: HEAD,
+            entries,
+            planHash,
+            productionShape: "available",
+          },
+        ],
+      ]);
+    }),
+);
 const AT = "2026-10-13T10:00:00Z";
 const API = "a".repeat(40);
 const GROUP = "9".repeat(40);

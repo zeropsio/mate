@@ -6,6 +6,7 @@ export {
   makeHqApi,
   type HqAccessChange,
   type HqApi,
+  type HqCreateBirth,
   type HqMate,
   type HqEndpoint,
   type HqEnvironmentStart,

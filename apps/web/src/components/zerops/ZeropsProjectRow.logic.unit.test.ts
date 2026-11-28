@@ -93,12 +93,16 @@ it("MN10: A Mate the person may see but not open offers no verb, not even a rest
   );
 });
 
-// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | can.start && isStopped(candidate) → isStopped(candidate)
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | can.start && → true &&
 it("MN66: A stopped project's row offers Start only to a person who operates it; breaks: a Read-only person's row offers a Start Zerops refuses", () => {
   const stopped: ZeropsRowCandidate = {
     ...running,
     group: "unavailable",
-    project: { ...running.project, status: "STOPPED" },
+    project: {
+      ...running.project,
+      status: "STOPPED",
+      hq: { appId: "bakery", appName: "Bakery", kind: "mate", mate: null },
+    },
     service: { id: "s-zcp", name: "zcp", status: "STOPPED" },
   };
   const action = (operates: boolean) =>

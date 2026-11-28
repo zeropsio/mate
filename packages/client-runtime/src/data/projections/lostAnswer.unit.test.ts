@@ -15,8 +15,8 @@ const process = (id: string, actionName: string): ProcessValue => ({
 });
 const service = { orgId: "o", projectId: "p1", serviceId: "s" };
 
-// witness: packages/client-runtime/src/data/projections/lostAnswer.ts | action: "stack.start", → action: "stack.restart",
-it("PJ16: A start is answered only by a start of its own service, a stop by a stop and a service's restart by a restart, never by another action on that service; a write that names no such process is never said not sent", () => {
+// witness: packages/client-runtime/src/data/projections/lostAnswer.ts | process.actionName !== ask.action || !process.serviceStackIds.includes(ask.serviceId) → !process.serviceStackIds.includes(ask.serviceId)
+it("PJ16: A service's restart is answered only by a restart of that service; a write that names no such process is never said not sent", () => {
   const history = [
     process("start", "stack.start"),
     process("stop", "stack.stop"),
@@ -28,8 +28,6 @@ it("PJ16: A start is answered only by a start of its own service, a stop by a st
     const ask = { serviceId: effect.serviceId, action: effect.action, since: pressed, seen: [] };
     return processEffects(history, ask, history);
   };
-  expect(answered({ kind: "start-service", ...service })).toEqual(["start"]);
-  expect(answered({ kind: "stop-service", ...service })).toEqual(["stop"]);
   expect(answered({ kind: "service-restart", ...service })).toEqual(["restart"]);
   expect(effectProcessOf({ kind: "start-project", orgId: "o", projectId: "p1" })).toBe(null);
 });

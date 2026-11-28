@@ -9,10 +9,11 @@ import {
   projectNameInApp,
   type BirthAgent,
   type BirthIntent,
-  type mateBirthTier,
+  tierProjectVariables,
   type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqCreateBirth } from "@t3tools/client-runtime/zerops/hq";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { MatePersona } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
@@ -68,13 +69,11 @@ function addedMateStandUp(
   return role === "dev" && choice.withAgent && choice.recipe.kind === "tier";
 }
 
-type PlannedTier = NonNullable<Extract<ReturnType<typeof mateBirthTier>, { ok: true }>["tier"]>;
-
 /**
  * The Create a Mate added to a group is born from (`POST /api/births`): its application, its face,
  * the plan HQ runs — its project's name, the name it is drawn by under the application (D3), its
  * agents, the person's ask for its stand-up, who reaches it — the persona its stand-up runs with,
- * and its recipe's tier as converted for its import (`mateBirthTier`). HQ places a
+ * and the recipe revision HQ reads for its import. HQ places a
  * dev Mate as a Mate and a stage with its own Mate as the stage (`devstage`).
  */
 export function addedMateBirth(input: {
@@ -89,19 +88,14 @@ export function addedMateBirth(input: {
   readonly displayName: string;
   readonly agents: ReadonlyArray<BirthAgent>;
   readonly userRoles: ReadonlyArray<ProjectGrant>;
-  /** The tier its import brings beside its container (`mateBirthTier`). */
-  readonly tier: PlannedTier | undefined;
 }): {
   readonly appId: string;
   readonly face: string;
   readonly intent: BirthIntent;
   readonly standupPersona?: MatePersona;
-  readonly tier?: {
-    readonly yaml: string;
-    readonly variables?: NonNullable<PlannedTier["projectVariables"]>;
-  };
+  readonly tier?: NonNullable<HqCreateBirth["tier"]>;
 } {
-  const { choice, tier } = input;
+  const { choice } = input;
   const standUp = addedMateStandUp(input.role, choice);
   const recipe =
     choice.recipe.kind === "none"
@@ -112,6 +106,7 @@ export function addedMateBirth(input: {
           revision: choice.recipe.revision,
           tier: choice.recipe.tier,
         };
+  const variables = choice.recipe.kind === "tier" ? tierProjectVariables(choice.recipe.yaml) : [];
   return {
     appId: input.groupId,
     // Empty where none was picked: the Mate wears its name's tint.
@@ -132,13 +127,6 @@ export function addedMateBirth(input: {
     },
     // Its persona rides with its stand-up ask: the Mate takes it when its stand-up runs.
     ...(standUp && choice.persona !== undefined ? { standupPersona: choice.persona } : {}),
-    ...(tier === undefined
-      ? {}
-      : {
-          tier: {
-            yaml: tier.yaml,
-            ...(tier.projectVariables === undefined ? {} : { variables: tier.projectVariables }),
-          },
-        }),
+    ...(variables.length === 0 ? {} : { tier: { variables } }),
   };
 }

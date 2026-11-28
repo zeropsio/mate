@@ -9,7 +9,7 @@ import {
   zeropsClientsFromUser,
   zeropsInvitationsFromUser,
 } from "./api.ts";
-import { importServicesIntoProject } from "./api/project.ts";
+import { restartService } from "./api/service.ts";
 import { servicePortOrigin } from "./containerAddress.ts";
 
 const project = {
@@ -246,13 +246,11 @@ it("ZV107: A login answer or read arriving after a local sign-out never signs in
 // witness: packages/client-runtime/src/zerops/api.ts | const mayHaveWritten = options.mayHaveWritten ?? mutatesProject; → const mayHaveWritten = options.mayHaveWritten ?? false;
 it("ZV108: A lost answer to a project write is uncertain and never resent, and a write given up during a token renewal is never sent", async () => {
   const lost = zeropsPlatform(() => Promise.reject(new TypeError("connection lost")));
-  expect(
-    await failureOf(
-      importServicesIntoProject(signedIn(lost.respond).door, "project-1", "services: []"),
-    ),
-  ).toMatchObject({ kind: "uncertain" });
+  expect(await failureOf(restartService(signedIn(lost.respond).door, "service-1"))).toMatchObject({
+    kind: "uncertain",
+  });
   expect(lost.received.map((request) => [request.method, request.path])).toEqual([
-    ["POST", "/project/project-1/service-stack/import"],
+    ["PUT", "/service-stack/service-1/restart"],
   ]);
 
   const renewal = Promise.withResolvers<Response>();
@@ -351,39 +349,4 @@ it("ZV110: Parallel requests refused for an expired token share one refresh", as
   expect(reads.map((read) => read.status)).toEqual(["fulfilled", "fulfilled", "fulfilled"]);
   expect(platform.received.filter((request) => request.path === "/auth/refresh")).toHaveLength(1);
   expect(client.session?.accessToken).toBe("access-2");
-});
-
-// witness: packages/client-runtime/src/zerops/api.ts | publicIpV4Shared: input.publicIpV4Shared ?? false, → publicIpV4Shared: false,
-it("ZV111: Writing a project sends its name and the fields a write would reset, never people's roles", async () => {
-  const project = {
-    id: "p1",
-    name: "Fen",
-    status: "ACTIVE",
-    clientId: "org-1",
-    description: "The billing team's Mate",
-    tagList: ["team:billing"],
-    publicIpV4Shared: true,
-    maxCreditLimit: 25,
-    userRoles: [{ clientUserId: "cu-1", roleCode: "OWNER" }],
-  };
-  const platform = zeropsPlatform(() => reply(200, project));
-
-  await signedIn(platform.respond).writeProject(project, {
-    name: "Nova",
-    tagList: ["team:billing", "mate"],
-  });
-
-  expect(platform.received.map((request) => [request.method, request.path, request.body])).toEqual([
-    [
-      "PUT",
-      "/project/p1",
-      {
-        name: "Nova",
-        description: "The billing team's Mate",
-        tagList: ["team:billing", "mate"],
-        publicIpV4Shared: true,
-        maxCreditLimit: 25,
-      },
-    ],
-  ]);
 });

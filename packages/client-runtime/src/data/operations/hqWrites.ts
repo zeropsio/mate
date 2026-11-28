@@ -21,6 +21,12 @@ import { shownInFacts } from "./shownInFacts.ts";
 import { birthDeletionAcknowledgementId } from "../projections/birthDeletion.ts";
 import { operationFailureWords } from "../projections/operationFailure.ts";
 
+interface MateOperationStart {
+  readonly orgId: string;
+  readonly projectId: string;
+  readonly id: string;
+}
+
 declare module "../model.ts" {
   interface OperationIntents {
     readonly "set-auto-update-policy": { readonly orgId: string; readonly enabled: boolean };
@@ -63,11 +69,10 @@ declare module "../model.ts" {
       readonly keptGit?: "keep";
     };
     /** A failed Mate's restart, which HQ runs as its operation `id` on the person's token. */
-    readonly "start-mate-restart": {
-      readonly orgId: string;
-      readonly projectId: string;
-      readonly id: string;
-    };
+    readonly "start-mate-restart": MateOperationStart;
+    readonly "start-mate-stop": MateOperationStart;
+    readonly "start-mate-start": MateOperationStart;
+    readonly "start-mate-rename": MateOperationStart & { readonly name: string };
     /**
      * A production's removal, which HQ runs as its operation `id` on the person's token, deleting
      * its project too where `deleteProject` (the fate the person reviewed).
@@ -317,6 +322,14 @@ const startMateRestart = shown(
   },
 );
 
+/** After a lost answer, only the operation with the id of the press proves HQ took it. */
+const mateStartShown = (read: ProjectionReads, intent: MateOperationStart): boolean =>
+  placementOf(read, intent.projectId)?.operation?.id === intent.id;
+
+const startMateStop = shown("start-mate-stop", (intent) => intent.projectId, mateStartShown);
+const startMateStart = shown("start-mate-start", (intent) => intent.projectId, mateStartShown);
+const startMateRename = shown("start-mate-rename", (intent) => intent.projectId, mateStartShown);
+
 /**
  * HQ's answer is its end. Navigation showing the production's removal open, or the production no
  * longer among its application's environments, adopts a lost answer.
@@ -499,6 +512,9 @@ export const HQ_WRITE_KINDS = [
   endOperation,
   startMateDeletion,
   startMateRestart,
+  startMateStop,
+  startMateStart,
+  startMateRename,
   startProductionRemoval,
   startAppDeletion,
   startEnvironment,

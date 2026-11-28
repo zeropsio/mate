@@ -26,7 +26,6 @@ import { askReadAccess, closeReadAccess } from "./hqReadAccess.ts";
 import { deleteAccessChange, startAccessChanges } from "./hqAccess.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
-import { createServices } from "./createServices.ts";
 import { answerKeptGit } from "./hqAppWrites.ts";
 import {
   connectGitRemoteViaApp,
@@ -41,11 +40,8 @@ import { setOutsideProduction } from "./hqOutsideProduction.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
-import { renameProject } from "./renameProject.ts";
 import { serviceRestart } from "./serviceRestart.ts";
 import { startProject } from "./startProject.ts";
-import { startService } from "./startService.ts";
-import { stopService } from "./stopService.ts";
 import { deleteService } from "./deleteService.ts";
 import { vaultWrite } from "./vaultWrite.ts";
 import { ADDRESS_WRITE_KINDS } from "./addressWrites.ts";
@@ -79,12 +75,8 @@ export const OPERATION_KINDS = defineOperationKinds([
   mateUpdate,
   enableSubdomainAccess,
   cancelBuild,
-  startService,
-  stopService,
   deleteService,
   startProject,
-  renameProject,
-  createServices,
   ...HQ_WRITE_KINDS,
   ...PERSONA_TEMPLATE_KINDS,
   ...HQ_CHIEF_KINDS,

@@ -1,4 +1,4 @@
-next: RV14
+next: RV15
 
 - RV1 — A change that conflicts with main asks its branch's conversation to resolve it, about the change at its head
 - RV2 — A description picture is read as the person's only when it is a change's picture at the official HQ's own origin, and none is while the official HQ is unknown
@@ -10,3 +10,4 @@ next: RV14
 - RV8 — A creation HQ refused is said as HQ's refusal in HQ's words, and one Zerops failed as Zerops'; breaks: the release sheet blames Zerops for HQ's decision and the person looks for the fault in the wrong place.
 - RV12 — An addition handed to a person shows its given-up reason in the review; breaks: the reason reaches the verdict but the review hides it.
 - RV13 — A review offers an openable draft through a button inside Mate; breaks: a person opens a lease address or has no way into a draft.
+- RV14 — Before approval production shows only the reviewed service plan, and after approval the creation step follows HQ's release receipt

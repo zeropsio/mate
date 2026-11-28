@@ -20,28 +20,6 @@ export function enableSubdomainAccessExecutor(platform: {
     );
 }
 
-export function startServiceExecutor(platform: {
-  readonly startService: (serviceId: string) => Promise<{ readonly processId: string | undefined }>;
-}) {
-  return (requestId: string, intent: IntentOf<"start-service">) =>
-    Effect.map(
-      verb(() => platform.startService(intent.serviceId)),
-      ({ processId }) =>
-        processReceipt(requestId, { family: "service", id: intent.serviceId }, processId),
-    );
-}
-
-export function stopServiceExecutor(platform: {
-  readonly stopService: (serviceId: string) => Promise<{ readonly processId: string | undefined }>;
-}) {
-  return (requestId: string, intent: IntentOf<"stop-service">) =>
-    Effect.map(
-      verb(() => platform.stopService(intent.serviceId)),
-      ({ processId }) =>
-        processReceipt(requestId, { family: "service", id: intent.serviceId }, processId),
-    );
-}
-
 /** The only caller of a service's deletion: a person's confirmed Delete (`delete-service`). */
 export function deleteServiceExecutor(platform: {
   readonly deleteService: (

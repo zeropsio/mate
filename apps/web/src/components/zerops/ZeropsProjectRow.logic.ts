@@ -3,6 +3,7 @@ import {
   ALMOST_THERE_LINE,
   TAKING_LONGER_LINE,
   RESTARTING_SERVICE_STATUSES,
+  mateProjectChangeOf,
 } from "@t3tools/client-runtime/data";
 /**
  * What a row on the projects screen says and offers — the words and the verb,
@@ -40,9 +41,9 @@ import {
   type MateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
-import { startsAgain } from "@t3tools/client-runtime/zerops/mateState";
+import { mateStartOwner, startsAgain } from "@t3tools/client-runtime/zerops/mateState";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { MATE_STOP_WORDS } from "./SidebarMateRow.logic";
+import { mateProjectChangeLine, MATE_STOP_WORDS } from "./SidebarMateRow.logic";
 
 export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -90,7 +91,7 @@ export interface ZeropsRowInput {
    * candidate's container — what an `initializing` row's detail names,
    * instead of a generic "Zerops Mate is starting."
    */
-  readonly runningProcessKind?: "restart-service" | "start-service" | "start-project" | undefined;
+  readonly runningProcessKind?: "restart-service" | "start-project" | undefined;
   /**
    * `ZCP_MATE_ENABLED`'s own read, by key (`data/projections/mateVariables`),
    * made once no Mate answers its container — the fact that tells a
@@ -226,7 +227,6 @@ const RUNNING_PROCESS_DETAIL: Readonly<
   Record<NonNullable<ZeropsRowInput["runningProcessKind"]>, string>
 > = {
   "restart-service": "Restarting the container",
-  "start-service": "Starting the container",
   "start-project": "Starting the project",
 };
 
@@ -456,6 +456,15 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
       detail: mateOnlyOwnerOpensIt(input.ownerName),
     };
   }
+  const change = mateProjectChangeLine(mateProjectChangeOf(candidate.project.hq?.operation));
+  if (change !== undefined) {
+    const failed = change.kind === "mate-change-failed";
+    return {
+      status: { label: change.label, tone: failed ? "failed" : "busy" },
+      detail: change.text,
+      detailIsError: failed,
+    };
+  }
 
   // Its flag read off outranks a socket: what it says is that Zerops Mate needs enabling.
   if (candidate.group === "connected" && !awaitsEnable(input)) {
@@ -662,6 +671,7 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   // place of it.
   if (input.visibility === "listed") return { kind: "none" };
 
+  const change = mateProjectChangeOf(candidate.project.hq?.operation);
   const enable: ZeropsRowAction = can.enable
     ? { kind: "enable", label: "Enable Zerops Mate" }
     : { kind: "none" };
@@ -698,7 +708,10 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
         return { kind: "set-up-mate", label: "Set up Mate" };
       }
       if (transitionalStatus(candidate) !== undefined) return { kind: "none" };
-      return can.start && isStopped(candidate)
+      return can.start &&
+        change?.open !== true &&
+        mateStartOwner(candidate) !== null &&
+        isStopped(candidate)
         ? { kind: "start", label: "Start" }
         : { kind: "none" };
     case "ready":

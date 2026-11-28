@@ -927,7 +927,6 @@ const APP_ALONE = {
     { service: "api", line: "stays as it is" },
   ],
 } satisfies Partial<ReleaseProps>;
-const NO_CREATION = { run: { kind: "none" }, created: [], onCreate: noop } as const;
 /** A value the release's code reads that production's vault lacks, as its step stands. */
 const lackingValue = (write: ReleaseValueWrite) =>
   ({
@@ -1001,7 +1000,6 @@ const KEY_RELEASE = {
   },
   environmentName: KEY_ENVIRONMENT,
   listed: ["api", "shop"],
-  creation: NO_CREATION,
   onReviewNew: noop,
 } satisfies Partial<ReleaseProps>;
 const secondsAgo = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
@@ -1393,7 +1391,7 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
   {
     id: "release-create",
     label: "Release · ready, with a service to create first",
-    props: { over: { ...APP_ALONE, servicePlan: CREATION_PLAN, creation: NO_CREATION } },
+    props: { over: { ...APP_ALONE, servicePlan: CREATION_PLAN } },
   },
   {
     id: "release-create-reading",
@@ -1506,34 +1504,6 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     props: { over: { gate: { allowed: false, reason: RELEASE_NOTHING_MERGED }, rows: [] } },
   },
   {
-    id: "release-create-early",
-    label: "Release · the early path creating the service",
-    props: {
-      over: {
-        ...APP_ALONE,
-        servicePlan: CREATION_PLAN,
-        creation: { ...NO_CREATION, run: { kind: "working", sinceMs: NOW - 100_000 } },
-      },
-    },
-  },
-  {
-    id: "release-create-early-failed",
-    label: "Release · the early path, Zerops could not create it",
-    props: {
-      over: {
-        ...APP_ALONE,
-        servicePlan: CREATION_PLAN,
-        creation: {
-          ...NO_CREATION,
-          run: {
-            kind: "failed",
-            words: "Zerops could not create db: The project has reached its limit of services.",
-          },
-        },
-      },
-    },
-  },
-  {
     id: "release-value-lacking",
     label: "Release · the code reads a value production's vault lacks: added first",
     props: {
@@ -1573,17 +1543,6 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     label: "Release · what production's vault lacks is still read",
     props: {
       over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, values: { state: "reading", room: true } },
-    },
-  },
-  {
-    id: "release-create-early-done",
-    label: "Release · the early path created it, the release only deploys",
-    props: {
-      over: {
-        ...APP_ALONE,
-        servicePlan: DEPLOY_PLAN,
-        creation: { run: { kind: "created" }, created: [CREATE_DB], onCreate: undefined },
-      },
     },
   },
   {
@@ -1673,7 +1632,6 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
       over: {
         ...APP_ALONE,
         servicePlan: CREATION_PLAN,
-        creation: NO_CREATION,
         progress: {
           creation: creationOf("failed", {
             reason: "Internal Server Error",
@@ -1694,7 +1652,6 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
       over: {
         ...APP_ALONE,
         servicePlan: CREATION_PLAN,
-        creation: NO_CREATION,
         progress: {
           creation: creationOf("failed", {
             refused: true,
@@ -3217,7 +3174,6 @@ function useReadingPlay(on: boolean): ReleaseSheet["props"] {
         servicePlan: PLAY.has("creates")
           ? { ...plan, operations: [CREATE_DB, ...plan.operations] }
           : plan,
-        creation: NO_CREATION,
       },
     };
   }

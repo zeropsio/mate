@@ -4,6 +4,7 @@ import {
   faceAction,
   hqOperationOf,
   mateDeletionOfProject,
+  mateProjectChangeOf,
   mateRestartOf,
   mateHandOverOf,
   mateGoing,
@@ -42,8 +43,7 @@ import {
  * (`mateDeletionOf`), and a viewer who was in its conversation is taken to the
  * next Mate of its project, or to the projects.
  *
- * *Rename Mate* renames the Mate's project in Zerops, whose name is the Mate's own after its
- * application's (`renamedProjectName`), by the account's one writer of a project's record, where the platform takes it from this person.
+ * *Rename Mate* sends the full name to HQ. The Mate takes that name once HQ confirms it in Zerops.
  * *Change face…* writes the Mate's face to HQ, where every surface reads it from, where HQ's rule
  * lets them: its dialog open until HQ answers, a refusal said there.
  * *Stop* stops the Mate's whole project, its computer and every service beside it, once the person
@@ -66,7 +66,7 @@ import {
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf } from "@t3tools/client-runtime/zerops/hq";
-import type { MateContainerLevel } from "@t3tools/client-runtime/zerops/mateState";
+import { mateStartOwner, type MateContainerLevel } from "@t3tools/client-runtime/zerops/mateState";
 import { useRouter } from "@tanstack/react-router";
 import {
   useCallback,
@@ -146,13 +146,9 @@ import { Atom } from "effect/reactivity";
 import { useProjection } from "~/zerops/ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperations } from "~/zerops/accountOperations";
-import { startMate, stopMate, submitZeropsWrite, writeTrouble } from "~/zerops/zeropsWrite";
+import { submitZeropsWrite, writeTrouble } from "~/zerops/zeropsWrite";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import {
-  projectServicesAtom,
-  sharedBirthsAtom,
-  type SharedBirth,
-} from "@t3tools/client-runtime/data";
+import { sharedBirthsAtom, type SharedBirth } from "@t3tools/client-runtime/data";
 import { useBirthActions } from "~/zerops/useBirthActions";
 import { sharedBirthPresentation, useSharedBirths } from "~/zerops/sharedBirths";
 import { ZeropsOperationEndDialog } from "../ZeropsOperationEnd";
@@ -270,6 +266,7 @@ export interface MateActions {
   ) => MateMenuActions;
   readonly birthFor: (birthId: string) => SharedBirth | undefined;
   readonly birthActionsFor: (birthId: string) => ReadonlyArray<ZeropsMenuEntry>;
+  readonly start: (candidate: ZeropsCandidatePresentation) => void;
   /** Mounted once by the caller: rename, hand over, move. */
   readonly dialogs: ReactNode;
   /**
@@ -366,6 +363,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   const writing = useRef(new Set<string>());
+  const projectPresses = useRef(new Map<string, string>());
   // A move's start id by its project and body, until HQ answered it.
   const moveAttempts = useRef(new Map<string, MoveAttempt>());
   const handOverAttempts = useRef(new Map<string, MoveAttempt>());
@@ -524,47 +522,70 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     [activeOrganization],
   );
 
-  /** The Mate's project's services as read: what its Stop and Start write (`mateServicesToWrite`). */
-  const servicesOf = useCallback(
-    (candidate: ZeropsCandidatePresentation) =>
-      atomRegistry.get(projectServicesAtom(candidate.project.id)).services,
-    [atomRegistry],
+  const pressProject = useCallback(
+    async (
+      projectId: string,
+      press:
+        | { readonly kind: "start-mate-stop" | "start-mate-start" }
+        | { readonly kind: "start-mate-rename"; readonly name: string },
+    ) => {
+      if (activeOrganization === null) return;
+      const orgId = activeOrganization.id;
+      const key = JSON.stringify([currentAccountEpoch(), orgId, projectId, press]);
+      const previous = projectPresses.current.get(key);
+      const id = previous ?? randomUUID();
+      // A repeated press after a lost answer asks about the first operation.
+      const { progress, evidence } =
+        previous === undefined
+          ? await operations.submit({ ...press, orgId, projectId, id }, id)
+          : (await operations.askAgain(id),
+            { progress: operations.readProgress(id), evidence: null });
+      if (progress.stage === "uncertain" || progress.stage === "unresolved") {
+        projectPresses.current.set(key, id);
+        throw new Error("HQ may have taken the request. Try again to check.");
+      }
+      projectPresses.current.delete(key);
+      const trouble = writeTrouble(progress, evidence);
+      if (trouble !== null) throw new Error(trouble);
+    },
+    [activeOrganization, operations],
   );
 
   const start = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
-      if (activeOrganization === null) return;
-      const orgId = activeOrganization.id;
-      void write(
-        candidate.key,
-        () => startMate(operations, orgId, candidate, servicesOf(candidate)),
-        refresh,
-      );
+      const owner = mateStartOwner(candidate);
+      if (owner === "hq") {
+        void write(candidate.key, () =>
+          pressProject(candidate.project.id, { kind: "start-mate-start" }),
+        );
+      } else if (owner === "zerops") {
+        void write(candidate.key, async () => {
+          await submitZeropsWrite(operations, activeOrganization?.id ?? null, {
+            kind: "start-project",
+            projectId: candidate.project.id,
+          });
+        });
+      }
     },
-    [activeOrganization, operations, refresh, write, servicesOf],
+    [activeOrganization, operations, pressProject, write],
   );
 
   /**
-   * Stops every running service of the Mate's project — its computer and every service beside
-   * it — until Start. The dialog stays open until Zerops stopped its computer: a refusal is said there.
+   * HQ stops the Mate's services. The dialog stays open until HQ answers the start.
    */
   const stop = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
-      if (activeOrganization === null) return;
-      const orgId = activeOrganization.id;
+      if (activeOrganization === null || writing.current.has(candidate.key)) return;
       const replyToDialog = captureDialogReply();
       setPress({ pending: true, error: null });
       void write(
         candidate.key,
-        () => stopMate(operations, orgId, candidate, servicesOf(candidate)),
-        () => {
-          replyToDialog(null);
-          refresh();
-        },
-        (reason) => setPress({ pending: false, error: reason }),
+        () => pressProject(candidate.project.id, { kind: "start-mate-stop" }),
+        () => replyToDialog(null),
+        (reason) => replyToDialog.ifCurrent(() => setPress({ pending: false, error: reason })),
       );
     },
-    [activeOrganization, operations, refresh, write, captureDialogReply, servicesOf],
+    [activeOrganization, pressProject, write, captureDialogReply],
   );
 
   const restartMate = useRestartMate();
@@ -601,23 +622,28 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
    * under its application (`renamedProjectName`).
    */
   const rename = useCallback(
-    (candidate: ZeropsCandidatePresentation, name: string) => {
+    (candidate: ZeropsCandidatePresentation, name: string, fromDialog = false) => {
       if (activeOrganization === null || writing.current.has(candidate.key)) return;
       const full = renamedProjectName(candidate.project, name);
-      if (full === undefined) return;
+      if (full === undefined) {
+        if (fromDialog) setDialog(null);
+        return;
+      }
+      const replyToDialog = captureDialogReply();
+      if (fromDialog) setPress({ pending: true, error: null });
       void write(
         candidate.key,
-        () =>
-          submitZeropsWrite(operations, activeOrganization.id, {
-            kind: "rename-project",
-            projectId: candidate.project.id,
-            name: full,
-            from: candidate.project.name,
-          }),
-        refresh,
+        () => pressProject(candidate.project.id, { kind: "start-mate-rename", name: full }),
+        () => {
+          if (fromDialog) replyToDialog(null);
+        },
+        (reason) => {
+          if (fromDialog)
+            replyToDialog.ifCurrent(() => setPress({ pending: false, error: reason }));
+        },
       );
     },
-    [activeOrganization, operations, refresh, write],
+    [activeOrganization, captureDialogReply, pressProject, setDialog, write],
   );
 
   /**
@@ -1176,7 +1202,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           ],
         };
       }
-      const { menu, verbs } = stateOf(candidate);
+      const { menu, verbs, operates } = stateOf(candidate);
       if (menu === "none") return { setupOnly: false, entries: [] };
       if (menu === "birth") {
         const birth = births.find((birth) => birth.projectId === candidate.project.id);
@@ -1207,6 +1233,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const moveRuns = moving.kind === "going" || moving.kind === "waiting";
       const restarting = mateRestartOf(candidate.project);
       const restartRuns = restarting.kind === "going" || restarting.kind === "waiting";
+      const change = mateProjectChangeOf(candidate.project.hq?.operation);
+      const changeRuns = change?.open === true;
+      const canRetry = operates && change?.standing.kind === "failed";
       const handingOver = mateHandOverOf(candidate.project);
       const handOverRuns = handingOver.kind === "going" || handingOver.kind === "waiting";
       const orgId = activeOrganization?.id;
@@ -1233,6 +1262,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const continueMove =
         moving.kind === "renamed-since" ? undefined : continueOn("continue-move", moving);
       const continueRestart = continueOn("continue-restart", restarting);
+      const continueChange =
+        change === undefined ? undefined : continueOn("continue-mate-change", change.standing);
       const continueHandOver = continueOn("continue-handover", handingOver);
       const deleteAction = verbs.delete
         ? {
@@ -1251,11 +1282,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const openFace = changeFace(candidate);
       const serverVersion = serverVersions.get(candidate.key);
       const quick: Array<ZeropsMenuEntry> = [];
-      if (verbs.start) {
+      if (verbs.start || (canRetry && change?.kind === "mate_start")) {
         quick.push({
           id: "start",
           label: "Start",
-          disabled: busy,
+          disabled: busy || changeRuns || restartRuns,
           onSelect: () => start(candidate),
         });
       }
@@ -1263,18 +1294,18 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         quick.push({
           id: "restart",
           label: "Restart",
-          disabled: busy || restartRuns,
+          disabled: busy || restartRuns || changeRuns,
           onSelect: () => {
             setPress(UNPRESSED);
             setDialog({ kind: "restart", candidate });
           },
         });
       }
-      if (verbs.stop) {
+      if (verbs.stop || (canRetry && change?.kind === "mate_stop")) {
         quick.push({
           id: "stop",
           label: "Stop",
-          disabled: busy || restartRuns,
+          disabled: busy || restartRuns || changeRuns,
           onSelect: () => {
             setPress(UNPRESSED);
             setDialog({ kind: "stop", candidate });
@@ -1290,8 +1321,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               {
                 id: "rename-agent",
                 label: "Rename Mate",
-                disabled: busy,
-                onSelect: () => setDialog({ kind: "rename", candidate }),
+                disabled: busy || changeRuns,
+                onSelect: () => {
+                  setPress(UNPRESSED);
+                  setDialog({ kind: "rename", candidate });
+                },
               },
             ]
           : []),
@@ -1330,6 +1364,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         ...endOn("end-move", "project_move", moving),
         ...(continueRestart === undefined ? [] : [continueRestart]),
         ...endOn("end-restart", "mate_restart", restarting),
+        ...(continueChange === undefined ? [] : [continueChange]),
+        ...(change === undefined ? [] : endOn("end-mate-change", change.kind, change.standing)),
         ...(continueHandOver === undefined ? [] : [continueHandOver]),
         ...endOn("end-handover", "mate_handover", handingOver),
         ...(verbs.move !== "no"
@@ -1395,7 +1431,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
 
   const renameInPlace = useCallback(
     (candidate: ZeropsCandidatePresentation): MateRenameInPlace | undefined => {
-      if (busyKey === candidate.key || !stateOf(candidate).verbs.rename) return undefined;
+      const change = mateProjectChangeOf(candidate.project.hq?.operation);
+      if (busyKey === candidate.key || !stateOf(candidate).verbs.rename || change?.open === true)
+        return undefined;
       const current = projectNameInApp(candidate.project);
       return {
         initialValue: current,
@@ -1531,17 +1569,15 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       {dialog?.kind === "rename" ? (
         <ZeropsRenameDialog
           initialValue={projectNameInApp(dialog.candidate.project)}
+          pending={press.pending}
+          error={press.error}
           key={`rename-agent:${dialog.candidate.key}`}
           label="Mate's name"
           onCancel={close}
           onOpenChange={(open) => {
             if (!open) close();
           }}
-          onSubmit={(name) => {
-            const { candidate } = dialog;
-            close();
-            rename(candidate, name);
-          }}
+          onSubmit={(name) => rename(dialog.candidate, name, true)}
           open
           submitLabel="Rename"
           title={`Rename ${projectNameInApp(dialog.candidate.project)}`}
@@ -1734,6 +1770,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     actionsFor,
     birthFor,
     birthActionsFor,
+    start,
     dialogs,
     handOver,
     busyKey,

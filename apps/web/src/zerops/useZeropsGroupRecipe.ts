@@ -14,8 +14,8 @@
  * hands the tier over again.
  *
  * What comes back is the tier as `main` holds it, and the names of its services: the creation's
- * plan converts it for the platform (`createEnvironment.ts`, `recipeTier.ts`), since which service
- * goes in when depends on whether the new environment has a Mate.
+ * form previews those services and sends HQ the chosen tier and recipe revision. HQ decides what
+ * to create in Zerops.
  *
  * Four honest answers, and the New Mate dialog says a different thing for each (`newMateDoor`):
  * `loading` while HQ's stream has not said the application's tiers yet, `present`, `absent` where

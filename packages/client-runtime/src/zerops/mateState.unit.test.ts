@@ -7,7 +7,7 @@ import type { ZeropsCandidate } from "./candidates.ts";
 import type { ContainerLevel } from "./environments/containerMachine.ts";
 import {
   mateArrivalOf,
-  mateServicesToWrite,
+  mateStartOwner,
   mateState,
   type MateFacts,
   type MateViewerFacts,
@@ -56,7 +56,7 @@ it("ZV155: A Mate whose deletion HQ runs is not offered Delete again while the l
   expect(asked.verbs.delete).toBe(false);
 });
 
-// witness: packages/client-runtime/src/zerops/mateState.ts | candidate.project.hq === undefined && → false &&
+// witness: packages/client-runtime/src/zerops/mateState.ts | facts.arrival === "none"; → false;
 it("ZV157: A Mate the platform is deleting, or one HQ's current placement does not hold while no birth or press brings it up, is read so and offers no verb at all; breaks: a Mate whose row reads Deleting… or Not in this HQ still offers Restart and Delete in its menu", () => {
   const { hq: _placed, ...unplacedProject } = RUNNING.project;
   const unplaced: ZeropsCandidate = { ...RUNNING, project: unplacedProject };
@@ -243,6 +243,7 @@ it("ZV174: An Owner is offered Start on a stopped project HQ does not place, whi
   const state = mateState(facts({ candidate: STOPPED_PLAIN, viewer: plainViewer("OWNER") }));
   expect(state.operates).toBe(true);
   expect(state.verbs.start).toBe(true);
+  expect(mateStartOwner(STOPPED_PLAIN)).toBe("zerops");
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | ? facts.placementKnown && mayWork → ? mayWork
@@ -346,6 +347,7 @@ it("ZV160: Restart is offered on an active project and container unless the plat
   for (const [over, start] of starts) {
     const candidate = { ...(over.service === undefined ? containerless : RUNNING), ...over };
     expect(mateState(facts({ candidate })).verbs.start).toBe(start);
+    if (start) expect(mateStartOwner(candidate)).toBe("hq");
   }
 });
 
@@ -370,24 +372,6 @@ it("ZV176: Stop is offered on a running project that holds its Mate container, n
     };
     expect(mateState(facts({ candidate })).verbs.stop).toBe(stop);
   }
-});
-
-// witness: packages/client-runtime/src/zerops/mateState.ts | ...touched.filter((service) => !isZcpService(service)), → ...touched,
-it("ZV178: A Mate's Stop writes each running service of its project and its Start each stopped one, never a platform service, its Mate container last; breaks: a Stop refused partway has stopped the Mate's own computer and left its app running", () => {
-  const services = [
-    { id: "zcp", name: "zcp", status: "ACTIVE", base: "zcp@1" },
-    { id: "appdev", name: "appdev", status: "ACTIVE", base: "nodejs@24" },
-    { id: "core", name: "core", status: "ACTIVE", isSystem: true },
-    { id: "db", name: "db", status: "STOPPED", base: "postgresql@17" },
-    { id: "appstage", name: "appstage", status: "ACTIVE", base: "nodejs@24" },
-  ];
-  expect(mateServicesToWrite("stop", services)).toEqual(["appdev", "appstage", "zcp"]);
-  expect(
-    mateServicesToWrite(
-      "start",
-      services.map((service) => ({ ...service, status: "STOPPED" })),
-    ),
-  ).toEqual(["appdev", "db", "appstage", "zcp"]);
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | if (facts.arrival === "coming") return state("setup", { ...NO_VERBS, delete: remove }); → if (false) return state("setup", { ...NO_VERBS, delete: remove });

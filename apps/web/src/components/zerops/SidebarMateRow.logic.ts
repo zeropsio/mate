@@ -42,6 +42,7 @@ import {
   operationFailureWords,
   type MateComing,
   type MateDeletion,
+  type MateProjectChange,
   type HqOperationStanding,
   type MateHandOver,
   type ProjectMove,
@@ -1020,6 +1021,7 @@ export type MateRowSecond =
   | { readonly kind: "restarting"; readonly text: string }
   /** HQ's restart of it failed: why, until the next restart. */
   | { readonly kind: "restart-failed"; readonly text: string }
+  | { readonly kind: "mate-changing" | "mate-change-failed"; readonly text: string }
   /** HQ hands it over, or its hand-over waits for an Owner's or Admin's Continue (`mateHandOverLine`). */
   | { readonly kind: "handing-over"; readonly text: string }
   /** HQ's hand-over of it failed: why, until the next hand-over. */
@@ -1461,6 +1463,36 @@ export function mateRestartLine(
   }
 }
 
+const MATE_CHANGE_WORDS = {
+  mate_stop: { active: "Stopping", failed: "Stop failed" },
+  mate_start: { active: "Starting", failed: "Start failed" },
+  mate_rename: { active: "Renaming", failed: "Rename failed" },
+} satisfies Record<MateProjectChange["kind"], { active: string; failed: string }>;
+
+export function mateProjectChangeLine(change: MateProjectChange | undefined) {
+  if (change === undefined) return undefined;
+  const words = MATE_CHANGE_WORDS[change.kind];
+  const standing = change.standing;
+  switch (standing.kind) {
+    case "going":
+      return { kind: "mate-changing" as const, label: words.active, text: `${words.active}…` };
+    case "waiting":
+      return {
+        kind: "mate-changing" as const,
+        label: "Waiting",
+        text: `${words.active} paused · ${standing.yours ? standing.why : "waiting for the person who started it"}`,
+      };
+    case "failed":
+      return {
+        kind: "mate-change-failed" as const,
+        label: words.failed,
+        text: `${words.failed} · ${operationFailureWords(standing.failure)}`,
+      };
+    default:
+      return undefined;
+  }
+}
+
 /**
  * What a Mate's row and card say of HQ's hand-over of it (`mateHandOverOf`), where they say
  * anything: handing over, waiting for a Continue — the reader's, an Owner's or Admin's, or an
@@ -1512,6 +1544,7 @@ export function mateRowSecond(input: {
   readonly move?: { readonly standing: ProjectMove; readonly name: string } | undefined;
   /** How HQ's restart of it stands (`mateRestartOf`); absent: none. */
   readonly restart?: HqOperationStanding | undefined;
+  readonly projectChange?: MateProjectChange | undefined;
   /** How HQ's hand-over of it stands (`mateHandOverOf`); absent: none. */
   readonly handOver?: MateHandOver | undefined;
   /** Its container is restarting (`mateRestartSaid`), whoever restarted it. */
@@ -1558,6 +1591,8 @@ export function mateRowSecond(input: {
   if (view.coming !== undefined) return { kind: "coming" };
   const deletionLine = mateDeletionLine(input.deletion);
   if (deletionLine !== undefined) return deletionLine;
+  const changeLine = mateProjectChangeLine(input.projectChange);
+  if (changeLine !== undefined) return changeLine;
   // A project shows one HQ operation at a time: its hand-over, its restart or its move.
   const moveLine =
     mateHandOverLine(input.handOver) ??
@@ -1657,6 +1692,8 @@ const SHARED_VERBS: Readonly<Record<string, string | null>> = {
   continue: null,
   "continue-restart": null,
   "end-restart": null,
+  "continue-mate-change": null,
+  "end-mate-change": null,
   "continue-move": null,
   "end-move": null,
   "continue-handover": null,

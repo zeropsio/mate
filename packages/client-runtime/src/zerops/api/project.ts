@@ -1,9 +1,6 @@
 import type { ZeropsDoor } from "../api.ts";
 import type { HqPlacement } from "../hq/placement.ts";
-import type { ZeropsServiceImportResult } from "./service.ts";
-
-/** A project's record as the Zerops REST API returns it, and the calls that fill and start a
- * project: one resource of `../api.ts`'s client. */
+/** The project resource of `../api.ts`'s client. */
 
 export interface ZeropsProject {
   readonly userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
@@ -33,14 +30,7 @@ export interface ZeropsProject {
    * or places no such project.
    */
   readonly hq?: HqPlacement;
-  /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
-  /**
-   * Round-tripped by every record write (`writeProject`). `PUT
-   * /project/{id}` replaces the record, so a tag write that omitted these two
-   * would quietly take a shared IPv4 away or reset somebody's credit limit on
-   * any project.
-   */
   readonly publicIpV4Shared?: boolean;
   readonly maxCreditLimit?: number | null;
   /** The project's own IPv4 (the paid add-on); `null` once it has none, as Zerops says it. */
@@ -50,8 +40,7 @@ export interface ZeropsProject {
 }
 
 /**
- * `PUT /project/{id}/start` with the user's own token — starts every
- * STOPPED service in a STOPPED project.
+ * `PUT /project/{id}/start` starts a stopped standalone project on the person's token.
  */
 export async function startProject(
   door: ZeropsDoor,
@@ -61,40 +50,6 @@ export async function startProject(
   await door(
     `/project/${projectId}/start`,
     { method: "PUT" },
-    {
-      operationKind: "project-write",
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    },
-  );
-}
-
-/**
- * Imports a group's recipe into an existing project — the step that turns an
- * empty environment into the group's application.
- *
- * The YAML must carry `services:` and must NOT carry a `project:` block; the
- * platform rejects one outright (`projectImportProjectIncluded`, measured
- * 2026-09-05). `recipeServicesYaml` in `recipeStore.ts` is the transform from
- * a published recipe to what this accepts.
- *
- * Nothing here reaches into a container: the recipe comes from the store and
- * the import is a platform call with the user's own token, so creating an
- * environment never depends on another environment being alive.
- */
-export function importServicesIntoProject(
-  door: ZeropsDoor,
-  projectId: string,
-  servicesYaml: string,
-  signal?: AbortSignal,
-  beforeWrite?: () => Promise<void>,
-): Promise<ZeropsServiceImportResult> {
-  return door<ZeropsServiceImportResult>(
-    `/project/${projectId}/service-stack/import`,
-    {
-      method: "POST",
-      signal: signal ?? null,
-      body: JSON.stringify({ yaml: servicesYaml }),
-    },
     {
       operationKind: "project-write",
       ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),

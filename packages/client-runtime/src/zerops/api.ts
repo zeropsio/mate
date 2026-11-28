@@ -69,37 +69,6 @@ function renewsBeforeHanding(held: ZeropsSession, ask: ZeropsAccessAsk | undefin
 }
 
 /**
- * The body of `PUT /project/{id}` that writes a project's name and tags.
- *
- * Five fields, and `userRoles` is not among them. The platform replaces the
- * record, and `userRoles` is an object on the wire whose omission means "leave
- * the roles alone" and whose inclusion would rewrite who can reach the
- * project. A name or a tag write has no business doing that.
- */
-function projectWriteBody(input: {
-  readonly name: string;
-  readonly description?: string | undefined;
-  readonly tagList: ReadonlyArray<string>;
-  readonly publicIpV4Shared?: boolean | undefined;
-  readonly maxCreditLimit?: number | null | undefined;
-}): {
-  readonly name: string;
-  readonly description: string;
-  readonly tagList: ReadonlyArray<string>;
-  readonly publicIpV4Shared: boolean;
-  readonly maxCreditLimit: number | null;
-} {
-  return {
-    name: input.name,
-    description: input.description ?? "",
-    // A rename preserves the project's tags from the fresh read.
-    tagList: input.tagList,
-    publicIpV4Shared: input.publicIpV4Shared ?? false,
-    maxCreditLimit: input.maxCreditLimit ?? null,
-  };
-}
-
-/**
  * zcp's own reading of `ZCP_MATE_ENABLED`, the service env key it keys every mate-shaped effect
  * off: `1` or `true`, case-insensitive, surrounding space tolerated. Deliberately forgiving,
  * because it is a value a person types into a service's env in the Zerops GUI, where a silently
@@ -610,41 +579,6 @@ export class ZeropsApiClient {
     readonly atMs: number;
     readonly generation: number;
   } | null = null;
-
-  /**
-   * `PUT /project/{id}` with `name` and `tagList` — the one call that writes a
-   * project's name and tags, and only the TagWriter makes it
-   * (`data/operations/executors/projectTags.ts`), with a record it just read and changed.
-   *
-   * `project` is the read the record came from: the platform replaces the
-   * record, so the fields the write must not change are round-tripped from it
-   * (`projectWriteBody`), and `userRoles` is never sent.
-   */
-  async writeProject(
-    project: ZeropsProject,
-    record: { readonly name: string; readonly tagList: ReadonlyArray<string> },
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    return this.#request<ZeropsProject>(
-      `/project/${project.id}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(
-          projectWriteBody({
-            name: record.name,
-            description: project.description,
-            tagList: record.tagList,
-            publicIpV4Shared: project.publicIpV4Shared,
-            maxCreditLimit: project.maxCreditLimit,
-          }),
-        ),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
 
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string, signal?: AbortSignal): Promise<ZeropsProject> {

@@ -1,7 +1,5 @@
 /**
- * The import a release's plan runs before it deploys: the services production lacks, which a
- * person who may release can also create on their own, early, from the review's step or a Mate's
- * ask.
+ * Preview of the services the approved release will create in production.
  */
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import { stringify } from "yaml";

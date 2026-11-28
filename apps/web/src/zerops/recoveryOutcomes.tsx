@@ -3,7 +3,6 @@ import { Atom } from "effect/reactivity";
 import {
   makeOutcomePresentation,
   presentOutcomes,
-  projectServicesAtom,
   recoveryOutcome,
   recoveryPreparationFailure,
   restartWay,
@@ -17,8 +16,6 @@ import { currentAccountEpoch } from "./accountLifetime";
 import { sameValue } from "~/lib/sameValue";
 import { randomUUID } from "~/lib/utils";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
-import { submitServiceWrites } from "./zeropsWrite";
-import { mateServicesToWrite } from "@t3tools/client-runtime/zerops/mateState";
 
 type RecoveryOrigin = "recovery" | "restart-confirmation" | "deploy-confirmation";
 interface Invocation {
@@ -74,7 +71,6 @@ interface RecoveryTarget {
   readonly serviceId: string;
   readonly status: string | undefined;
   readonly name: string;
-  readonly projectStatus?: string;
 }
 
 /** The command reads the same owner verdict as every renderer, including on a repeated press. */
@@ -121,18 +117,6 @@ export function useRecoveryCommand(origin: RecoveryOrigin) {
     let initAt: string | null;
     try {
       initAt = action === "restart" ? await readContainerInitAt(target.key) : null;
-      // A running project's Start brings back every stopped service of it: the others are sent
-      // first, and its Mate container's start is the one followed here (`mateServicesToWrite`).
-      if (action === "start" && target.projectStatus !== "STOPPED") {
-        const services = registry.get(projectServicesAtom(target.projectId)).services ?? [];
-        await submitServiceWrites(
-          operations,
-          orgId,
-          "start-service",
-          target.projectId,
-          mateServicesToWrite("start", services).filter((id) => id !== target.serviceId),
-        );
-      }
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : "The container could not be read.";
       registry.set(
@@ -158,14 +142,7 @@ export function useRecoveryCommand(origin: RecoveryOrigin) {
               projectId: target.projectId,
               serviceId: target.serviceId,
             }
-        : target.projectStatus === "STOPPED"
-          ? { kind: "start-project", orgId, projectId: target.projectId }
-          : {
-              kind: "start-service",
-              orgId,
-              projectId: target.projectId,
-              serviceId: target.serviceId,
-            },
+        : { kind: "start-mate-start", orgId, projectId: target.projectId, id: requestId },
       requestId,
     );
     if (

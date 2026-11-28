@@ -16,7 +16,7 @@ next: PJ166
 - PJ13 — A detail asked to be read afresh answers a read only once that read has ended, never while it is still live from before
 - PJ14 — A restart is answered only by its own service's restart that still runs or was created at or after its press, never by an earlier one or another service's; it is said not sent only on the person's ask, and never while an unseen restart ended within the clocks' allowance before the press or the history read does not reach back that far
 - PJ15 — A detail whose read is failing answers a read asked afresh only once that read has ended, never from the failure before the ask
-- PJ16 — A start is answered only by a start of its own service, a stop by a stop and a service's restart by a restart, never by another action on that service; a write that names no such process is never said not sent
+- PJ16 — A service's restart is answered only by a restart of that service; a write that names no such process is never said not sent
 - PJ17 — A sampled read answered empty, one its owner withheld and one not read yet are three different answers
 - PJ18 — A process that stopped running without its end ever being pushed is not shown as still running
 - PJ19 — The menu's build indicator is on only while a build or deploy runs, never for other running work, and is unknown before the first read

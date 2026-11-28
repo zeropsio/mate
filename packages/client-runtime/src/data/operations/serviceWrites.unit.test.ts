@@ -6,9 +6,9 @@ import { accountOf, progressOf, zeropsOperations } from "../__fixtures__/operati
 import { runningScope } from "../families/process.ts";
 import type { AccountStore } from "../store.ts";
 import { ZeropsApiError } from "../../zerops/errors.ts";
-import { startServiceExecutor } from "./executors/serviceWrites.ts";
+import { serviceRestartExecutor } from "./executors/vaultWrites.ts";
 
-const START = { kind: "start-service", orgId: ORG, projectId: "p1", serviceId: "s1" } as const;
+const RESTART = { kind: "service-restart", orgId: ORG, projectId: "p1", serviceId: "s1" } as const;
 
 const account = () =>
   accountOf(liveZerops({ running: [], services: [{ id: "s1", projectId: "p1" }] }));
@@ -34,7 +34,7 @@ const processRow = (
           id,
           projectId: "p1",
           status,
-          actionName: "stack.start",
+          actionName: "stack.restart",
           serviceStackIds: [serviceId],
         }),
         revision: zeropsVersion(version),
@@ -42,29 +42,29 @@ const processRow = (
     ],
   });
 
-// witness: packages/client-runtime/src/data/operations/executors/serviceWrites.ts | verb(() => platform.startService(intent.serviceId)) → verb(() => platform.startService(intent.serviceId).catch(() => platform.startService(intent.serviceId)))
+// witness: packages/client-runtime/src/data/operations/executors/vaultWrites.ts | verb(() => platform.restartService(intent.serviceId)) → verb(() => platform.restartService(intent.serviceId).catch(() => platform.restartService(intent.serviceId)))
 it.effect(
-  "OP7: After a lost answer a service start adopts only a start running for its own service and is never sent again",
+  "OP7: After a lost answer a service restart adopts only a restart running for its own service and is never sent again",
   () =>
     Effect.gen(function* () {
       const store = account();
       const calls: string[] = [];
       const operations = zeropsOperations(
         store,
-        startServiceExecutor({
-          startService: async (id) => {
+        serviceRestartExecutor({
+          restartService: async (id) => {
             calls.push(id);
             throw new ZeropsApiError("No answer.", "network");
           },
         }),
       );
-      yield* operations.submit(START);
+      yield* operations.submit(RESTART);
       processRow(store, "proc-other", "RUNNING", 1, "s2");
       yield* operations.retry("r1");
       expect(progressOf(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
-      processRow(store, "proc-start", "RUNNING", 1);
+      processRow(store, "proc-restart", "RUNNING", 1);
       yield* operations.retry("r1");
-      expect(progressOf(store)).toEqual({ stage: "reflected", operationId: "proc-start" });
+      expect(progressOf(store)).toEqual({ stage: "reflected", operationId: "proc-restart" });
       expect(calls).toEqual(["s1"]);
     }),
 );

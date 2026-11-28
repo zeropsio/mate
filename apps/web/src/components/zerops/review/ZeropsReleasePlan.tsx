@@ -122,8 +122,6 @@ interface ReleasePlanProps {
    * place, and its line is still being `reading`, or `unsaid` where nothing reads it now.
    */
   readonly unread?: "reading" | "unsaid" | undefined;
-  /** The early path: creates what production lacks now, with the person's own access. */
-  readonly onCreate?: (() => void) | undefined;
   /** Renews production's deploy key, on the step HQ stopped at for it; `renewing` while it runs. */
   readonly onRenew?: (() => void) | undefined;
   readonly renewing?: boolean | undefined;
@@ -146,7 +144,6 @@ export function ReleasePlan({
   steps,
   values,
   unread,
-  onCreate,
   onRenew,
   renewing = false,
   renewWord = "Renew the key",
@@ -154,7 +151,6 @@ export function ReleasePlan({
   running,
   live,
 }: ReleasePlanProps) {
-  const creations = steps.filter((step) => step.kind === "create").length;
   const list = useRef<HTMLOListElement | null>(null);
   // A value production lacks is added before anything deploys that reads it.
   const at = steps.findIndex((step) => step.kind === "deploy" || step.kind === "live");
@@ -232,7 +228,6 @@ export function ReleasePlan({
             const { step } = item;
             return (
               <PlanStep
-                createWords={creations > 1 ? "Create them now" : "Create it now"}
                 index={index}
                 key={step.key}
                 // What a deploy does to its service is the plan's to say; the rest is known without it.
@@ -243,7 +238,6 @@ export function ReleasePlan({
                     ? logOf?.(step.service)
                     : undefined
                 }
-                onCreate={onCreate}
                 onRenew={onRenew}
                 renewing={renewing}
                 renewWord={renewWord}
@@ -392,8 +386,6 @@ function PlanStep({
   step,
   index,
   unread,
-  createWords,
-  onCreate,
   onRenew,
   renewing,
   renewWord,
@@ -404,8 +396,6 @@ function PlanStep({
   readonly step: ReleaseSheetStep;
   readonly index: number;
   readonly unread: ReleasePlanProps["unread"];
-  readonly createWords: string;
-  readonly onCreate: (() => void) | undefined;
   readonly onRenew: (() => void) | undefined;
   readonly renewing: boolean;
   readonly renewWord: string;
@@ -459,13 +449,6 @@ function PlanStep({
             </InlineButton>
           </span>
         )
-      ) : step.action !== undefined && onCreate !== undefined ? (
-        // The step's own press stands at its title's end; its line keeps the step's width.
-        <span className={ASIDE}>
-          <InlineButton data-release-create="" onClick={onCreate}>
-            {step.action === "create-again" ? "Try again" : createWords}
-          </InlineButton>
-        </span>
       ) : null}
       {unread === "unsaid" ? null : unread === "reading" ? (
         // The line it will say, in its place and height.

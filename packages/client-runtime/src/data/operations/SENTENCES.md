@@ -1,4 +1,4 @@
-next: OP71
+next: OP75
 
 - OP67 — A birth deletion sends its own id, follows its HQ navigation outcome and presents an unconfirmed-setup warning once before acknowledging it, staying ended afterward; breaks: an accepted start is mistaken for completion, another deletion is followed, the warning repeats, or an acknowledged deletion reopens
 - OP1 — A second retry press while its answer is pending sends no second write
@@ -7,11 +7,10 @@ next: OP71
 - OP4 — After a lost answer an operation asks its owner by the original request id and sends nothing twice
 - OP5 — After a lost answer a Zerops operation adopts only one new process that no other operation holds; a process that ran before the send, or two new ones, adopt nothing
 - OP6 — Only a synchronous refusal of the target write proves that Zerops refused it
-- OP7 — After a lost answer a service start adopts only a start running for its own service and is never sent again
-- OP12 — A project rename preserves the tags it read
+- OP7 — After a lost answer a service restart adopts only a restart running for its own service and is never sent again
 - OP13 — A dropped socket or the same boot proves no outcome of a Mate's update
 - OP14 — A press answered during a reboot waits for the boot after the one that answered
-- OP22 — A queued Zerops write rechecks the account's access after its source read: a closed account or a denied project writes nothing
+- OP22 — A queued Zerops Start checks access and ownership after token renewal and cannot start a project newly held by HQ
 - OP23 — Each secret write goes to its own vault with its sensitivity always said
 - OP24 — A refusal that echoes a secret's value says none of it
 - OP26 — Who may merge is the same people in any order, and no limit is never the same as an empty list
@@ -43,3 +42,7 @@ next: OP71
 - OP68 — After a lost answer a service deletion adopts only a deletion running for that service
 - OP69 — After a lost answer a canceled build is adopted only when its own process says it is canceling
 - OP70 — After a lost answer opening a subdomain is adopted only when that service is open
+- OP71 — A Mate's Stop and Start each carry just the request id and person's token with expiry to the matching HQ endpoint, and a lost answer follows only the matching navigation operation
+- OP72 — Renaming a Mate sends the full name and the person's token to HQ's project rename once
+- OP73 — A plain stage asks HQ to create the named stage from its recipe and keeps HQ's refusal when the tier is gone
+- OP74 — The approved creation of production services travels with the reviewed plan hash in the release to HQ

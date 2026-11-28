@@ -299,6 +299,7 @@ export function readRecoveryOutcome(
   const terminal =
     progress.stage === "done" || progress.stage === "refused" || progress.stage === "unsent";
   const succeeded = progress.stage === "done" && progress.outcome === "succeeded";
+  const owner = action === "start" ? "HQ" : "Zerops";
   const label = action === "start" ? "Start" : "Restart";
   let text: string;
   let details: string | undefined;
@@ -312,7 +313,7 @@ export function readRecoveryOutcome(
       details = progress.reason;
       break;
     case "uncertain":
-      text = `${label} unconfirmed. Zerops may have accepted the request.`;
+      text = `${label} unconfirmed. ${owner} may have accepted the request.`;
       break;
     case "unresolved":
       text = `${label} outcome is unconfirmed.`;
@@ -322,7 +323,9 @@ export function readRecoveryOutcome(
       break;
     case "done":
       text = succeeded
-        ? `${label} completed.`
+        ? action === "start"
+          ? "HQ accepted the start request."
+          : "Restart completed."
         : progress.outcome === "cancelled"
           ? `${label} was cancelled.`
           : `${label} failed.`;
@@ -330,10 +333,10 @@ export function readRecoveryOutcome(
       break;
     case "accepted":
     case "reflected":
-      text = `Zerops accepted the ${action}. Its outcome is not confirmed yet.`;
+      text = `${owner} accepted the ${action}. Its outcome is not confirmed yet.`;
       break;
     default:
-      text = `Asking Zerops to ${action}…`;
+      text = `Asking ${owner} to ${action}…`;
   }
   return {
     text,

@@ -110,7 +110,6 @@ export function accountOperations(
   const held = byClient.get(client);
   if (held !== undefined) return held;
   // A browser without Web Locks has its project record writes serialized within the page only.
-  const locks: LockManager | undefined = globalThis.navigator?.locks;
   const hqExecutor = makeHqExecutor({
     apiOf: hqWritesOf,
     active: captureAccountLifetime(),
@@ -132,8 +131,6 @@ export function accountOperations(
         revalidate: (orgId, demand) => {
           if (registry.get(accountReadsAtom)?.orgId === orgId) revalidate(demand);
         },
-        nowMs: () => Date.now(),
-        ...(locks === undefined ? {} : { locks }),
       }),
     },
     makeId: randomUUID,

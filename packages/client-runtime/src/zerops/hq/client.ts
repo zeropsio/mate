@@ -479,7 +479,7 @@ export interface HqProjectMoveStart {
 /**
  * A stage or a production added to an application (`POST /api/apps/:appId/environments`, S13d),
  * which HQ runs as its `environment` operation on the person's token: a new project (`create`, its
- * services from `recipe`, a Zerops import YAML) or an existing unattached one (`projectId`). `id`
+ * stage services read by HQ from the recipe repository) or an existing unattached one (`projectId`). `id`
  * is the operation's, made by the client; the same id with the same body is answered again.
  */
 export interface HqEnvironmentStart {
@@ -492,7 +492,6 @@ export interface HqEnvironmentStart {
     readonly corePackage?: string;
     /** Who reaches the project beyond their organization role, as births' `userRoles`. */
     readonly access: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
-    readonly recipe?: string;
   };
   readonly environment?: { readonly name: string };
 }
@@ -531,9 +530,8 @@ export type HqCreateBirth = {
   readonly intent: BirthIntent;
   /** The persona its stand-up runs with; HQ keeps it only with a stand-up ask. */
   readonly standupPersona?: MatePersona;
-  /** Its recipe's tier as converted for a Mate's import: present exactly with a tier recipe. */
+  /** Project variables for a tier birth, kept separately from the recipe HQ reads. */
   readonly tier?: {
-    readonly yaml: string;
     readonly variables?: ReadonlyArray<TierProjectVariable>;
   };
 } & (
@@ -805,6 +803,17 @@ export interface HqApi {
    * and starts it, as its `mate_restart` operation. `id` as `startMateDeletion`'s.
    */
   readonly startMateRestart: (projectId: string, start: { readonly id: string }) => Promise<void>;
+  /** HQ starts or stops the services of a Mate's project on the carried access token (S13d). */
+  readonly startMatePower: (
+    projectId: string,
+    verb: "stop" | "start",
+    start: { readonly id: string },
+  ) => Promise<void>;
+  /** HQ renames the project and records the Mate's name once Zerops confirms it (S13d). */
+  readonly startMateRename: (
+    projectId: string,
+    start: { readonly id: string; readonly name: string },
+  ) => Promise<void>;
   /**
    * Starts a production's removal with the person's access token (`POST
    * /api/apps/{appId}/productions/{projectId}/removal`): HQ retires its deploy token and lets go of
@@ -2119,6 +2128,16 @@ export function makeHqApi(input: {
       startOperation(`/api/projects/${encodeURIComponent(projectId)}/restart`, start, {
         signIn: "Sign in with your Zerops account to restart this Mate.",
         inFlight: "HQ is still finishing its last change to this Mate. Restart it once that ends.",
+      }),
+    startMatePower: (projectId, verb, start) =>
+      startOperation(`/api/projects/${encodeURIComponent(projectId)}/${verb}`, start, {
+        signIn: `Sign in with your Zerops account to ${verb} this Mate.`,
+        inFlight: "HQ is still finishing its last change to this Mate. Try again once that ends.",
+      }),
+    startMateRename: (projectId, start) =>
+      startOperation(`/api/projects/${encodeURIComponent(projectId)}/rename`, start, {
+        signIn: "Sign in with your Zerops account to rename this Mate.",
+        inFlight: "HQ is still finishing its last change to this Mate. Rename it once that ends.",
       }),
     startProductionRemoval: (appId, projectId, start) =>
       startOperation(

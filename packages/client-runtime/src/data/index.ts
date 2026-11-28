@@ -184,6 +184,7 @@ export {
 } from "./projections/mateDeletion.ts";
 export { projectMoveOf, type ProjectMove } from "./projections/projectMove.ts";
 export { mateRestartOf } from "./projections/mateRestart.ts";
+export { mateProjectChangeOf, type MateProjectChange } from "./projections/mateProjectChange.ts";
 export { mateHandOverOf, type MateHandOver } from "./projections/mateHandOver.ts";
 export {
   PROPOSAL_EFFECT,
@@ -222,7 +223,6 @@ export { recordedEnvironment } from "./projections/recordedEnvironment.ts";
 export { operationProgress } from "./projections/operation.ts";
 export type { OperationProgress } from "../zerops/operationProgress.ts";
 export { operationResult } from "./model.ts";
-export { serviceCreation, type ServiceCreation } from "./projections/serviceCreation.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {

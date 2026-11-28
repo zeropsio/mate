@@ -20,9 +20,7 @@ import {
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
 import {
   appProjectName,
-  mateBirthTier,
   nameUnderApp,
-  stageRecipe,
   type ZeropsEnvironmentRole,
   type CanonicalGroup,
   type EnvironmentRecipeChoice,
@@ -153,11 +151,9 @@ export function useEnvironmentCreation(): EnvironmentCreate {
       const { group, role, choice, creationId } = request;
       const { name, shown } = environmentProjectName(role, group.name, choice.name);
       const kind = addedEnvironmentKind(role, choice.withAgent);
+      if (name.length === 0) return { kind: "refused", reason: "An environment needs a name." };
 
       if (kind === "stage" || kind === "production") {
-        const recipe = kind === "stage" ? stageRecipe({ name, recipe: choice.recipe }) : null;
-        if (recipe !== null && !recipe.ok) return { kind: "refused", reason: recipe.reason };
-        if (name.length === 0) return { kind: "refused", reason: "An environment needs a name." };
         const start: Omit<HqEnvironmentStart, "id"> = {
           tier: kind,
           create: {
@@ -166,7 +162,6 @@ export function useEnvironmentCreation(): EnvironmentCreate {
             // without a Mate marks its creator its owner.
             access: choice.userRoles ?? [],
             ...(choice.corePackage === undefined ? {} : { corePackage: choice.corePackage }),
-            ...(recipe === null ? {} : { recipe: recipe.yaml }),
           },
         };
         let operationId: string;
@@ -179,8 +174,6 @@ export function useEnvironmentCreation(): EnvironmentCreate {
       }
 
       // A Mate: one Create, which HQ runs whether this tab stays or not. Its steps are not run here.
-      const birthTier = mateBirthTier({ name, recipe: choice.recipe });
-      if (!birthTier.ok) return { kind: "refused", reason: birthTier.reason };
       // The agents a new Mate offers are its group's, read before anything is sent.
       let agents: Awaited<ReturnType<typeof readGroupAgents>>;
       try {
@@ -193,21 +186,20 @@ export function useEnvironmentCreation(): EnvironmentCreate {
       // may (`ownerAtAdd`); Zerops marks a developer itself.
       const owner = ownerAtAdd({ userRoles: choice.userRoles, adder: organization });
       const birthId = request.birthId ?? randomUUID();
-      const birth = addedMateBirth({
-        groupId: group.groupId,
-        role,
-        kind,
-        choice,
-        projectName: name,
-        displayName: shown,
-        agents,
-        userRoles:
-          owner === null
-            ? (choice.userRoles ?? [])
-            : withProjectGrant(choice.userRoles ?? [], owner, "OWNER"),
-        tier: birthTier.tier,
-      });
       try {
+        const birth = addedMateBirth({
+          groupId: group.groupId,
+          role,
+          kind,
+          choice,
+          projectName: name,
+          displayName: shown,
+          agents,
+          userRoles:
+            owner === null
+              ? (choice.userRoles ?? [])
+              : withProjectGrant(choice.userRoles ?? [], owner, "OWNER"),
+        });
         await operations.run(
           { kind: "create-birth", orgId: organization.id, id: birthId, ...birth },
           {

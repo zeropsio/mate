@@ -22,6 +22,7 @@ import {
   mateGoing,
   projectMoveOf,
   mateRestartOf,
+  mateProjectChangeOf,
   mateHandOverOf,
   type AgentAdmissionAttention,
 } from "@t3tools/client-runtime/data";
@@ -3741,6 +3742,7 @@ function useMateRowState<T extends RosterCandidate>({
     deletion,
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
+    projectChange: mateProjectChangeOf(candidate.project.hq?.operation),
     handOver: mateHandOverOf(candidate.project),
     restarting: restartSaid,
     stop: mateStopStanding(candidate),
@@ -4447,6 +4449,7 @@ function MateSecondLine({
     case "moving":
     case "moved":
     case "restarting":
+    case "mate-changing":
     case "handing-over":
     case "stop":
       return (
@@ -4459,6 +4462,7 @@ function MateSecondLine({
       );
     case "move-failed":
     case "restart-failed":
+    case "mate-change-failed":
     case "handover-failed":
       return (
         <span

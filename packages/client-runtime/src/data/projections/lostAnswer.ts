@@ -117,18 +117,6 @@ export function effectProcessOf(intent: OperationIntent): {
         action: "stack.restart",
         absent: "Zerops shows no restart of this Mate since you asked.",
       };
-    case "start-service":
-      return {
-        ...serviceOf(intent),
-        action: "stack.start",
-        absent: "Zerops shows no start since you asked.",
-      };
-    case "stop-service":
-      return {
-        ...serviceOf(intent),
-        action: "stack.stop",
-        absent: "Zerops shows no stop since you asked.",
-      };
     case "service-restart":
       return {
         ...serviceOf(intent),

@@ -1,5 +1,5 @@
 import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
-import { projectServicesAtom, shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
@@ -31,13 +31,13 @@ import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUp
  * (`ZeropsNewProjectHost`), not here.
  */
 
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type * as React from "react";
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { PlayIcon, PlusIcon } from "lucide-react";
@@ -113,7 +113,6 @@ import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useMateUpdateStates } from "~/zerops/useMateUpdate";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
-import { startMate } from "~/zerops/zeropsWrite";
 import type { AuthGateState } from "~/environments/primary/auth";
 import {
   activityMomentOf,
@@ -818,7 +817,6 @@ export function ZeropsProjectsContent({
   });
   const { activeOrganization, client, organizationStatus, status, user } = useZeropsSession();
   const operations = useAccountOperations();
-  const registry = useContext(RegistryContext);
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
@@ -898,7 +896,6 @@ export function ZeropsProjectsContent({
   // A Mate's state as the menu reads it (`mateState`): its row says "Not in this HQ" by that alone.
   const stateOf = useMateStates(containerLevels);
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
-  const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
   const [restartingCandidateKey, setRestartingCandidateKey] = useState<string | null>(null);
   const restartMate = useRestartMate();
 
@@ -1079,14 +1076,15 @@ export function ZeropsProjectsContent({
     [activeOrganization, createMateBirth, setConnectError, settingUpKey],
   );
 
+  const mateActions = useMateActions({ serverVersions, levels: containerLevels });
   const busyKeys = useMemo(
     () =>
       new Set(
-        [enablingCandidateKey, settingUpKey, startingCandidateKey, restartingCandidateKey].filter(
+        [enablingCandidateKey, settingUpKey, mateActions.busyKey, restartingCandidateKey].filter(
           (key) => key !== null,
         ),
       ),
-    [enablingCandidateKey, settingUpKey, startingCandidateKey, restartingCandidateKey],
+    [enablingCandidateKey, settingUpKey, mateActions.busyKey, restartingCandidateKey],
   );
 
   // The quiet actions: rename an agent, move a project. Each
@@ -1361,22 +1359,8 @@ export function ZeropsProjectsContent({
         return;
       }
       case "start": {
-        if (activeOrganization === null) return;
         setConnectError(null);
-        setStartingCandidateKey(candidate.key);
-        const write = startMate(
-          operations,
-          activeOrganization.id,
-          candidate,
-          registry.get(projectServicesAtom(candidate.project.id)).services,
-        );
-        void readContainerAfter(candidate, write)
-          .catch((cause: unknown) => {
-            setConnectError(zeropsErrorMessage(cause));
-          })
-          .finally(() => {
-            setStartingCandidateKey(null);
-          });
+        mateActions.start(candidate);
         return;
       }
       case "restart": {
@@ -1467,10 +1451,6 @@ export function ZeropsProjectsContent({
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  // Every verb a Mate has, from the one place that defines them — shared with
-  // a project's own page, which listed its Mates and could do nothing to them.
-  const mateActions = useMateActions({ serverVersions, levels: containerLevels });
-
   // The recipe is the application's, read as the person through its HQ (guide
   // 4.3) — never a sibling's export, which carried service shapes without their
   // build setup and produced environments that could not build.
@@ -2382,7 +2362,7 @@ export function ZeropsProjectsContent({
       ?.firstDeploy;
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
-  const trouble = toolError ?? route.trouble ?? verbs.trouble;
+  const trouble = toolError ?? route.trouble ?? verbs.trouble ?? mateActions.trouble;
   const ungroupedRows = shownUngrouped(
     groupTree.ungrouped.map((candidate) => ({
       item: candidate,

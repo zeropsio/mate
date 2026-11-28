@@ -63,6 +63,17 @@ export function operationEndWords(
         title: `End restarting ${name}?`,
         description: `${unable} Ending it frees ${name} for new work and deletes nothing.`,
       };
+    case "mate_stop":
+    case "mate_start":
+      return {
+        title: `End ${kind === "mate_stop" ? "stopping" : "starting"} ${name}?`,
+        description: `${unable} Services already changed keep their current state.`,
+      };
+    case "mate_rename":
+      return {
+        title: `End renaming ${name}?`,
+        description: unable,
+      };
     case "mate_handover":
       return {
         title: `End handing over ${name}?`,

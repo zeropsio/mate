@@ -13,6 +13,8 @@ const PROCESS_FAILED = new Map<string, string>([
   ["project_delete_failed", "Zerops could not delete the project."],
   ["build_failed", "Zerops could not build the Mate's service."],
   ["restart_failed", "Zerops could not restart the Mate's service."],
+  ["stop_failed", "A service failed to stop in Zerops."],
+  ["start_failed", "A service failed to start in Zerops."],
 ]);
 
 /** Zerops itself failed a process the step followed: nothing is wrong in the person's work. */

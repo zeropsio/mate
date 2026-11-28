@@ -85,7 +85,6 @@ next: ZV221
 - ZV107 — A login answer or read arriving after a local sign-out never signs in or signs out the next account
 - ZV108 — A lost answer to a project write is uncertain and never resent, and a write given up during a token renewal is never sent
 - ZV110 — Parallel requests refused for an expired token share one refresh
-- ZV111 — Writing a project sends its name and the fields a write would reset, never people's roles
 - ZV115 — A kept session goes only to the target it was kept for, and one ending within the load is not presented
 - ZV116 — A session is stored only after the second factor and without the one-time recovery token; a corrupt or half-two-factor record is dropped on load
 - ZV117 — An agent's sign-in state that was not read never reads as needing sign-in
@@ -129,7 +128,6 @@ next: ZV221
 - ZV159 — Start, Stop and Restart are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart
 - ZV160 — Restart is offered on an active project and container unless the platform or our own verb is already bringing it up and has not run past its cap, and Start only on a stopped Mate the platform is not moving; breaks: the menu offers a second Restart while the first is still coming up
 - ZV176 — Stop is offered on a running project that holds its Mate container, never where that container is stopped, where the platform is starting or stopping either, or where the project holds no container; breaks: a Mate whose container is stopped offers Stop beside Start
-- ZV178 — A Mate's Stop writes each running service of its project and its Start each stopped one, never a platform service, its Mate container last; breaks: a Stop refused partway has stopped the Mate's own computer and left its app running
 - ZV161 — A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment has failed and offers no Start and no Redeploy; breaks: a Mate whose setup stalls offers Restart beside Delete, or a browser deploys a birth HQ owns
 - ZV162 — A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue
 - ZV163 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
@@ -141,7 +139,6 @@ next: ZV221
 - ZV169 — A take-over list read carries the person's access token under HQ's session and no browser token list; breaks: HQ cannot read the member's tokens
 - ZV170 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
 - ZV171 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
-- ZV172 — A stopped Mate's Start is one PUT that starts its own container's service, answered by the platform's process; breaks: Start asks the platform to start the project instead of the Mate's container
 - ZV173 — A Read-only person is offered no Start on a stopped project HQ does not place; breaks: a person Zerops refuses is offered a write on a plain project
 - ZV174 — An Owner is offered Start on a stopped project HQ does not place, which has no entry from HQ; breaks: an Owner cannot start their own plain project
 - ZV175 — Before HQ's first answer, and on a placed Mate whose entry has not arrived, nobody is offered a write that needs a role, an Owner included; breaks: a Read-only person is offered Start for as long as HQ takes to answer

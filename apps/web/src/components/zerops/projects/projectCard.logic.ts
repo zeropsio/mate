@@ -813,11 +813,13 @@ export function cardSecondWords(input: {
     case "deletion-failed":
     case "move-failed":
     case "restart-failed":
+    case "mate-change-failed":
     case "handover-failed":
       return { text: second.text, tone: "failed" };
     case "moving":
     case "moved":
     case "restarting":
+    case "mate-changing":
     case "handing-over":
     case "stop":
       return muted(second.text);

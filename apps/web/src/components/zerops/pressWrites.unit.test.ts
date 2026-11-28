@@ -1,6 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import { makeHqApi } from "@t3tools/client-runtime/zerops/hq";
 
 import { addedMateBirth, mateSetUpBirth } from "../../zerops/mateBirths.logic.ts";
 import { readAccessGrantChanges } from "../../zerops/readAccessRequests.logic.ts";
@@ -21,12 +22,79 @@ it("MN64: A stage added with its own Mate is created in the card's application a
       displayName: "Stage",
       agents: [],
       userRoles: [],
-      tier: undefined,
     });
     return [birth.appId, birth.intent.placement];
   };
   expect(added("devstage")).toEqual(["app-1", { role: "stage", name: "Stage", chief: false }]);
   expect(added("mate")).toEqual(["app-1", { role: "dev", name: "Stage", chief: false }]);
+});
+
+// witness: apps/web/src/zerops/mateBirths.logic.ts | revision: choice.recipe.revision, → revision: "",
+it("MN140: Adding a Mate from a tier sends its recipe revision and project variables to HQ, and HQ gives the refusal for a second zcp service", async () => {
+  const revision = "a".repeat(40);
+  const expiresAt = "2099-01-01T00:00:00.000Z";
+  const writes: unknown[] = [];
+  const api = makeHqApi({
+    orgId: "org-1",
+    address: "https://hq.example",
+    accessToken: async () => ({ token: "person-token", expiresAt }),
+    openSocket: () => {
+      throw new Error("No socket in this case");
+    },
+    fetch: async (url, init) => {
+      const path = new URL(url).pathname;
+      if (path === "/api/door") return Response.json({ session: "session-1", expiresAt });
+      writes.push([path, init?.method, JSON.parse(String(init?.body))]);
+      return Response.json({ code: "conflict", reason: "recipe_declares_zcp" }, { status: 409 });
+    },
+  });
+  const birth = addedMateBirth({
+    groupId: "app-1",
+    role: "dev",
+    kind: "mate",
+    choice: {
+      withAgent: true,
+      recipe: {
+        kind: "tier",
+        tier: "mate",
+        revision,
+        yaml: "project:\n  envVariables:\n    MODE: demo\nservices:\n  - hostname: extra\n    type: zcp@1\n",
+      },
+    },
+    projectName: "Shop - Echo",
+    displayName: "Echo",
+    agents: ["codex"],
+    userRoles: [],
+  });
+  await expect(api.createBirth({ id: "birth-1", ...birth })).rejects.toMatchObject({
+    reason: "recipe_declares_zcp",
+    message:
+      "The recipe declares a zcp service. Remove it from the recipe before adding a Mate. HQ adds the Mate's own zcp service.",
+  });
+  expect(writes).toEqual([
+    [
+      "/api/births",
+      "POST",
+      {
+        id: "birth-1",
+        appId: "app-1",
+        face: "",
+        intent: {
+          projectName: "Shop - Echo",
+          recipe: { kind: "tier", id: "group", tier: "mate", revision },
+          agents: ["codex"],
+          standUp: true,
+          automated: false,
+          placement: { role: "dev", name: "Echo", chief: false },
+          location: null,
+          userRoles: [],
+        },
+        tier: { variables: [{ key: "MODE", value: "demo", sensitive: false }] },
+        accessToken: "person-token",
+        expiresAt,
+      },
+    ],
+  ]);
 });
 
 // witness: apps/web/src/zerops/mateBirths.logic.ts | projectId: input.project.id, → projectId: input.id,
