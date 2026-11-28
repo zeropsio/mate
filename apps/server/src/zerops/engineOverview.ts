@@ -31,6 +31,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
+import { taskQuestionOf } from "@t3tools/shared/taskQuestion";
 import { userAskPreviewText } from "@t3tools/shared/userAsk";
 
 import {
@@ -43,7 +44,7 @@ import {
   turnStateOfEnd,
   type ViewRun,
 } from "../engine/MateEngine.ts";
-import { TASKS_CONVERSATION_ID, taskIdOfConversation, taskQuestionOf } from "./ZeropsTasks.ts";
+import { TASKS_CONVERSATION_ID, taskIdOfConversation } from "./ZeropsTasks.ts";
 
 /** The project an engine conversation's shell names: the engine keeps no V1 project. */
 export const ENGINE_PROJECT_ID = ProjectId.make("mate-engine");

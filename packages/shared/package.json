@@ -95,6 +95,10 @@
       "types": "./src/threadStatus.ts",
       "import": "./src/threadStatus.ts"
     },
+    "./taskQuestion": {
+      "types": "./src/taskQuestion.ts",
+      "import": "./src/taskQuestion.ts"
+    },
     "./zeropsRoles": {
       "types": "./src/zeropsRoles.ts",
       "import": "./src/zeropsRoles.ts"
