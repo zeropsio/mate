@@ -4790,22 +4790,30 @@ function MateReply({
       // The line rises as a new step arrives, and the sweep runs over its
       // words inside it: two animations, two elements — on one, the sweep's
       // took the rise's place and a new step never rose.
+      // The task's title gives way, never the step: an ellipsis drawn over the sweeping step
+      // read as a smear ("Thinki…" under the sweep). The step stands whole after the title.
       <span
         className={cn(
-          "truncate block text-body leading-5.5 text-muted-foreground/91",
+          "flex min-w-0 overflow-hidden text-body leading-5.5 whitespace-pre text-muted-foreground/91",
           wordsChanged && "animate-words-in motion-reduce:animate-none",
         )}
         data-zerops-surface="sidebar-mate-live-step"
         key={`live:${reply.words}`}
       >
         {task === undefined ? null : (
-          <span className="text-sidebar-foreground" data-zerops-surface="sidebar-mate-live-task">
-            {task} ·{" "}
+          <span
+            className="min-w-0 truncate text-sidebar-foreground"
+            data-zerops-surface="sidebar-mate-live-task"
+          >
+            {task}
           </span>
         )}
-        <RunShimmer inline sweeps>
-          {reply.words}
-        </RunShimmer>
+        <span className="shrink-0">
+          {task === undefined ? null : " · "}
+          <RunShimmer inline sweeps>
+            {reply.words}
+          </RunShimmer>
+        </span>
       </span>
     );
   }
