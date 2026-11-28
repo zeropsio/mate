@@ -189,9 +189,9 @@ export function TaskColumn() {
         <div className="w-[435px] shrink-0 border-e border-border bg-sidebar" />
         <div className="min-w-0 flex-1 px-8 py-10">
           <div className="mx-auto w-full max-w-3xl" data-harness="task-column">
-            {/* The task's card stands in the timeline's frame as `rowInset` draws a task-ask row:
-                its card needs its Mate, which the harness has not, so it is the view here. */}
-            <div className="px-3.25 sm:px-4.25" data-col-row="task-ask">
+            {/* The task's card stands in the timeline's frame as `rowInset` draws a task-ask row
+                (no inset): its card needs its Mate, which the harness has not, so it is the view. */}
+            <div data-col-row="task-ask">
               <MateTaskCardView
                 origin={{ words: "Put on board by you" }}
                 session={{

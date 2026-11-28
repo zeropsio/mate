@@ -416,7 +416,8 @@ export function MateTaskCardView({
   }, []);
   return (
     <Card data-zerops-surface="mate-task-card" render={<article />}>
-      <div className="flex flex-col gap-1.5 px-5 pt-3.5 pb-3">
+      {/* Its words 16 px inside its edge, on the run card's inset. */}
+      <div className="flex flex-col gap-1.5 px-3.75 pt-3.5 pb-3 max-sm:px-2.75">
         <Text className="flex min-w-0 items-center gap-2" render={<div />} variant="remark">
           <SourceMark source={task} />
           <span className="min-w-0 truncate">{origin?.words ?? mateTaskCardSource(task)}</span>

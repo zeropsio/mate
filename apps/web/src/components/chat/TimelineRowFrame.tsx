@@ -79,9 +79,12 @@ function rowInset(row: TimelineRow): string {
     row.kind === "seam" ||
     (row.kind === "crew-seam" && !isRestartRow(row)) ||
     row.kind === "after-work" ||
-    // Another Mate's message and the wait for its answer are cards, edge to edge with the run's.
+    // Another Mate's message and the wait for its answer are cards, edge to edge with the run's,
+    // as a task's card and what is said of it after are.
     row.kind === "mate-message" ||
-    row.kind === "mate-wait"
+    row.kind === "mate-wait" ||
+    row.kind === "task-ask" ||
+    row.kind === "task-message"
   ) {
     return "";
   }
