@@ -281,17 +281,39 @@ it.effect(
       );
       yield* withLifecycle((lifecycle) =>
         Effect.gen(function* () {
+          // A Mate's envelope names the version its stage runs (zcp spec-mate §1.7).
+          const envelope = JSON.parse(envelopeJsonText("develop-active"));
+          const services = [
+            ...envelope.services,
+            {
+              hostname: "kanbanstage",
+              typeVersion: "nodejs@22",
+              runtimeClass: "dynamic",
+              status: "ACTIVE",
+              bootstrapped: true,
+              version: {
+                id: "REC0000000000000000032",
+                commit: "0123456789abcdef0123456789abcdef01234567",
+                at: "2026-01-01T00:00:00Z",
+              },
+            },
+          ];
           yield* lifecycle.ingest(
             claudeEvent({
               toolName: "mcp__zerops__zerops_deploy",
-              text: `{"service":"kanbandev","status":"ok","envelope":${envelopeJsonText(
-                "develop-active",
-              )}}`,
+              text: JSON.stringify({
+                service: "kanbandev",
+                status: "ok",
+                envelope: { ...envelope, services },
+              }),
             }),
           );
           const state = yield* lifecycle.get(THREAD);
           expect(state.envelope?.phase, "under a JSON envelope key").toBe("develop-active");
           expect(state.recentTools.at(-1)?.toolName).toBe("zerops_deploy");
+          expect((yield* lifecycle.copies).services, "its services as zcp sent them").toEqual(
+            services,
+          );
         }),
       );
       yield* withLifecycle((lifecycle) =>

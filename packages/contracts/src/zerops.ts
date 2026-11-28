@@ -104,6 +104,19 @@ export type ZeropsDevServer = typeof ZeropsDevServer.Type;
 export const ZeropsStandIn = Schema.Struct({ for: Schema.String });
 export type ZeropsStandIn = typeof ZeropsStandIn.Type;
 
+/**
+ * The ACTIVE app version a pair's stage runs, on a Mate's envelope only — zcp `docs/spec-mate.md`
+ * §1.7. Never a version building, waiting or failed.
+ */
+export const ZeropsStageVersion = Schema.Struct({
+  id: Schema.String,
+  /** The whole commit a zcp commit deploy built it from; absent on every other version. */
+  commit: Schema.optional(Schema.String),
+  /** When Zerops created it (RFC 3339). */
+  at: IsoDateTime,
+});
+export type ZeropsStageVersion = typeof ZeropsStageVersion.Type;
+
 /** One service's point-in-time lifecycle state — `workflow.ServiceSnapshot`. */
 export const ZeropsServiceSnapshot = Schema.Struct({
   hostname: Schema.String,
@@ -135,6 +148,11 @@ export const ZeropsServiceSnapshot = Schema.Struct({
   devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
   /** Present while zcp holds this dev service as a stand-in; absent otherwise. */
   standIn: Schema.optional(ZeropsStandIn),
+  /**
+   * A stage's running version. Absent means not read (no ACTIVE version with code, Zerops did not
+   * answer, an older zcp); one this build cannot read is dropped, not the snapshot.
+   */
+  version: ForwardCompatibleOptional(ZeropsStageVersion),
 });
 export type ZeropsServiceSnapshot = typeof ZeropsServiceSnapshot.Type;
 
