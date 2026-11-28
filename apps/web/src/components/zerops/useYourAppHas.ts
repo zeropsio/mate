@@ -45,6 +45,7 @@ export function useYourAppHas(
       leases: copies?.leases,
       poolPairs: copies?.poolPairs,
       standIns: copies?.standIns,
+      versions: copies?.stageVersions,
       merged,
       deployedAt: deploysOf(services),
     });

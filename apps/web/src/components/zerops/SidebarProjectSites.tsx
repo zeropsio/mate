@@ -175,6 +175,7 @@ const factsOf = (
   leases: leases[mate.candidate.project.id]?.leases,
   poolPairs: leases[mate.candidate.project.id]?.poolPairs,
   standIns: leases[mate.candidate.project.id]?.standIns,
+  versions: leases[mate.candidate.project.id]?.stageVersions,
   merged: app?.merged,
   deployedAt: deploysOf(app?.services[mate.candidate.project.id]),
 });
@@ -1352,22 +1353,25 @@ function SitesServices({
               onPreview(row.service, url);
             },
       // Your app goes by the app and says what it has (`yourAppHas`), in the chat script's words:
-      // "guestbook · Add a guestbook page · added 08:15", never by its container or its host.
+      // "guestbook · Add a guestbook page · added 08:15 · version abc1234", never by its container
+      // or its host.
       title:
         row.yourApp === true ? (
-          // The title gives way, never the app or when it was added.
+          // The title gives way, then the time, never the app or the version: a cut version names
+          // none. As wide as its words: the title takes only what the time and the version leave.
           <span className="flex min-w-0">
             <span className="flex-none font-medium text-foreground">{appName}</span>
             {row.has === undefined ? null : (
-              <>
-                <span className="min-w-0 truncate font-normal text-muted-foreground">
-                  &nbsp;· {row.has.title}
-                </span>
-                <span className="flex-none font-normal whitespace-pre text-muted-foreground">
+              <span className="flex min-w-0 font-normal text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate">&nbsp;· {row.has.title}</span>
+                <span className="min-w-0 truncate whitespace-pre">
                   {" · added "}
                   {formatDayAwareTimestamp(row.has.at, "locale")}
                 </span>
-              </>
+                {row.has.version === undefined ? null : (
+                  <span className="flex-none whitespace-pre">{` · version ${row.has.version}`}</span>
+                )}
+              </span>
             )}
           </span>
         ) : (

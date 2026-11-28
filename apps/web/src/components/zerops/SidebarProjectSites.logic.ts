@@ -36,6 +36,7 @@ import {
   yourAppHas,
   type YourAppChange,
   type YourAppHas,
+  type YourAppVersion,
 } from "@t3tools/client-runtime/zerops/yourAppHas";
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 
@@ -308,6 +309,11 @@ export interface SitesMateFacts {
    * undefined unread.
    */
   readonly deployedAt?: ReadonlyMap<string, string | null> | undefined;
+  /**
+   * The version each of its stages runs, by hostname, as its last envelope read it; a stage
+   * missing is not read.
+   */
+  readonly versions?: ReadonlyMap<string, YourAppVersion> | undefined;
 }
 
 /** When each service's running deploy was made, by hostname; undefined while unread. */
@@ -362,6 +368,7 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
             merged: mate.merged,
             deployedAt:
               mate.deployedAt === undefined ? undefined : mate.deployedAt.get(stage.service),
+            version: mate.versions?.get(stage.service),
           });
     for (const entry of [
       ...(part.pooled ? [] : part.dev.length === 0 ? [devPlaceholder(mate, part)] : part.dev),

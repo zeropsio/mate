@@ -84,7 +84,11 @@ const YOUR_APP = {
   has: new Map([
     [
       "nextstorestage",
-      { title: "Show how many people signed the guestbook", at: "2026-11-27T08:15:00Z" },
+      {
+        title: "Show how many people signed the guestbook",
+        at: "2026-11-27T08:15:00Z",
+        version: "1a2b3c4",
+      },
     ],
   ]),
 };

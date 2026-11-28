@@ -22,7 +22,8 @@ export interface YourAppOf {
 
 /**
  * Your app's header, in the chat script's words: "guestbook · Add a guestbook page · added
- * 08:15", never its host or its container. The title gives way, never the app or the time.
+ * 08:15 · version abc1234", never its host or its container. The title gives way, then the
+ * time, never the app or the version: a cut version names none.
  */
 function YourAppWords({
   name,
@@ -34,14 +35,18 @@ function YourAppWords({
   return (
     <Text className="flex min-w-0 flex-1" data-your-app-header="" render={<span />} variant="note">
       <span className="flex-none text-foreground">{name ?? "Your app"}</span>
+      {/* As wide as its words: the title takes only what the time and the version leave. */}
       {has === undefined ? null : (
-        <>
-          <span className="min-w-0 truncate">&nbsp;· {has.title}</span>
-          <span className="flex-none whitespace-pre">
+        <span className="flex min-w-0">
+          <span className="min-w-0 flex-1 truncate">&nbsp;· {has.title}</span>
+          <span className="min-w-0 truncate whitespace-pre">
             {" · added "}
             {formatDayAwareTimestamp(has.at, "locale")}
           </span>
-        </>
+          {has.version === undefined ? null : (
+            <span className="flex-none whitespace-pre">{` · version ${has.version}`}</span>
+          )}
+        </span>
       )}
     </Text>
   );

@@ -45,6 +45,7 @@ import type {
 import type { ZeropsStatPair } from "./api/service.ts";
 import { threadLeases, type CheckoutLease } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
+import type { YourAppVersion } from "./yourAppHas.ts";
 import { serviceDashboardUrl, zeropsProjectUrl } from "./gui.ts";
 import { isPoolServiceType } from "./infrastructureType.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
@@ -592,6 +593,24 @@ export const standInsOf = (
       )
     : [];
 
+/**
+ * The version each stage runs, by hostname, as a known Mate copy feed last read it
+ * (`ZeropsServiceSnapshot.version`); a stage missing is not read, and none is while the feed is
+ * not known.
+ */
+export const stageVersionsOf = (
+  lifecycle: Known<ZeropsMateCopies> | undefined,
+): ReadonlyMap<string, YourAppVersion> =>
+  new Map(
+    lifecycle?.state === "known"
+      ? (lifecycle.value.services ?? []).flatMap(({ hostname, version }) =>
+          version === undefined
+            ? []
+            : [[hostname, { commit: version.commit, at: version.at }] as const],
+        )
+      : [],
+  );
+
 /** The dev servers zcp last read on a service; none while the lifecycle is not known. */
 export const devServersOf = (
   hostname: string,
@@ -636,6 +655,7 @@ export const mateCopiesRead = (copies: Known<ZeropsMateCopies>) => ({
   leases: lifecycleLeases(copies),
   poolPairs: poolPairsOf(copies),
   standIns: standInsOf(copies),
+  stageVersions: stageVersionsOf(copies),
 });
 
 /** A classic copy's last branch and state observations; undefined means not read. */
