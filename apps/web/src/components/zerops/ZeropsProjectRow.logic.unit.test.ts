@@ -277,6 +277,26 @@ it("MN117: A failed application rename, whatever its projects' results, still of
       ],
     },
     {
+      projects: [{ projectId: "p1", result: "renamed_since" }],
+      words: [
+        {
+          projectId: "p1",
+          words: "Old - web: renamed since in Zerops, so it keeps that name",
+          failed: true,
+        },
+      ],
+    },
+    {
+      projects: [{ projectId: "p1", result: "kept" }],
+      words: [
+        {
+          projectId: "p1",
+          words: "Old - web: its name does not start with the application's, so it keeps it",
+          failed: false,
+        },
+      ],
+    },
+    {
       projects: [{ projectId: "p1", result: "moved" }],
       words: [
         {

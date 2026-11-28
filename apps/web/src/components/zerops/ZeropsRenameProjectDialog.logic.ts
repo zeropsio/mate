@@ -59,6 +59,13 @@ function projectWords(
       words: `${name}: renamed since in Zerops, so it keeps that name`,
       failed: true,
     };
+  // HQ kept the name at planning (it does not begin with the application's), so it never sent it.
+  if (result === "kept")
+    return {
+      projectId: project.projectId,
+      words: `${name}: its name does not start with the application's, so it keeps it`,
+      failed: false,
+    };
   if (result === "moved")
     return {
       projectId: project.projectId,

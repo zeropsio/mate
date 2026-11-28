@@ -372,7 +372,7 @@ export type HqBirthLeft = (typeof HQ_BIRTH_LEFT)[number];
  * or stopped with its failure, which names who stopped it and why,
  * and while it waits for its maker the person whose Continue it waits for. An
  * application's rename names the projects of its receipt the person sees, each with its result once
- * it has one (`renamed`, `renamed_since`, `moved`, `gone` or `refused:<Zerops' code>`). Its kind and
+ * it has one (`renamed`, `renamed_since`, `kept`, `moved`, `gone` or `refused:<Zerops' code>`). Its kind and
  * phase are read as strings: a kind or phase this build does not know never takes its project away.
  */
 export const HqOperation = Schema.Struct({
