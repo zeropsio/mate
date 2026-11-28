@@ -647,7 +647,10 @@ function Change({
   mateOpenChanges,
   mateWorkingOn,
   queue,
+  boardTask,
 }: {
+  /** The Board task it does, where one links it. */
+  readonly boardTask?: ChangeReviewViewProps["boardTask"];
   /** Several changes reviewed together: "1 of 3" in the top line. */
   readonly queue?: ChangeReviewViewProps["queue"];
   /** What its Mate's rows say it works on for a page. */
@@ -720,6 +723,7 @@ function Change({
       onOpenDraft={noop}
       reviewBuilds={PREVIEWS}
       project="Beviro"
+      boardTask={boardTask}
       stages={
         stages ??
         (environments.some((entry) => entry.tier === "stage")
@@ -753,6 +757,13 @@ function Change({
     />
   );
 }
+
+/** The Board task the change does, as the review links it. */
+const BOARD_TASK = {
+  title: "Show the uptime and the last deploy on a status page",
+  href: "/group/beviro/board?task=42",
+  onOpen: noop,
+};
 
 /** The page's trail, as the app draws it over a change's title. */
 const HARNESS_TRAIL = (
@@ -2144,6 +2155,16 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Settling after={SETTLE_MS} frame="dialog" />,
   },
   { id: "ready", label: "A change, ready", node: <Change open={["src/server/index.ts"]} /> },
+  {
+    id: "board-task",
+    label: "A change a Board task linked: the task it does, under its title",
+    node: <Change boardTask={BOARD_TASK} />,
+  },
+  {
+    id: "page-board-task",
+    label: "A change's page, a Board task linked",
+    node: <Change boardTask={BOARD_TASK} frame="page" />,
+  },
   {
     id: "ready-stage-key",
     label: "Ready to merge · stage's key no longer works",

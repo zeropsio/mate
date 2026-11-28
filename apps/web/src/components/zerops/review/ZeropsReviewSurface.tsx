@@ -187,8 +187,8 @@ export interface ZeropsReviewSurfaceProps {
   /** Whether the verdict's why is said under the line (`whySaid`). */
   readonly whySaid?: boolean | undefined;
   /**
-   * A fact said under the line, before the verdict's why: one the person acts on before pressing
-   * (a change's checks on GitHub).
+   * Facts said under the line, before the verdict's why: the Board task a change does, and one the
+   * person acts on before pressing (a change's checks on GitHub).
    */
   readonly notice?: ReactNode;
   /** "Ask Nova to resolve it": the fix, where there is a Mate of the person's to ask. */

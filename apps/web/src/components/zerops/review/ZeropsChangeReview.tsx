@@ -72,6 +72,8 @@ import { useHqAppDetailHold, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { CHANGE_HEAD_PATIENCE_MS, changeReviewReadout } from "~/zerops/changeReviewReadout.logic";
 import { useMergeEndForgottenOnOpen } from "~/zerops/changeActs";
+import { useAppTaskSource } from "~/zerops/useTaskSourceSettings";
+import { taskOfChange } from "../projectAutomation/changeTask.logic";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import {
@@ -351,6 +353,28 @@ function ChangeReviewData({
 }) {
   const router = useRouter();
   const openReview = useOpenReview();
+  // The Board task it does, where one of its application links it.
+  const boardSetting = useAppTaskSource("hqAppTasks", target.groupId).read.setting;
+  const task = taskOfChange(boardSetting.state === "known" ? boardSetting.held : null, {
+    repo: target.repository,
+    number: target.number,
+  });
+  const boardTaskTo = {
+    to: "/group/$groupId/board",
+    params: { groupId: target.groupId },
+    search: task === null ? {} : { task: task.id },
+  } as const;
+  const boardTask =
+    task === null
+      ? undefined
+      : {
+          title: task.title,
+          href: router.buildLocation(boardTaskTo).href,
+          onOpen: () => {
+            onClose();
+            void router.navigate(boardTaskTo);
+          },
+        };
   const now = useNowMs();
   const askMate = useAskMate();
   const askMateToFix = useAskMateToFix();
@@ -731,6 +755,7 @@ function ChangeReviewData({
       reviewBuilds={tryIt.app}
       project={project}
       appId={target.groupId}
+      boardTask={boardTask}
       stages={stages}
       keyRenewal={renewKey}
       productionOutside={flow?.outside !== undefined}
@@ -974,6 +999,13 @@ export interface ChangeReviewViewProps {
   readonly project?: string | undefined;
   /** The change's application at HQ: where its code opens in the Git browser; absent, it opens nowhere. */
   readonly appId?: string | undefined;
+  /**
+   * The Board task it does (`taskOfChange`): its title, the task's address on the Board, and the
+   * way there, which leaves the review; absent where no task of its application links it.
+   */
+  readonly boardTask?:
+    | { readonly title: string; readonly href: string; readonly onOpen: () => void }
+    | undefined;
   /** The stages that deploy what merges into `main`, with their key gaps (`mainStagesOf`). */
   readonly stages?: ReadonlyArray<MergeStage>;
   /** The first held stage's renewal, if a key holds one. */
@@ -1090,6 +1122,38 @@ function GithubChecksLine({ checks }: { readonly checks: ReviewGithubChecks }) {
       )}
       {toGithub}
     </div>
+  );
+}
+
+/** The Board task the change does, one quiet line under the title's: its title opens it there. */
+function BoardTaskLine({
+  task,
+}: {
+  readonly task: NonNullable<ChangeReviewViewProps["boardTask"]>;
+}) {
+  return (
+    <p className={`${WHY} min-w-0`} data-zerops-surface="change-board-task">
+      {/* One line however long the task's title: its title gives way, cut short. */}
+      <span className="flex min-w-0 max-w-full items-baseline gap-1 *:data-[slot=inline-button]:min-w-0 *:data-[slot=inline-button]:shrink">
+        <span className="shrink-0">From the Board:</span>
+        <InlineButton
+          tone="plain"
+          render={
+            <a
+              href={task.href}
+              onClick={(event) => {
+                // A new tab or window keeps the review where it is.
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+                event.preventDefault();
+                task.onOpen();
+              }}
+            />
+          }
+        >
+          <span className="truncate">{task.title}</span>
+        </InlineButton>
+      </span>
+    </p>
   );
 }
 
@@ -1597,7 +1661,14 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       }
       settled={fromRelease ? "Merged" : asked || over ? undefined : standing?.settled}
       status={model.verdict.state === "merged" ? <span>{model.verdict.why}</span> : undefined}
-      notice={github === undefined ? undefined : <GithubChecksLine checks={github} />}
+      notice={
+        props.boardTask === undefined && github === undefined ? undefined : (
+          <>
+            {props.boardTask === undefined ? null : <BoardTaskLine task={props.boardTask} />}
+            {github === undefined ? null : <GithubChecksLine checks={github} />}
+          </>
+        )
+      }
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}

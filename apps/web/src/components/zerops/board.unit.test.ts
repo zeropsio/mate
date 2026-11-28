@@ -12,6 +12,7 @@ import {
   rowLead,
   rowMeta,
 } from "./projectAutomation/taskBoard.logic.ts";
+import { taskOfChange } from "./projectAutomation/changeTask.logic.ts";
 
 const NOW = Date.parse("2026-11-27T12:00:00Z");
 
@@ -399,4 +400,41 @@ it("MN153: The Board's keyboard stands on the row it was moved to last, else the
     top: activeTask(shown, null, null, -1),
     bottom: activeTask(shown, "c", null, 1),
   }).toEqual({ fresh: "a", opened: "b", moved: "c", gone: "b", down: "c", top: "a", bottom: "c" });
+});
+
+// witness: apps/web/src/components/zerops/projectAutomation/changeTask.logic.ts |     link !== null && link.repo === change.repo && link.number === change.number; →     link !== null && link.number === change.number;
+it("MN+1: A change's review names the Board task it does: the task whose own change it is or whose taker's Mate linked it, by repository and number, the latest put where several do, and none where no task links it; breaks: a change reads as another repository's task, or as none it was made for", () => {
+  const own = task({ id: "own", state: "merged", change: { repo: "shop", number: 3 } });
+  const older = task({
+    id: "older",
+    state: "taken",
+    createdAt: "2026-11-19T12:00:00Z",
+    changes: [{ repo: "shop", number: 9 }],
+  });
+  const newer = task({
+    id: "newer",
+    state: "taken",
+    createdAt: "2026-11-21T12:00:00Z",
+    changes: [
+      { repo: "shop", number: 8 },
+      { repo: "shop", number: 9 },
+    ],
+  });
+  const tasks = [own, linked, newer, older];
+  const of = (repo: string, number: number) => taskOfChange(tasks, { repo, number })?.id ?? null;
+  expect({
+    own: of("shop", 3),
+    linked: of("shop", 7),
+    several: of("shop", 9),
+    otherRepo: of("site", 7),
+    none: of("shop", 12),
+    unread: taskOfChange(null, { repo: "shop", number: 7 }),
+  }).toEqual({
+    own: "own",
+    linked: "2",
+    several: "newer",
+    otherRepo: null,
+    none: null,
+    unread: null,
+  });
 });
