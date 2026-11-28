@@ -1,9 +1,10 @@
 /**
  * The Board in a conversation: Send's split with **Put on board**, the board ask card from the
  * proposal to the task it becomes (its row following the task: queued, in progress by the pool or
- * a person's Mate, asking its putter with the answer field, up for review, merged, stopped), and a
+ * a person's Mate, asking its putter with the answer field, up for review, merged, stopped), a
  * taken task's own chat — its header with Done and Release, and its card saying where it came from
- * (a conversation, or the Board itself).
+ * (a conversation, or the Board itself) — and, in the Mate's conversation, a Take whose
+ * conversation did not open, with Open its conversation.
  *
  * Served by the dev server at `/design-board.html` (`?theme=dark`; `?state=<name>` draws one state
  * alone). Open it at the owner's 1786 × 1000; the column is the conversation's 760 px.
@@ -19,6 +20,8 @@ import { createRoot } from "react-dom/client";
 import type { AskState } from "~/components/ask/ask.logic";
 import { ComposerPrimaryActions } from "~/components/chat/ComposerPrimaryActions";
 import { ComposerPutOnBoardButton } from "~/components/chat/ComposerPutOnBoardButton";
+import { NoticeLine } from "~/components/chat/ConversationRows";
+import { strandedTakeNotice } from "~/components/chat/conversationNotices";
 import { MateTaskCardView, MateTaskStatusView } from "~/components/zerops/MateTaskCard";
 import { BoardAskCardView } from "~/components/zerops/board/BoardAskCard";
 import { BoardPlanCardView } from "~/components/zerops/board/BoardPlanCard";
@@ -552,6 +555,34 @@ const STATES: ReadonlyArray<{
           text={`${TITLE}\n\n${BRIEF}`}
         />
       </div>
+    ),
+  },
+  {
+    id: "stranded",
+    title: "Where a Take lands, its conversation not opened: Open its conversation",
+    view: (
+      <NoticeLine
+        notice={strandedTakeNotice({
+          taskId: "t-stranded",
+          title: TITLE,
+          opening: false,
+          open: nothing,
+        })}
+      />
+    ),
+  },
+  {
+    id: "stranded-opening",
+    title: "Where a Take lands, its conversation opening",
+    view: (
+      <NoticeLine
+        notice={strandedTakeNotice({
+          taskId: "t-stranded",
+          title: TITLE,
+          opening: true,
+          open: nothing,
+        })}
+      />
     ),
   },
   {

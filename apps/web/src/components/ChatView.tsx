@@ -52,6 +52,7 @@ import {
   personNoticeArrived,
   resumeCompactionNotice,
   setupFailedNotice,
+  strandedTakeNotice,
 } from "./chat/conversationNotices";
 import { NoticesOverComposer } from "./chat/NoticesOverComposer";
 import type { ConversationNotice } from "./chat/ConversationRows";
@@ -230,7 +231,7 @@ import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates"
 import { mateMentionNotes, useMentionableMates } from "../zerops/mateMentions";
 import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
 import { boardAskPlaces, boardAskPlacesKey } from "./zerops/board/boardAsk.logic";
-import { useBoardOffers } from "../zerops/useBoardTasks";
+import { useBoardOffers, useStrandedTakesHere } from "../zerops/useBoardTasks";
 import { useApplicationOfProject } from "./zerops/useGitEnvironmentFormInputs";
 import { MirrorAskWatch } from "./zerops/mirror/MirrorAskWatch";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
@@ -4665,10 +4666,14 @@ function ConversationView(props: ChatViewProps) {
           }),
     [pageMateName, setupFailure],
   );
+  // A Take of the person's whose conversation did not open, wherever they land for this Mate.
+  const strandedTakes = useStrandedTakesHere(environmentId);
+  const strandedTakeNotices = useMemo(() => strandedTakes.map(strandedTakeNotice), [strandedTakes]);
   const conversationNotices = useMemo<ReadonlyArray<ConversationNotice>>(() => {
     if (colleagueReadOnly !== null || threadDetailLoading) return EMPTY_CONVERSATION_NOTICES;
     const notices = [
       setupFailedNoticeItem,
+      ...strandedTakeNotices,
       crewNextNotice,
       ...feedbackNotices,
       usageLimitsAnswer,
@@ -4683,6 +4688,7 @@ function ConversationView(props: ChatViewProps) {
     feedbackNotices,
     resumeCompactionNoticeItem,
     setupFailedNoticeItem,
+    strandedTakeNotices,
     threadDetailLoading,
     usageLimitsAnswer,
   ]);

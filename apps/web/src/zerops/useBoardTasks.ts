@@ -2,11 +2,14 @@
  * The Board's doors in the web client: what the person may do on an application's Board
  * (`boardOffers`), **Take** — HQ's take,
  * then a new conversation in the person's own Mate whose first message is the task's brief, sent
- * as them and linked to the task (`ComposerSendIds.taken`), where it stands until it went
- * (`TakeOpening`) — and the ways back to the conversation a task was put from.
+ * as them and linked to the task (`ComposerSendIds.taken`); a taken task none of the Mate's conversations
+ * carries (`strandedTakesAtom`), with its way to open it; and the ways back to the conversation a
+ * task was put from.
  */
 import {
   boardOffers,
+  hqMateOverviewAtom,
+  mateTakenTasksAtom,
   putChatOf,
   readsOfState,
   type BoardOffers,
@@ -17,10 +20,11 @@ import {
   assignCandidateMateTints,
   mateShapeOf,
   projectNameInApp,
+  strandedTakes,
 } from "@t3tools/client-runtime/zerops";
 import { findCandidate, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { useRouter } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
@@ -30,12 +34,15 @@ import { useComposerDraftStore } from "../composerDraftStore";
 import { REQUESTED_SEND_WAIT_MS, sendOutcomeOf } from "../hooks/useComposerSendRequests";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { newCommandId, newMessageId } from "../lib/utils";
-import { readThreadShell, useProjects } from "../state/entities";
-import { buildThreadRouteParams } from "../threadRoutes";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { environmentProjects } from "../state/projects";
+import { environmentServerConfigsAtom } from "../state/server";
+import { environmentShell } from "../state/shell";
 import { hqPlacementsAtom } from "../state/zerops";
+import { buildThreadRouteParams } from "../threadRoutes";
 import { useAccountOrgId, useAccountStoreForAdapters, useProjection } from "./accountData";
 import { useOpenMate } from "./useOpenMate";
-import { useBoardTaskWrites } from "./useTaskSourceSettings";
+import { useAppTaskSource, useBoardTaskWrites } from "./useTaskSourceSettings";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "./useZeropsCandidates";
 
 const NO_OFFERS = Atom.make<BoardOffers | undefined>(undefined);
@@ -54,20 +61,17 @@ export function useBoardOffers(appId: string | null): BoardOffers | undefined {
 }
 
 /**
- * Where a Take's conversation stands after HQ took the task, by the task: opening, or stranded — HQ
- * took it but its conversation did not open or its brief did not go, in words — so its row offers
- * to open it again under the same task. Kept for the tab's life: the Board read again, or left and
- * come back to, still says it. Opened, it is forgotten.
+ * The Takes whose conversation this tab is opening, by task: the press under way, said on its row
+ * and in its Mate's conversation, so neither offers to open it a second time meanwhile. The tab's
+ * own and never kept: whether a taken task's conversation opened is the data's (`strandedTakesAtom`).
  */
-export type TakeOpening =
-  | { readonly kind: "opening" }
-  | { readonly kind: "stranded"; readonly words: string };
-
-let openings: Readonly<Record<string, TakeOpening>> = {};
+let openings: ReadonlySet<string> = new Set();
 const listeners = new Set<() => void>();
-function setOpening(taskId: string, opening: TakeOpening | null): void {
-  const { [taskId]: _was, ...rest } = openings;
-  openings = opening === null ? rest : { ...rest, [taskId]: opening };
+function setOpening(taskId: string, on: boolean): void {
+  const next = new Set(openings);
+  if (on) next.add(taskId);
+  else next.delete(taskId);
+  openings = next;
   for (const listener of listeners) listener();
 }
 const subscribe = (listener: () => void) => {
@@ -75,109 +79,199 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener);
 };
 
-/** Where each Take's conversation stands, by task (`TakeOpening`). */
-export function useTakeOpenings(): Readonly<Record<string, TakeOpening>> {
+/** The Takes this tab is opening a conversation for, by task. */
+export function useTakeOpenings(): ReadonlySet<string> {
   return useSyncExternalStore(subscribe, () => openings);
 }
 
-/** How long a Mate's door may take to open a conversation before the Take says it did not. */
+/** A task the reader took for one of their Mates that none of that Mate's conversations carries. */
+export interface StrandedTake {
+  readonly taskId: string;
+  readonly title: string;
+  readonly mateProjectId: string;
+  readonly environmentId: EnvironmentId;
+  /** The application whose Board it is on: its record (the brief, its source) is read there. */
+  readonly appId: string;
+}
+
+const NO_STRANDED: ReadonlyArray<StrandedTake> = [];
+const strandedKey = (takes: ReadonlyArray<StrandedTake>) =>
+  takes.map((take) => `${take.taskId}\n${take.environmentId}\n${take.title}`).join("\n");
+
+/**
+ * Every task the reader's Mates hold taken (HQ's navigation, `taken`) that none of the Mate's
+ * conversations carries, as `strandedTakes` decides it over the Mate's rows this page's own socket
+ * holds: the Board row and the Mate's conversation offer **Open its conversation** from it, on
+ * every tab and device, a reload included.
+ */
+export const strandedTakesAtom = Atom.make((get): ReadonlyArray<StrandedTake> => {
+  const placements = get(hqPlacementsAtom);
+  if (placements === null) return NO_STRANDED;
+  const stranded: StrandedTake[] = [];
+  for (const [projectId, placement] of placements) {
+    const taken = placement.mate?.taken;
+    const appId = placement.appId;
+    if (taken === undefined || taken.length === 0 || appId == null) continue;
+    const at = get(hqMateOverviewAtom(projectId))?.identity?.environmentId;
+    if (at === undefined) continue;
+    const environmentId = EnvironmentId.make(at);
+    const conversations = {
+      listed: get(environmentShell.threadsListedAtom(environmentId)),
+      namesTaken:
+        get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+          .conversationTakenTask === true,
+      carried: get(mateTakenTasksAtom(environmentId)),
+    };
+    for (const task of strandedTakes(taken, conversations))
+      stranded.push({
+        taskId: task.id,
+        title: task.title,
+        mateProjectId: projectId,
+        environmentId,
+        appId,
+      });
+  }
+  return stranded.length === 0 ? NO_STRANDED : stranded;
+}).pipe(
+  Atom.withEquality(
+    (a: ReadonlyArray<StrandedTake>, b: ReadonlyArray<StrandedTake>) =>
+      strandedKey(a) === strandedKey(b),
+  ),
+  Atom.withLabel("zerops:stranded-takes"),
+);
+
+/** How long a Take may take to open its conversation before it is left stranded (`strandedTakes`). */
 const OPEN_WAIT_MS = REQUESTED_SEND_WAIT_MS;
 
 /**
- * Opens a new conversation in Mate `mateProjectId` and sends `brief` as its first message, carrying
- * the task it is (`taken`): in the Mate's environment where this page is linked to it, else once its
- * door has connected it (`useOpenMate`), within a bounded wait. Answers why it did not, or `null`
- * once its first message went.
+ * The first answer `pick` finds in `atom` as it is read, or `null` once `deadline` passes: a wait on
+ * the read itself (a subscription), never a sleep or a poll.
  */
-function useOpenTakenConversation() {
-  const { listing } = useZeropsDetailCandidates();
-  const openMate = useOpenMate();
-  const handleNewThread = useNewThreadHandler();
-  const projects = useProjects();
-  return useCallback(
-    async (
-      mateProjectId: string,
-      taken: NonNullable<ReturnType<typeof takenOf>>,
-      brief: string,
-    ): Promise<string | null> => {
-      const lookup = findCandidate(listing, (row) => row.project.id === mateProjectId);
-      const linked = lookup.kind === "found" ? lookup.row.environmentId : undefined;
-      const where =
-        linked !== undefined
-          ? {
-              environmentId: linked,
-              projectId: projects.find((entry) => entry.environmentId === linked)?.id,
-            }
-          : // Its door connects it first: the conversation it opens names the project to start in.
-            await new Promise<{
-              environmentId: EnvironmentId;
-              projectId: ProjectId | undefined;
-            } | null>((resolve) => {
-              const timer = setTimeout(() => resolve(null), OPEN_WAIT_MS);
-              const kind = openMate(
-                lookup.kind === "found" ? lookup.row : { projectId: mateProjectId },
-                (opened) => {
-                  clearTimeout(timer);
-                  resolve({
-                    environmentId: opened.environmentId,
-                    projectId: readThreadShell(opened)?.projectId,
-                  });
-                },
-              );
-              if (kind === "going") {
-                clearTimeout(timer);
-                resolve(null);
-              }
-            });
-      if (where === null) return "Its Mate did not open in time.";
-      if (where.projectId === undefined) return "Its Mate's workspace is not read yet.";
-      const opened = await handleNewThread(scopeProjectRef(where.environmentId, where.projectId), {
-        fresh: true,
-      });
-      if (opened === null) return "Its new conversation did not open.";
-      const messageId = newMessageId();
-      const outcome = sendOutcomeOf(messageId);
-      useComposerDraftStore
-        .getState()
-        .requestSend(opened.draftId, brief, { commandId: newCommandId(), messageId, taken });
-      const sent = await outcome;
-      return sent.kind === "sent"
-        ? null
-        : sent.kind === "waits"
-          ? `Its brief did not go: ${sent.why}`
-          : "Its brief was changed before it went.";
-    },
-    [handleNewThread, listing, openMate, projects],
-  );
+function untilRead<A, B>(
+  atom: Atom.Atom<A>,
+  pick: (value: A) => B | undefined,
+  deadline: number,
+): Promise<B | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let release: (() => void) | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (value: B | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      release?.();
+      resolve(value);
+    };
+    timer = setTimeout(() => settle(null), Math.max(0, deadline - Date.now()));
+    release = appAtomRegistry.subscribe(
+      atom,
+      (value) => {
+        const found = pick(value);
+        if (found !== undefined) settle(found);
+      },
+      { immediate: true },
+    );
+    // `immediate` may settle inside `subscribe`, before `release` exists.
+    if (settled) release();
+  });
 }
+
+type NewThread = ReturnType<typeof useNewThreadHandler>;
 
 /** The task as a taken conversation's first message carries it; `null` where HQ named no source. */
 const takenOf = (task: HqAppTask) =>
   task.source === undefined ? null : { taskId: task.id, source: task.source };
 
 /**
+ * Opens a new conversation for taken task `task` in its Mate's environment, once `reach` has it
+ * (where this page is linked to the Mate, at once; else through its door), and sends its brief as
+ * the first message, carrying the task (`taken`). Each step waits on its read within one bound: the
+ * environment's project known, the brief taken by its conversation, then a row of the Mate's that
+ * carries the task, so the press ends only once the data says the conversation opened. Where any
+ * step does not come, the task is left stranded, and the Mate's conversations and the Board say so
+ * from the data (`strandedTakesAtom`); one press at a time per task.
+ */
+async function openTaken(
+  task: HqAppTask,
+  reach: (deadline: number) => Promise<EnvironmentId | null>,
+  handleNewThread: NewThread,
+): Promise<void> {
+  const taken = takenOf(task);
+  if (taken === null || openings.has(task.id)) return;
+  setOpening(task.id, true);
+  try {
+    const deadline = Date.now() + OPEN_WAIT_MS;
+    const environmentId = await reach(deadline);
+    if (environmentId === null) return;
+    const projectId = await untilRead(
+      environmentProjects.projectsAtom,
+      (projects) => projects.find((entry) => entry.environmentId === environmentId)?.id,
+      deadline,
+    );
+    if (projectId === null) return;
+    const opened = await handleNewThread(scopeProjectRef(environmentId, projectId), {
+      fresh: true,
+    });
+    if (opened === null) return;
+    const messageId = newMessageId();
+    const outcome = sendOutcomeOf(messageId);
+    useComposerDraftStore.getState().requestSend(opened.draftId, task.brief ?? task.title, {
+      commandId: newCommandId(),
+      messageId,
+      taken,
+    });
+    if ((await outcome).kind !== "sent") return;
+    // Its row comes on the Mate's own stream after the send's answer: until then it is opening.
+    await untilRead(
+      mateTakenTasksAtom(environmentId),
+      (carried) => (carried.includes(task.id) ? true : undefined),
+      Date.now() + OPEN_WAIT_MS,
+    );
+  } finally {
+    setOpening(task.id, false);
+  }
+}
+
+/**
  * **Take**: HQ takes the task for the person's Mate `mateProjectId`, then its conversation opens
- * with the brief as the first message (`TakeOpening` meanwhile). HQ's refusal stands on the task's
- * row (`appTaskWrites`); a conversation that did not open strands the task taken, and **Open its
- * conversation** (`open`) tries again under the same task, never taking it twice.
+ * with the brief as the first message (`openTaken`). HQ's refusal stands on the task's row
+ * (`appTaskWrites`); a conversation that did not open leaves the task stranded
+ * (`strandedTakesAtom`), and **Open its conversation** (`open`) opens it under the same task,
+ * never taking it twice.
  */
 export function useTakeTask(appId: string | null) {
   const writes = useBoardTaskWrites(appId);
-  const openTaken = useOpenTakenConversation();
+  const { listing } = useZeropsDetailCandidates();
+  const openMate = useOpenMate();
+  const handleNewThread = useNewThreadHandler();
   const open = useCallback(
-    async (task: HqAppTask, mateProjectId: string) => {
-      const taken = takenOf(task);
-      if (taken === null) {
-        setOpening(task.id, { kind: "stranded", words: "HQ did not say where it came from." });
-        return;
-      }
-      setOpening(task.id, { kind: "opening" });
-      const why = await openTaken(mateProjectId, taken, task.brief ?? task.title).catch(
-        () => "Its conversation did not open.",
-      );
-      setOpening(task.id, why === null ? null : { kind: "stranded", words: why });
-    },
-    [openTaken],
+    (task: HqAppTask, mateProjectId: string) =>
+      openTaken(
+        task,
+        (deadline) => {
+          const lookup = findCandidate(listing, (row) => row.project.id === mateProjectId);
+          const linked = lookup.kind === "found" ? lookup.row.environmentId : undefined;
+          if (linked !== undefined) return Promise.resolve(linked);
+          // Its door connects it first, and tells which environment it opened in.
+          return new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(null), Math.max(0, deadline - Date.now()));
+            const kind = openMate(
+              lookup.kind === "found" ? lookup.row : { projectId: mateProjectId },
+              (opened) => {
+                clearTimeout(timer);
+                resolve(opened.environmentId);
+              },
+            );
+            if (kind === "going") {
+              clearTimeout(timer);
+              resolve(null);
+            }
+          });
+        },
+        handleNewThread,
+      ),
+    [handleNewThread, listing, openMate],
   );
   const take = useCallback(
     async (taskId: string, mateProjectId: string) => {
@@ -188,6 +282,55 @@ export function useTakeTask(appId: string | null) {
     [open, writes],
   );
   return { take, open };
+}
+
+/** A stranded Take in the Mate's conversation: its words, and its Open its conversation. */
+export interface StrandedTakeHere {
+  readonly taskId: string;
+  readonly title: string;
+  /** This tab is opening its conversation now. */
+  readonly opening: boolean;
+  /** Opens its conversation; `null` while its Board record (its brief) is not read. */
+  readonly open: (() => void) | null;
+}
+
+const NOTHING_HERE: ReadonlyArray<StrandedTakeHere> = [];
+
+/**
+ * The reader's stranded Takes in the Mate of `environmentId` (`strandedTakesAtom`), said where they
+ * land for that Mate — its conversations — each with **Open its conversation**, which opens it here
+ * under the same task; its Board is read for the task's brief only while one is stranded.
+ */
+export function useStrandedTakesHere(
+  environmentId: EnvironmentId,
+): ReadonlyArray<StrandedTakeHere> {
+  const all = useAtomValue(strandedTakesAtom);
+  const here = useMemo(
+    () => all.filter((take) => take.environmentId === environmentId),
+    [all, environmentId],
+  );
+  const board = useAppTaskSource("hqAppTasks", here[0]?.appId ?? null);
+  const setting = board.read.setting;
+  const held = setting.state === "known" ? setting.held : null;
+  const pressing = useTakeOpenings();
+  const handleNewThread = useNewThreadHandler();
+  return useMemo(() => {
+    if (here.length === 0) return NOTHING_HERE;
+    return here.map((take) => {
+      const task = held?.find((each) => each.id === take.taskId);
+      return {
+        taskId: take.taskId,
+        title: take.title,
+        opening: pressing.has(take.taskId),
+        open:
+          task === undefined || task.source === undefined
+            ? null
+            : () => {
+                void openTaken(task, () => Promise.resolve(environmentId), handleNewThread);
+              },
+      };
+    });
+  }, [environmentId, handleNewThread, held, here, pressing]);
 }
 
 /**

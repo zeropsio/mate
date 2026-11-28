@@ -20,6 +20,7 @@ import {
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import type { TaskSourceWrite, TaskWriteAction } from "@t3tools/client-runtime/data";
+import { OPENING_TAKEN_WORDS } from "@t3tools/client-runtime/zerops";
 import type { BoardSource, ConversationSource } from "@t3tools/contracts";
 
 import { pullRequestName } from "~/zerops/automatedMate.logic";
@@ -596,7 +597,10 @@ export function taskRowPress(input: {
   readonly asking: string | null;
   /** This account's latest write to the task (`appTaskWrites`); absent: none. */
   readonly action: TaskWriteAction | undefined;
-  /** Where its Take's conversation stands (`TakeOpening`); absent: none was taken here. */
+  /**
+   * Where its Take's conversation stands: this tab opening it (`useTakeOpenings`), or stranded,
+   * none of its Mate's conversations carrying it (`strandedTakes`); absent: neither.
+   */
   readonly opening?:
     | { readonly kind: "opening" }
     | { readonly kind: "stranded"; readonly words: string }
@@ -604,7 +608,7 @@ export function taskRowPress(input: {
 }): RowPress {
   if (input.asking === input.taskId) return { kind: "asking" };
   const { action, opening } = input;
-  if (opening?.kind === "opening") return { kind: "working", words: "Opening its conversation…" };
+  if (opening?.kind === "opening") return { kind: "working", words: OPENING_TAKEN_WORDS };
   if (opening?.kind === "stranded") return { kind: "refused", words: opening.words };
   if (action?.kind === "working") return { kind: "working", words: UNDER_WAY[action.verb] ?? "…" };
   if (action?.kind === "failed" || action?.kind === "unresolved")

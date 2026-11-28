@@ -3,7 +3,18 @@
  * into the quiet row at the conversation's end that says it (`NoticeLine`) — where the composer's
  * strips once stacked (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12).
  */
-import { CircleAlertIcon, GitBranchIcon, Minimize2Icon, RefreshCwIcon } from "lucide-react";
+import {
+  OPEN_TAKEN_LABEL,
+  OPENING_TAKEN_WORDS,
+  STRANDED_TAKE_WORDS,
+} from "@t3tools/client-runtime/zerops";
+import {
+  CircleAlertIcon,
+  GitBranchIcon,
+  Minimize2Icon,
+  RefreshCwIcon,
+  SquareKanbanIcon,
+} from "lucide-react";
 
 import { formatContextWindowTokens } from "../../lib/contextWindow";
 import type { MateSetupFailure, MateSetupHandOver } from "../../zerops/mateStandUp";
@@ -113,6 +124,36 @@ export function setupFailedNotice(input: {
         : { label: `Ask ${name} to fix it`, onAction: input.onHandOver },
     failed: true,
     announce: failure.what === null ? title : `${title}: ${failure.what}`,
+  };
+}
+
+/**
+ * A task the person took from the Board for this Mate that none of its conversations carries
+ * (`strandedTakes`): said in the Mate's conversations, where its Take lands, with **Open its
+ * conversation**, which opens it under the same task. Not dismissed: it stands until a conversation
+ * carries the task, or the task is no longer theirs.
+ */
+export function strandedTakeNotice(take: {
+  readonly taskId: string;
+  readonly title: string;
+  readonly opening: boolean;
+  readonly open: (() => void) | null;
+}): ConversationNotice {
+  const { open } = take;
+  return {
+    id: `taken-stranded:${take.taskId}`,
+    icon: <SquareKanbanIcon />,
+    words: (
+      <>
+        <strong>{take.title}</strong> · Taken by you. {STRANDED_TAKE_WORDS}
+      </>
+    ),
+    action: take.opening
+      ? { label: OPENING_TAKEN_WORDS, onAction: () => {}, unavailable: OPENING_TAKEN_WORDS }
+      : open === null
+        ? { label: OPEN_TAKEN_LABEL, onAction: () => {}, unavailable: "Reading the Board…" }
+        : { label: OPEN_TAKEN_LABEL, onAction: open },
+    announce: `${take.title}: ${STRANDED_TAKE_WORDS}`,
   };
 }
 

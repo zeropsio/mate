@@ -28,7 +28,9 @@ import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import {
   assignCandidateMateTints,
   mateShapeOf,
+  OPEN_TAKEN_LABEL,
   projectNameInApp,
+  STRANDED_TAKE_WORDS,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useNavigate } from "@tanstack/react-router";
@@ -57,6 +59,7 @@ import {
   takeAnswerOnArrival,
   useBoardOffers,
   useMateFaces,
+  strandedTakesAtom,
   useOpenTaskConversation,
   useTakeOpenings,
   useTakeTask,
@@ -366,6 +369,7 @@ function useTaskBoard(
   const writes = useBoardTaskWrites(groupId);
   const take = useTakeTask(groupId);
   const openings = useTakeOpenings();
+  const strandedTakes = useAtomValue(strandedTakesAtom);
   const openConversation = useOpenTaskConversation();
   const [asking, setAsking] = useState<string | null>(null);
   const setting = tasks.read.setting;
@@ -389,6 +393,20 @@ function useTaskBoard(
     return made;
   }, [held, nowMs, groupId, live, versions, viewerId, personName, faces]);
   const shownIds = useMemo(() => (held === null ? [] : held.map((task) => task.id)), [held]);
+  // The reader's own Takes on this Board whose conversation none of their Mate's carries.
+  const stranded = useMemo(() => {
+    const byId = new Map(held?.map((task) => [task.id, task] as const));
+    return new Set(
+      strandedTakes.flatMap((take) => {
+        const taker = byId.get(take.taskId)?.taker;
+        return taker?.kind === "person" &&
+          taker.userId === viewerId &&
+          taker.mateProjectId === take.mateProjectId
+          ? [take.taskId]
+          : [];
+      }),
+    );
+  }, [held, strandedTakes, viewerId]);
   const stops = useAppTaskStops(groupId, shownIds);
   const poolFaces = useMemo(
     () => new Map(pool.map((mate) => [mate.projectId, mate] as const)),
@@ -421,9 +439,13 @@ function useTaskBoard(
                 taskId,
                 asking,
                 action: stops.stops[taskId],
-                opening: openings[taskId],
+                opening: openings.has(taskId)
+                  ? { kind: "opening" }
+                  : stranded.has(taskId)
+                    ? { kind: "stranded", words: STRANDED_TAKE_WORDS }
+                    : undefined,
               }),
-            strandedOf: (taskId) => openings[taskId]?.kind === "stranded",
+            strandedOf: (taskId) => stranded.has(taskId),
             onAsk: (taskId) => {
               setAsking(taskId);
             },
@@ -732,7 +754,7 @@ export interface BoardVerbs {
   readonly mateName: (projectId: string) => string;
   /** Where the row's press stands: its Stop asking, a write under way or refused (`taskRowPress`). */
   readonly pressOf: (taskId: string) => RowPress;
-  /** HQ took it for the reader, but its conversation did not open (`TakeOpening`). */
+  /** HQ took it for the reader, but none of their Mate's conversations carries it (`strandedTakes`). */
   readonly strandedOf: (taskId: string) => boolean;
   /** Opens a stranded Take's conversation again, under the same task. */
   readonly onOpenTaken: (taskId: string) => void;
@@ -1484,7 +1506,7 @@ function BoardRowView({
               size="xs"
               variant="secondary"
             >
-              Open its conversation
+              {OPEN_TAKEN_LABEL}
             </Button>
           ) : primary === "drop" ? (
             <DropNeedPress broken={row.broken} taskId={row.id} title={row.title} verbs={verbs} />

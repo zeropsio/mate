@@ -14,6 +14,7 @@
  * route imports this module.
  */
 import type { AppIntakeRead, TaskSourceSettingValue } from "@t3tools/client-runtime/data";
+import { STRANDED_TAKE_WORDS } from "@t3tools/client-runtime/zerops";
 import type { MateTaskSource } from "@t3tools/contracts";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -753,7 +754,7 @@ const STATES: ReadonlyArray<{
             id === GIFT_WRAP.id
               ? { kind: "working", words: "Taking it…" }
               : id === REPOT.id
-                ? { kind: "refused", words: "Its Mate did not open in time." }
+                ? { kind: "refused", words: STRANDED_TAKE_WORDS }
                 : id === STALE.id
                   ? { kind: "asking" }
                   : { kind: "idle" },
