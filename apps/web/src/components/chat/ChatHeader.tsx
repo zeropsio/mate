@@ -24,6 +24,7 @@ import {
   EllipsisIcon,
   LayoutDashboardIcon,
   PanelBottomIcon,
+  SquareKanbanIcon,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -865,6 +866,21 @@ export const ChatHeader = memo(function ChatHeader({
                       {projectPageInMenu.projectName === undefined
                         ? "Open the project"
                         : `Open ${projectPageInMenu.projectName}`}
+                    </MenuItem>
+                  )}
+                  {projectPageInMenu === undefined ? null : (
+                    // A phone's Board door, beside its project's.
+                    <MenuItem
+                      data-zerops-surface="header-board"
+                      onClick={() => {
+                        void navigate({
+                          to: "/group/$groupId/board",
+                          params: { groupId: projectPageInMenu.groupId },
+                        });
+                      }}
+                    >
+                      <SquareKanbanIcon />
+                      Open the Board
                     </MenuItem>
                   )}
                   {terminalInMenu ? (

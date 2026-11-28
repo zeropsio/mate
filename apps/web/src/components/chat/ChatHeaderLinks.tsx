@@ -4,7 +4,7 @@
  * (`browserSiteGroups`), each its service's name above its address. A pick opens
  * it as its own tab in the panel's Browser; the row's arrow, or ⌘-click, opens
  * it in a new browser tab. Nothing is drawn while the Mate has no address. In a project with a
- * page, *Project* stands before it and Sites opens the menu's panel of the project.
+ * page, *Board* and *Project* stand before it and Sites opens the menu's panel of the project.
  *
  * The owner, 2026-10-03: "I also question whether ability to open public
  * links shouldnt be in top bar of the main convo".
@@ -23,6 +23,8 @@ import { Button } from "../ui/button";
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { browserSiteGroups } from "../zerops/browserSites.logic";
+import { BoardDoor } from "../zerops/projectAutomation/BoardDoor";
+import { useBoardWaitingCount } from "../zerops/projectAutomation/ProjectAutomation";
 import { MateAddressExternalLink, openMateAddress } from "../zerops/MateAddresses";
 import { Text } from "~/components/ui/text";
 
@@ -75,10 +77,10 @@ function HeldLink({ children }: { readonly children: ReactNode }) {
  * The header's links for the Mate that lives here, decided from who the Mate is (`page`,
  * `mateProjectPage`) on the first frame:
  *
- * - its project has a page: *Project*, at once, and *Sites* — the menu's panel of the project once
- *   the menu has drawn it (`sites`), the Mate's own addresses where they are read first, else its
- *   room held;
- * - not known yet: both rooms held, nothing in them;
+ * - its project has a page: its application's *Board* and *Project*, at once, and *Sites* — the
+ *   menu's panel of the project once the menu has drawn it (`sites`), the Mate's own addresses
+ *   where they are read first, else its room held;
+ * - not known yet: every room held, nothing in them;
  * - no project page, or no Mate: the Mate's own addresses, where it has any.
  */
 export function ChatHeaderLinks({
@@ -142,6 +144,9 @@ export function ChatHeaderLinks({
     );
   return (
     <HeaderLinksView
+      board={
+        page?.kind === "page" && !projectInMenu ? <HeaderBoardDoor groupId={page.groupId} /> : null
+      }
       onOpenProject={(groupId) => {
         void navigate({ to: "/group/$groupId/flow", params: { groupId } });
       }}
@@ -152,28 +157,40 @@ export function ChatHeaderLinks({
   );
 }
 
+/** The application's Board, with how many of its tasks wait for the reader. */
+function HeaderBoardDoor({ groupId }: { readonly groupId: string }) {
+  return <BoardDoor count={useBoardWaitingCount(groupId)} groupId={groupId} place="header" />;
+}
+
 /**
  * The links as drawn, from what is known: `sites` is the Sites control where there is one to
- * press. A project with a page holds Sites' room until then; a project not known yet holds both.
+ * press, `board` the application's Board door. A project with a page holds Sites' room until then;
+ * a project not known yet holds every room.
  */
 export function HeaderLinksView({
   page,
   sites,
+  board = null,
   onOpenProject,
   projectInMenu = false,
 }: {
   readonly projectInMenu?: boolean;
   readonly page: MateProjectPage | undefined;
   readonly sites: ReactNode;
+  /** The application's Board door (`BoardDoor`), for a Mate whose project has a page. */
+  readonly board?: ReactNode;
   readonly onOpenProject: (groupId: string) => void;
 }) {
   if (page?.kind === "unknown") {
     return (
       <HeldLink>
         {projectInMenu ? null : (
-          <Button size="sm" variant="sidebar">
-            {projectWords}
-          </Button>
+          <>
+            <BoardDoor count={undefined} groupId={null} place="header" />
+            <Button size="sm" variant="sidebar">
+              {projectWords}
+            </Button>
+          </>
         )}
         <Button size="sm" variant="sidebar">
           {sitesWords}
@@ -185,6 +202,7 @@ export function HeaderLinksView({
   const { groupId } = page;
   return (
     <>
+      {board}
       {projectInMenu ? null : (
         <ProjectPageLink
           onOpen={() => {

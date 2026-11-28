@@ -6,9 +6,9 @@
  * card does, so a place, a Mate and a change say the same on both; nothing on it is said twice.
  * Production's state is its Places card's; *Review release* is its `NextRelease`'s.
  */
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { ZeropsMateVerb } from "../ZeropsMateCard";
-import { FileIcon, GlobeIcon, SquareKanbanIcon } from "lucide-react";
+import { FileIcon, GlobeIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { Badge } from "~/components/ui/badge";
@@ -100,6 +100,7 @@ import {
   type ChangeGroup,
 } from "./projectPage.logic";
 import { SetupCard } from "./SetupCard";
+import { BoardDoor } from "../projectAutomation/BoardDoor";
 import {
   ALREADY_LIVE_ELSEWHERE,
   ProductionOutside,
@@ -237,7 +238,7 @@ export function ProjectPageBody<T>({
         actions={
           // *Add a Mate* is the Mates grid's last card: one door on the page.
           <>
-            <BoardDoor count={setup.boardWaiting} groupId={group.groupId} />
+            <BoardDoor count={setup.boardWaiting} groupId={group.groupId} place="page" />
             {/* Every address of the project, by where it runs: an address is reached through a
                 Sites door, the project's own here. */}
             <ProjectSitesDoor
@@ -329,33 +330,6 @@ export function ProjectPageBody<T>({
 
 /** The Board section's heading, which names the section. */
 const BOARD_HEADING = "project-board";
-
-/**
- * The header's way to the Board's own page, `/group/$groupId/board`, with how many tasks wait there
- * (`boardWaitingCount`) once it is read and some do.
- */
-function BoardDoor({
-  groupId,
-  count,
-}: {
-  readonly groupId: string;
-  readonly count: number | undefined;
-}) {
-  const waiting = count !== undefined && count > 0;
-  return (
-    <Button
-      aria-label={waiting ? `Board, ${String(count)} waiting` : "Board"}
-      data-zerops-surface="project-board-door"
-      render={<Link params={{ groupId }} to="/group/$groupId/board" />}
-      size="sm"
-      variant="secondary"
-    >
-      <SquareKanbanIcon aria-hidden="true" />
-      <span>Board</span>
-      {waiting ? <Badge count>{count}</Badge> : null}
-    </Button>
-  );
-}
 
 /**
  * Which of the side rows' dialogs stand open. A place's page links to its column of who has
